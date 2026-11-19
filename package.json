@@ -10,7 +10,11 @@
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "check": "biome check ."
+    "check": "biome check .",
+    "db:migrate:d1": "pnpm --filter @magomap/api exec wrangler d1 migrations apply DB --env d1",
+    "db:migrate:postgres": "pnpm --filter @magomap/db exec tsx scripts/migrate.ts postgres",
+    "deploy:d1": "pnpm --filter @magomap/api exec wrangler deploy --env d1",
+    "deploy:postgres": "pnpm --filter @magomap/api exec wrangler deploy --env postgres"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.5",

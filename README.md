@@ -7,7 +7,7 @@
 **Shape your own map.** magomap is a map app you install on your phone. Save the places you love, keep a diary of every visit, collect links about them, and group them into lists. Everything works offline, so you can write a note while standing at the place, even with bad signal.
 
 > [!NOTE]
-> magomap is being designed and planned; it isn't built yet. See [the design](docs/superpowers/specs/2026-11-19-magomap-design.md) and [the implementation plans](docs/superpowers/plans/).
+> **Status:** the backend (sign-in, offline sync, Kakao import, place search) is built and tested; the app itself is next. See [the design](docs/superpowers/specs/2026-11-19-magomap-design.md) and [the implementation plans](docs/superpowers/plans/).
 
 ## The name
 
@@ -33,7 +33,23 @@ The logo shows two hand-shaped peaks, the land Mago sculpted, whose outline form
 - The PWA is React, with an offline store in the browser.
 - The map is the Kakao Maps SDK, with an OpenStreetMap fallback.
 
-Setup and deployment instructions will be added as the app is built.
+## Development
+
+You'll need Node 22, pnpm and Docker (Docker is only for the Postgres tests).
+
+```bash
+pnpm install
+docker compose up -d postgres
+TEST_DATABASE_URL=postgres://magomap:magomap@localhost:5432/magomap_test scripts/gate.sh
+```
+
+`scripts/gate.sh` runs every check: Biome, typecheck, the tests on SQLite, Postgres and the Workers runtime, and the build. It also refuses changes that lower the quality bar. [docs/superpowers/build-process.md](docs/superpowers/build-process.md) describes how changes are built and reviewed.
+
+To run the API locally with sample data, see "Local development" in [docs/deploy.md](docs/deploy.md).
+
+## Deployment
+
+See [docs/deploy.md](docs/deploy.md). It covers D1 or Postgres, the Kakao Developers setup, secrets, and rollback.
 
 ## Brand
 
