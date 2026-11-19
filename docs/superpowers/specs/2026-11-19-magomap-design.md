@@ -270,6 +270,12 @@ Each account is one person on a few devices, so a simple design is enough:
 - Place fields can't be edited, and there are no manual places.
 - A diary entry written for a deleted place brings the place back.
 
+## Implementation notes (from planning)
+
+- **The import runs list by list, driven by the app.** It fetches the contract through the Worker, then starts a run, uploads each list, and completes the run. The reason is that D1 has no interactive transactions and Workers Free allows about 10 ms of CPU per request. The rules are unchanged: removals only after a complete run, nothing deleted, and diaries untouched.
+- **Places have deterministic ids**: `kp_<kakaoPlaceId>`, or `kf_<favoriteSeq>` for custom pins. A place saved from search and the same place imported later are therefore one row, with no merge step. Other ids are UUIDv7 generated on the client.
+- **A place the user deleted stays deleted** even while it is still in a Kakao list.
+
 ## Left to the builder
 
 - Exact UI styling. It should be light and calm and familiar to Kakao Map users, like `kakao-list`.
