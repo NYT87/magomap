@@ -270,6 +270,39 @@ Each account is one person on a few devices, so a simple design is enough:
 - Place fields can't be edited, and there are no manual places.
 - A diary entry written for a deleted place brings the place back.
 
+## Addendum (2026-11-19): location history
+
+**Why.** Places move: a shop relocates, or Kakao corrects a pin. The owner wants the current location updated, and the previous ones kept, so old diary entries still make sense and old spots can be found on the map.
+
+**Approach.** History is kept in its own append-only table. This was chosen over versioning the whole place row, because only location changes matter, and history rows never conflict in sync.
+
+**When it's recorded**
+- **Kakao import.** The place's coordinates or address changed.
+- **Kakao search.** A result for an already-saved place has a new location. Saving or opening the result updates the place.
+- **A move** means more than **30 m** of distance, or a different address text. Smaller coordinate changes update the place silently and are not recorded, so Kakao's jitter doesn't fill the history.
+- **Server-side only.** History is written by the server, in the same atomic batch as the place update. The client never creates history rows. For a search-detected move, the client sends the new location with a place upsert, and the server applies the move rule.
+- **Never deleted** except with the place itself or the account.
+
+**Data.**
+
+| Table | One row per | Main columns |
+|---|---|---|
+| `place_locations` | previous location of a place | id, place_id, address, road_address, lat, lng, `valid_from` (when it became current; the place's `created_at` for the first one), `valid_until` (when the move was detected), `detected_by` (`kakao_import` / `search`) |
+
+It syncs to the PWA like the other tables (read-only on the client), so history works offline.
+
+**Map.**
+- Previous locations show as **faded, smaller markers** in the place's colour.
+- Tapping one shows a card: "Previously here until <date> — now at <current address>", with a button to open the place.
+- A "Show previous locations" toggle in the list picker controls them. It is on by default and remembered on the device.
+- They follow the same list visibility as the place. *(Designer's calls: the faded style, the toggle, and on by default.)*
+
+**Place page.**
+- A "Moved" note under the address opens the list of previous addresses with their dates.
+- Diary entries whose `visited_on` (or `created_at` for undated entries) falls before the latest move show "at the previous location"; with several moves, the address it was at then.
+
+**Not included.** No manual editing of locations, and no undoing a move.
+
 ## Implementation notes (from planning)
 
 - **The import runs list by list, driven by the app.** It fetches the contract through the Worker, then starts a run, uploads each list, and completes the run. The reason is that D1 has no interactive transactions and Workers Free allows about 10 ms of CPU per request. The rules are unchanged: removals only after a complete run, nothing deleted, and diaries untouched.
