@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Redirect, Route, Switch } from "wouter";
 import { useMe } from "./auth/useMe";
+import { openUserDb } from "./data/db";
+import { SyncProvider } from "./data/SyncProvider";
 import { AppLayout } from "./layout/AppLayout";
 import { PageRoutes } from "./routes";
 import { NotInvited } from "./screens/NotInvited";
@@ -31,10 +33,14 @@ function Shell() {
     );
   }
   if (!me) return <Redirect to="/signin" />;
+  // Each account has its own local database; signing out keeps it for the next sign-in.
+  openUserDb(me.userId);
   return (
-    <AppLayout map={<div className="mm-map__placeholder" />}>
-      <PageRoutes me={me} />
-    </AppLayout>
+    <SyncProvider key={me.userId}>
+      <AppLayout map={<div className="mm-map__placeholder" />}>
+        <PageRoutes me={me} />
+      </AppLayout>
+    </SyncProvider>
   );
 }
 
