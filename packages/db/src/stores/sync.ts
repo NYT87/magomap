@@ -1,5 +1,6 @@
 import {
   type AnyRow,
+  CLOCK_ALLOWANCE_MS,
   type ClientWritableTable,
   isLocationMove,
   type LocationFields,
@@ -14,14 +15,23 @@ import {
   SYNC_TABLES,
   type SyncTable,
 } from "@magomap/domain";
-import { kakaoPlaceRowId, newId, ownMembershipRowId } from "@magomap/domain/ids";
+import {
+  newId,
+  ownItemRowId,
+  placeRowId,
+  placeSourceRowId,
+  userListRowId,
+  userPlaceRowId,
+} from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
-import { type RawBuilder, sql } from "kysely";
+import { sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
-import { inJson, toAnyRow, toDbRow } from "../mapping";
+import { inJson, PER_USER_TABLES, toAnyRow, toDbRow } from "../mapping";
 import type { Database } from "../schema";
+import { type Row, type WriteContext, withWrite, writeStatements } from "../write";
 
-type Row = Record<string, unknown> & { id: string };
+export { WriteConflictError } from "../write";
+
 const APPLY_ORDER: ClientWritableTable[] = [
   "places",
   "lists",
@@ -34,7 +44,7 @@ const APPLY_ORDER: ClientWritableTable[] = [
 export function applyLocationUpdate(
   current: PlaceRow,
   incoming: Partial<LocationFields>,
-  detectedBy: "kakao_import" | "search",
+  detectedBy: "import" | "search",
   now: number,
   previousValidUntil: number | null,
 ): { place: PlaceRow; history?: PlaceLocationRow; changed: boolean } {
@@ -68,132 +78,34 @@ export function applyLocationUpdate(
   return { place, history, changed };
 }
 
-async function readByIds(db: Db, userId: string, table: SyncTable, ids: Iterable<string>) {
+/** Rows by id; per-user tables are scoped to `userId`. */
+export async function readByIds(db: Db, userId: string, table: SyncTable, ids: Iterable<string>) {
   const list = [...new Set(ids)];
   const out = new Map<string, Row>();
   if (list.length === 0) return out;
-  const rows = await db.kysely
-    .selectFrom(table)
+  let query = db.kysely
+    .selectFrom(table as keyof Database)
     .selectAll()
-    .where("user_id", "=", userId)
-    .where(inJson(db, "id", list))
-    .execute();
-  for (const r of rows) out.set((r as Row).id, r as Row);
+    .where(inJson(db, "id", list));
+  if (PER_USER_TABLES.has(table)) query = query.where(sql<boolean>`user_id = ${userId}`);
+  for (const r of await query.execute()) out.set((r as Row).id, r as Row);
   return out;
 }
 
 /** Latest `valid_until` per place, to chain the next history row. */
-export async function latestValidUntil(db: Db, userId: string, placeIds: Iterable<string>) {
+export async function latestValidUntil(db: Db, placeIds: Iterable<string>) {
   const list = [...new Set(placeIds)];
   const out = new Map<string, number>();
   if (list.length === 0) return out;
   const rows = await db.kysely
     .selectFrom("place_locations")
     .select(["place_id", sql<number>`max(valid_until)`.as("until")])
-    .where("user_id", "=", userId)
     .where(inJson(db, "place_id", list))
     .groupBy("place_id")
     .execute();
   for (const r of rows) out.set(r.place_id, Number(r.until));
   return out;
 }
-
-export interface TableWriteOptions {
-  /** Columns overwritten on conflict (default: every column). */
-  update?: string[];
-  /** Extra condition on the DO UPDATE. */
-  where?: RawBuilder<boolean>;
-}
-
-/** The per-write context: the seq every written row gets, and the guard every statement carries. */
-export interface WriteContext {
-  seq: number;
-  guard: RawBuilder<boolean>;
-}
-
-/** Another writer kept changing this user's data; the caller should retry later. */
-export class WriteConflictError extends Error {
-  constructor() {
-    super("Too many concurrent writes; try again");
-  }
-}
-
-const MAX_WRITE_ATTEMPTS = 5;
-
-/**
- * Optimistic per-user write: read `change_seq`, let `decide` pre-read and build statements,
- * then run them in one batch that first claims `change_seq + 1` with a fresh token. Every
- * statement is guarded by that token, so if another writer committed in between, nothing is
- * written and `decide` runs again on fresh data. Rows written get `seq = change_seq + 1`.
- * `claimGuard` adds a condition to the claim itself (e.g. "the import run is still running").
- */
-export async function withUserWrite<T>(
-  db: Db,
-  userId: string,
-  decide: (ctx: WriteContext) => Promise<{ statements: Statement[]; result: T }>,
-  claimGuard?: RawBuilder<boolean>,
-): Promise<T> {
-  for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
-    const user = await db.kysely
-      .selectFrom("users")
-      .select("change_seq")
-      .where("id", "=", userId)
-      .executeTakeFirst();
-    if (!user) throw new Error("Unknown user");
-    const current = Number(user.change_seq);
-    const token = newId();
-    const ctx: WriteContext = {
-      seq: current + 1,
-      guard: sql<boolean>`EXISTS (SELECT 1 FROM users WHERE id = ${userId} AND write_token = ${token})`,
-    };
-    const { statements, result } = await decide(ctx);
-    if (statements.length === 0) return result;
-    const claim = db.kysely
-      .updateTable("users")
-      .set({ change_seq: current + 1, write_token: token })
-      .where("id", "=", userId)
-      .where("change_seq", "=", current)
-      .where(claimGuard ?? sql<boolean>`true`);
-    const check = db.kysely.selectFrom("users").select("write_token").where("id", "=", userId);
-    const results = await db.atomic([claim, ...statements, check]);
-    const rows = (results.at(-1)?.rows ?? []) as { write_token: string | null }[];
-    if (rows[0]?.write_token === token) return result;
-  }
-  throw new WriteConflictError();
-}
-
-/** Upserts of sync rows, each stamped with the write's seq and guarded by it. */
-export function writeStatements(
-  db: Db,
-  ctx: WriteContext,
-  writes: Map<SyncTable, Map<string, Row>>,
-  opts: { newerOnly: Set<SyncTable>; tableOptions?: Partial<Record<SyncTable, TableWriteOptions>> },
-): Statement[] {
-  const statements: Statement[] = [];
-  for (const table of SYNC_TABLES) {
-    const rows = [...(writes.get(table)?.values() ?? [])].map((r) => ({ ...r, seq: ctx.seq }));
-    if (rows.length === 0) continue;
-    const tableOpts = opts.tableOptions?.[table];
-    const columns = (
-      tableOpts?.update
-        ? [...tableOpts.update, "seq"]
-        : Object.keys(rows[0] as Row).filter((c) => c !== "user_id" && c !== "id")
-    ) as never[];
-    statements.push(
-      ...bulkUpsertQuery(db, table, rows as never[], {
-        conflict: ["user_id", "id"] as never[],
-        update: columns,
-        whereNewer: opts.newerOnly.has(table),
-        guard: ctx.guard,
-        ...(tableOpts?.where ? { where: tableOpts.where } : {}),
-      }),
-    );
-  }
-  return statements;
-}
-
-/** A device clock may run ahead; times further ahead of the server than this are refused. */
-export const CLOCK_ALLOWANCE_MS = 60_000;
 
 async function readTombstones(db: Db, userId: string, ids: string[]) {
   const out = new Map<string, number>();
@@ -214,7 +126,7 @@ export async function applyPush(
   mutations: Mutation[],
   now: number,
 ): Promise<PushResponse> {
-  return withUserWrite(db, userId, (ctx) => decidePush(db, userId, mutations, now, ctx));
+  return withWrite(db, (ctx) => decidePush(db, userId, mutations, now, ctx));
 }
 
 async function decidePush(
@@ -228,16 +140,16 @@ async function decidePush(
   const set = (m: Mutation, status: PushResult["status"], extra: Partial<PushResult> = {}) =>
     results.set(m.mutationId, { mutationId: m.mutationId, status, ...extra });
 
-  // 1. Validate each mutation on its own; refuse times from clocks running far ahead.
+  // 1. Validate each mutation on its own; refuse times from clocks running ahead.
   const valid: { m: Mutation; row?: Row }[] = [];
   for (const m of mutations) {
     if (m.clientUpdatedAt > now + CLOCK_ALLOWANCE_MS) {
-      // Recoverable: the client keeps it queued and retries unchanged once real time catches up.
       set(m, "rejected", { reason: "clock_ahead" });
       continue;
     }
     if (m.op === "delete") {
-      valid.push({ m });
+      if (m.table === "places") set(m, "rejected", { reason: "not_allowed" });
+      else valid.push({ m });
       continue;
     }
     const parsed = mutationRowSchemas[m.table].safeParse(m.row);
@@ -258,7 +170,7 @@ async function decidePush(
     (a, b) => APPLY_ORDER.indexOf(a.m.table) - APPLY_ORDER.indexOf(b.m.table),
   );
 
-  // 3. Pre-read the rows, their parents, and tombstones (the write check makes them current).
+  // 3. Pre-read everything the decisions need (the write check keeps it current).
   const idsOf = (t: SyncTable) => work.filter((w) => w.m.table === t).map((w) => w.m.id);
   const existingItems = await readByIds(db, userId, "list_items", idsOf("list_items"));
   const placeIds = new Set(idsOf("places"));
@@ -275,7 +187,9 @@ async function decidePush(
     ["visit_notes", await readByIds(db, userId, "visit_notes", idsOf("visit_notes"))],
     ["links", await readByIds(db, userId, "links", idsOf("links"))],
   ]);
-  const validUntil = await latestValidUntil(db, userId, idsOf("places"));
+  const myLists = await readByIds(db, userId, "user_lists", [...listIds].map(userListRowId));
+  const myPlaces = await readByIds(db, userId, "user_places", [...placeIds].map(userPlaceRowId));
+  const validUntil = await latestValidUntil(db, idsOf("places"));
   const tombstones = await readTombstones(
     db,
     userId,
@@ -287,30 +201,128 @@ async function decidePush(
   const write = (table: SyncTable, row: Row) => {
     if (!writes.has(table)) writes.set(table, new Map());
     writes.get(table)?.set(row.id, row);
-    if (table !== "place_locations") state.get(table)?.set(row.id, row);
+    state.get(table)?.set(row.id, row);
+  };
+  const ensureMyPlace = (placeId: string) => {
+    const id = userPlaceRowId(placeId);
+    if (myPlaces.has(id)) return;
+    const row: Row = {
+      user_id: userId,
+      id,
+      place_id: placeId,
+      saved_at: now,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+      client_updated_at: 0,
+      seq: 0,
+    };
+    myPlaces.set(id, row);
+    write("user_places", row);
   };
   const newTombstones: { user_id: string; table_name: string; id: string; deleted_at: number }[] =
     [];
-  const restores = new Set<string>();
   const dbRow = (table: SyncTable, row: Row, m: Mutation) =>
-    toDbRow(table, row as never, userId, { clientUpdatedAt: m.clientUpdatedAt }) as unknown as Row;
-  const isKakaoList = (listId: unknown) =>
-    state.get("lists")?.get(String(listId))?.kind === "kakao";
+    toDbRow(table, row, userId, { clientUpdatedAt: m.clientUpdatedAt }) as unknown as Row;
+  const listOf = (listId: unknown) => state.get("lists")?.get(String(listId));
+  const iOwn = (listId: unknown) => {
+    const list = listOf(listId);
+    const access = myLists.get(userListRowId(String(listId)));
+    return Boolean(
+      list && list.provider == null && access?.role === "owner" && access.removed_at == null,
+    );
+  };
 
   for (const { m, row } of work) {
     const table = m.table;
     const existing = state.get(table)?.get(m.id);
+    const r = row as Row;
 
-    // Kakao-owned data is never written by clients.
-    if (table === "lists" && (existing?.kind === "kakao" || row?.kind === "kakao")) {
-      set(m, "rejected", { reason: "kakao_owned" });
-      continue;
+    // Provider lists and their items are read-only; own lists belong to their owner.
+    if (table === "lists" || table === "list_items") {
+      const listId = table === "lists" ? m.id : (r?.listId ?? existing?.list_id);
+      const list = listOf(listId);
+      if (list && list.provider != null) {
+        set(m, "rejected", { reason: "provider_owned" });
+        continue;
+      }
+      if (table === "lists" && existing && !iOwn(m.id)) {
+        set(m, "rejected", { reason: "not_allowed" });
+        continue;
+      }
+      if (table === "list_items" && list && !iOwn(listId)) {
+        set(m, "rejected", { reason: "not_allowed" });
+        continue;
+      }
     }
-    if (
-      table === "list_items" &&
-      (isKakaoList(row?.listId) || (existing && isKakaoList(existing.list_id)))
-    ) {
-      set(m, "rejected", { reason: "kakao_owned" });
+
+    if (table === "places") {
+      // Create from a search result, or refresh an existing shared place's location.
+      const source = r.source as { provider: string; externalId: string };
+      if (m.id !== placeRowId(source.provider, source.externalId)) {
+        set(m, "rejected", { reason: "not_allowed" });
+        continue;
+      }
+      if (!existing) {
+        if (r.lat == null || r.lng == null) {
+          set(m, "rejected", { reason: "not_allowed" });
+          continue;
+        }
+        write(
+          "places",
+          dbRow("places", { ...r, deletedAt: null, updatedAt: now, providerSnapshotAt: null }, m),
+        );
+        write("place_sources", {
+          id: placeSourceRowId(source.provider, source.externalId),
+          place_id: m.id,
+          provider: source.provider,
+          external_id: source.externalId,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          client_updated_at: 0,
+          seq: 0,
+        });
+        ensureMyPlace(m.id);
+        set(m, "applied");
+        continue;
+      }
+      ensureMyPlace(m.id);
+      if (m.clientUpdatedAt > Number(existing.client_updated_at)) {
+        // Only the location follows a search result; Kakao-sourced titles are never renamed here.
+        const update = applyLocationUpdate(
+          toAnyRow("places", existing) as PlaceRow,
+          {
+            lat: r.lat as number | null,
+            lng: r.lng as number | null,
+            address: r.address as string | null,
+            roadAddress: r.roadAddress as string | null,
+            addressSource: "search",
+          },
+          "search",
+          now,
+          validUntil.get(m.id) ?? null,
+        );
+        if (update.changed) {
+          write("places", {
+            ...existing,
+            ...toDbRow("places", update.place as unknown as Row, userId, {
+              clientUpdatedAt: m.clientUpdatedAt,
+            }),
+            updated_at: now,
+          } as Row);
+        }
+        if (update.history) {
+          write(
+            "place_locations",
+            dbRow("place_locations", update.history as unknown as Row, {
+              ...m,
+              clientUpdatedAt: 0,
+            }),
+          );
+        }
+      }
+      set(m, "applied");
       continue;
     }
 
@@ -343,129 +355,94 @@ async function decidePush(
         updated_at: now,
         client_updated_at: m.clientUpdatedAt,
       };
-      if (table === "visit_notes" && existing.origin === "kakao_list") deleted.edited_by_user = 1;
+      if (table === "visit_notes" && existing.origin === "import") deleted.edited_by_user = 1;
       write(table, deleted);
-      set(m, "applied");
-      continue;
-    }
-
-    const r = row as Row;
-    if (table === "places") {
-      if (!existing) {
-        const ok =
-          r.source === "search" &&
-          typeof r.kakaoPlaceId === "string" &&
-          m.id === kakaoPlaceRowId(r.kakaoPlaceId) &&
-          r.lat != null &&
-          r.lng != null;
-        if (!ok) {
-          set(m, "rejected", { reason: "not_allowed" });
-          continue;
-        }
-        write(table, dbRow(table, { ...r, deletedAt: null, updatedAt: now }, m));
-        set(m, "applied");
-        continue;
-      }
-      const current = toAnyRow("places", existing) as PlaceRow;
-      const update = applyLocationUpdate(
-        current,
-        {
-          lat: r.lat as number | null,
-          lng: r.lng as number | null,
-          address: r.address as string | null,
-          roadAddress: r.roadAddress as string | null,
-          addressSource: r.addressSource as LocationFields["addressSource"],
-        },
-        "search",
-        now,
-        validUntil.get(m.id) ?? null,
-      );
-      write(
-        table,
-        dbRow(table, { ...update.place, deletedAt: null, updatedAt: now } as unknown as Row, m),
-      );
-      if (update.history) {
-        write(
-          "place_locations",
-          dbRow("place_locations", update.history as unknown as Row, { ...m, clientUpdatedAt: 0 }),
-        );
-      }
       set(m, "applied");
       continue;
     }
 
     if (table === "lists") {
       write(
-        table,
+        "lists",
         dbRow(
-          table,
+          "lists",
           {
             ...r,
-            kind: "own",
-            kakaoFolderId: null,
-            subscribed: false,
-            removedFromKakaoAt: null,
+            provider: null,
+            externalId: null,
+            ownerName: null,
+            removedAtProvider: null,
+            providerSnapshotAt: null,
             updatedAt: now,
           },
           m,
         ),
       );
+      if (!existing) {
+        const access: Row = {
+          user_id: userId,
+          id: userListRowId(m.id),
+          list_id: m.id,
+          role: "owner",
+          removed_at: null,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          client_updated_at: 0,
+          seq: 0,
+        };
+        myLists.set(access.id, access);
+        write("user_lists", access);
+      }
       set(m, "applied");
       continue;
     }
 
     if (table === "list_items") {
-      if (m.id !== ownMembershipRowId(String(r.listId), String(r.placeId))) {
+      if (m.id !== ownItemRowId(String(r.listId), String(r.placeId))) {
         set(m, "rejected", { reason: "not_allowed" });
         continue;
       }
-      if (
-        !state.get("lists")?.get(String(r.listId)) ||
-        !state.get("places")?.get(String(r.placeId))
-      ) {
+      if (!listOf(r.listId) || !state.get("places")?.get(String(r.placeId))) {
         set(m, "rejected", { reason: "missing_parent" });
         continue;
       }
       write(
-        table,
+        "list_items",
         dbRow(
-          table,
+          "list_items",
           {
             ...r,
-            kakaoFavoriteSeq: null,
-            kakaoNote: null,
-            kakaoColor: null,
-            removedFromKakaoAt: null,
+            externalId: null,
+            providerNote: null,
+            providerColor: null,
+            removedAtProvider: null,
+            providerSnapshotAt: null,
             updatedAt: now,
           },
           m,
         ),
       );
+      ensureMyPlace(String(r.placeId));
       set(m, "applied");
       continue;
     }
 
     // visit_notes and links
-    const place = state.get("places")?.get(String(r.placeId));
-    if (!place) {
+    if (!state.get("places")?.get(String(r.placeId))) {
       set(m, "rejected", { reason: "missing_parent" });
       continue;
     }
-    if (table === "visit_notes" && !existing && r.origin === "kakao_list") {
+    if (table === "visit_notes" && !existing && r.origin === "import") {
       set(m, "rejected", { reason: "not_allowed" });
       continue;
     }
     const next: Row = { ...r, updatedAt: now };
-    if (table === "visit_notes" && existing?.origin === "kakao_list") {
-      Object.assign(next, {
-        origin: "kakao_list",
-        originKey: existing.origin_key,
-        editedByUser: true,
-      });
+    if (table === "visit_notes" && existing?.origin === "import") {
+      Object.assign(next, { origin: "import", originKey: existing.origin_key, editedByUser: true });
     }
     write(table, dbRow(table, next, m));
-    // A note or link written for a deleted place brings the place back, touching nothing else.
-    if (place.deleted_at != null) restores.add(place.id);
+    ensureMyPlace(String(r.placeId));
     set(m, "applied");
   }
 
@@ -477,8 +454,12 @@ async function decidePush(
   }
 
   // 5. Statements, all guarded by the write check.
+  const newer = { whereNewer: true };
   const statements = writeStatements(db, ctx, writes, {
-    newerOnly: new Set<SyncTable>(["places", "lists", "list_items", "visit_notes", "links"]),
+    lists: newer,
+    list_items: newer,
+    visit_notes: newer,
+    links: newer,
   });
   statements.push(
     ...bulkUpsertQuery(db, "tombstones", newTombstones, {
@@ -488,22 +469,14 @@ async function decidePush(
       guard: ctx.guard,
     }),
   );
-  if (restores.size > 0) {
-    statements.push(
-      db.kysely
-        .updateTable("places")
-        .set({ deleted_at: null, updated_at: now, seq: ctx.seq })
-        .where("user_id", "=", userId)
-        .where(inJson(db, "id", [...restores]))
-        .where("deleted_at", "is not", null)
-        .where(ctx.guard),
-    );
-  }
   return {
     statements,
     result: { results: mutations.map((m) => results.get(m.mutationId) as PushResult) },
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Pull
 
 type Cursor = Partial<Record<SyncTable, [number, string]>>;
 
@@ -514,14 +487,42 @@ function encodeCursor(cursor: Cursor): string {
 export function decodeCursor(value: string | null): Cursor {
   if (!value) return {};
   try {
-    const parsed = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/"))) as Cursor;
-    return typeof parsed === "object" && parsed ? parsed : {};
+    const parsed = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/"))) as Record<
+      string,
+      unknown
+    >;
+    const out: Cursor = {};
+    for (const table of SYNC_TABLES) {
+      const v = parsed?.[table];
+      if (Array.isArray(v) && typeof v[0] === "number" && typeof v[1] === "string")
+        out[table] = [v[0], v[1]];
+    }
+    return out;
   } catch {
     return {};
   }
 }
 
-/** Rows changed after `cursor`, each table paged by keyset (seq, id). Tombstones included. */
+/** Which rows of each table user U may see. */
+function scope(table: SyncTable, userId: string) {
+  const myPlaces = sql`SELECT place_id FROM user_places WHERE user_id = ${userId}`;
+  const myLists = sql`SELECT list_id FROM user_lists WHERE user_id = ${userId} AND removed_at IS NULL AND deleted_at IS NULL`;
+  switch (table) {
+    case "places":
+      return sql<boolean>`id IN (${myPlaces})`;
+    case "place_sources":
+    case "place_locations":
+      return sql<boolean>`place_id IN (${myPlaces})`;
+    case "lists":
+      return sql<boolean>`id IN (${myLists})`;
+    case "list_items":
+      return sql<boolean>`list_id IN (${myLists})`;
+    default:
+      return sql<boolean>`user_id = ${userId}`;
+  }
+}
+
+/** Rows changed after `cursor` within the user's scope, each table paged by keyset (seq, id). */
 export async function pull(
   db: Db,
   userId: string,
@@ -537,7 +538,7 @@ export async function pull(
     const page = await db.kysely
       .selectFrom(table as keyof Database)
       .selectAll()
-      .where(sql<boolean>`user_id = ${userId}`)
+      .where(scope(table, userId))
       .where(sql<boolean>`(seq > ${seq} OR (seq = ${seq} AND id > ${id}))`)
       .orderBy("seq" as never)
       .orderBy("id" as never)

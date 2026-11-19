@@ -3,8 +3,14 @@ import { type RawBuilder, sql } from "kysely";
 import type { Db } from "./core";
 import type { Database } from "./schema";
 
+export const PER_USER_TABLES: ReadonlySet<SyncTable> = new Set([
+  "user_lists",
+  "user_places",
+  "visit_notes",
+  "links",
+]);
+
 const BOOLEAN_COLUMNS: Partial<Record<SyncTable, readonly string[]>> = {
-  lists: ["subscribed"],
   visit_notes: ["edited_by_user"],
 };
 
@@ -13,16 +19,19 @@ const toCamel = (key: string) => key.replace(/_([a-z])/g, (_, c: string) => c.to
 
 export type DbRow<T extends SyncTable> = Database[T];
 
-/** Wire row → database row for one user. `seq` and `client_updated_at` are set by the caller. */
+/**
+ * Wire row → database row. Per-user tables get `user_id`; shared tables don't.
+ * Wire-only fields (`seq`, a pushed place's `source`) are dropped.
+ */
 export function toDbRow<T extends SyncTable>(
-  _table: T,
-  row: RowOf<T>,
+  table: T,
+  row: RowOf<T> | Record<string, unknown>,
   userId: string,
   extra: { clientUpdatedAt: number; seq?: number },
 ): DbRow<T> {
-  const out: Record<string, unknown> = { user_id: userId };
+  const out: Record<string, unknown> = PER_USER_TABLES.has(table) ? { user_id: userId } : {};
   for (const [key, value] of Object.entries(row)) {
-    if (key === "seq") continue;
+    if (key === "seq" || key === "source") continue;
     out[toSnake(key)] = typeof value === "boolean" ? (value ? 1 : 0) : value;
   }
   out.client_updated_at = extra.clientUpdatedAt;

@@ -10,6 +10,11 @@ export function placeRowId(provider: string, externalId: string): string {
   return `p_${provider}_${externalId}`;
 }
 
+/** An external id of a place at a provider. */
+export function placeSourceRowId(provider: string, externalId: string): string {
+  return `s_${provider}_${externalId}`;
+}
+
 /** A provider favourite with no place id (a custom pin): one per list item, never merged. */
 export function pinRowId(provider: string, listExternalId: string, itemExternalId: string): string {
   return `pin_${provider}_${listExternalId}_${itemExternalId}`;

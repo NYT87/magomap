@@ -12,3 +12,6 @@ export const LIMITS = {
   importListItems: 5_000,
   importLists: 500,
 } as const;
+
+/** A device clock may run ahead; client times further ahead of the server than this are refused (clock_ahead). */
+export const CLOCK_ALLOWANCE_MS = 60_000;
