@@ -168,3 +168,13 @@
   - README and `.env.example`: `MAGOMAP_IMPORT_SECRET` (at least 32 characters) enables the read-only magomap endpoint.
   - `docs/architecture-decisions.md`: magomap pulls through a versioned contract, and coordinates are converted on the server.
 - [ ] **Step 7: Commit** with `feat(server): read-only magomap import endpoint`. Open a PR against `main`; its body ends with the Claude Code attribution line.
+
+### Task 4: Go-live (owner, in magomap)
+
+**Files:**
+- Modify `docs/deploy.md` (add the export command and the restore steps).
+- Tick `docs/launch-checklist.md` and commit it with the date.
+
+- [ ] **Step 1: Deploy.** Deploy plan 03's kakao-list changes, then set `KAKAO_LIST_URL` and `MAGOMAP_IMPORT_SECRET` on magomap and deploy magomap.
+- [ ] **Step 2: Run the checklist.** Go through every line of `docs/launch-checklist.md` with the owner. Anything that fails becomes a fix before go-live, not a note.
+- [ ] **Step 3: Commit** with `chore: go-live checklist complete`.

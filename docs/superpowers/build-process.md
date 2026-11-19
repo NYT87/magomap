@@ -2,91 +2,92 @@
 
 This document sets how every task in `docs/superpowers/plans/` is carried out. Each plan's header points here.
 
-It is written for this project, and contains no third-party code or text.
+Sources:
+- The gate and per-task reviewer ideas are our own design, inspired by software-factory patterns. No third-party code or text is used for them.
+- The security, accessibility and performance reviewers are adapted from addyosmani/agent-skills (MIT). See `.claude/agents/THIRD-PARTY-NOTICES.md`.
 
 ## The loop for one task
 
 ```
-builder (fresh subagent) ──► gate ──FAIL──► back to the builder, with the gate log
+builder (fresh subagent) ──► gate ──FAIL──► back to the builder, with gate.log
                               │
                              PASS
                               ▼
-                 reviewers for this task, in parallel
+          the task's reviewers (.claude/agents/reviewer-*), in parallel
                               │
-              any CHANGES ────┴──── all PASS ──► commit stays, next task
+              any CHANGES ────┴──── all PASS ──► definition of done ──► next task
                    │
                    ▼
           builder fixes ──► gate ──► the same reviewers again
 ```
 
-1. **Builder.** A fresh subagent gets the task text, the plan header (Global Constraints, Review Focus) and the spec. It follows the task's steps (test first, then code) and commits on the working branch.
-2. **Gate.** `scripts/gate.sh` runs the project's checks. **No reviewer runs on a failing build.** A failure goes straight back to the builder with `gate.log`.
-3. **Reviewers.** Only the ones listed for the task in "Who reviews which task" below. They run in parallel, and each reads the task, the diff and its checklist. Each answers `PASS`, or `CHANGES` with a numbered list of findings.
-4. **Fix rounds.** At most **3 rounds** (build → gate → review). If round 3 still fails, stop and ask the owner with a specific question; never weaken a test or a rule to get through.
-5. **Owner gates.** Steps marked "owner" in a plan wait for the owner. The build pauses there and says exactly what is needed.
+1. **Builder.** A fresh subagent gets the task text, the plan header (Global Constraints, Review Focus) and the spec.
+   - It follows the task's steps (test first, then code) and **checks official docs first** (below).
+   - It commits on the working branch.
+   - On screen tasks, it saves screenshots for the reviewers.
+2. **Gate.** `scripts/gate.sh` runs the project's checks and the quality-bar guard. **No reviewer runs on a failing build.** A failure goes straight back to the builder with `gate.log`.
+3. **Reviewers.** Only the ones listed for the task in "Who reviews which task". They run in parallel, each with its agent file in `.claude/agents/`. Each answers `VERDICT: PASS`, or `VERDICT: CHANGES` with numbered findings.
+4. **Fix rounds.** At most **3 rounds** (build → gate → review). If round 3 still fails, stop and ask the owner a specific question. Never weaken a test, a check or a rule to get through.
+5. **Definition of done.** The task is finished only when the standing checklist below holds.
+6. **Owner gates.** Steps marked "owner" in a plan wait for the owner. The build pauses and says exactly what is needed.
+
+## Check official docs first
+
+These APIs change often, and the plan review already caught several outdated ones. Before writing code against any of the following, the builder reads its **current official documentation** and puts the doc URL it relied on in the commit message body:
+- Cloudflare Workers, D1, Hyperdrive, rate limiting, static assets, and Wrangler or the Vitest plugin;
+- Kakao Login, Kakao Local and the Kakao Maps JS SDK;
+- Kysely and its dialects, Dexie, `vite-plugin-pwa`/Workbox, Leaflet, and Playwright.
+
+When the docs disagree with the plan, the docs win for **how** to call the API. The builder says so in `build` notes and keeps the plan's **behaviour**. If the behaviour itself can't be done as planned, stop and ask.
 
 ## The gate
 
-`scripts/gate.sh [base-ref]` (base-ref defaults to `origin/main`, or to the commit the task started from):
+`scripts/gate.sh [base-ref]`. `base-ref` is the commit the task started from, and defaults to `origin/main`.
 
-- **Runs `scripts/checks.sh`.** That script holds the project's real commands, written once over the whole workspace so new packages are covered without editing it: `pnpm install --frozen-lockfile`, `pnpm check` (Biome, no writes), `pnpm -r --if-present typecheck`, `pnpm -r --if-present test` and `pnpm -r --if-present build`. Postgres tests run when `TEST_DATABASE_URL` is set. The end-to-end tests are not part of the gate; they run in plan 02 Task 7 and in CI.
-- **Fails if the task changed a protected path.** Builders may not edit what they are judged by. The protected paths are:
-  - `scripts/checks.sh` and `scripts/gate.sh`;
-  - `.github/workflows/**`;
-  - `biome.json` and `tsconfig.base.json`;
-  - `docs/superpowers/**` and `docs/brand-guidelines.md`.
+1. **Checks.** It runs `scripts/checks.sh`. That script is written once over the whole workspace, so new packages are covered without editing it:
+   - `pnpm install --frozen-lockfile`;
+   - `pnpm check` (Biome, with no writes);
+   - `pnpm -r --if-present typecheck`, `pnpm -r --if-present test` and `pnpm -r --if-present build`.
 
-  Exception: the task that **creates** one of these files (for example, plan 01 Task 1 creates `checks.sh`). The owner changes the others deliberately, outside a task.
-- **Output.** It writes `gate.log`, and prints one line: `GATE: PASS` or `GATE: FAIL <reason>`.
-- **Requirements.** It must be non-interactive, must not rewrite files (no `--write`/`--fix`), and must exit non-zero on failure.
+   Postgres tests run when `TEST_DATABASE_URL` is set. The end-to-end tests run in plan 02 Task 7 and in CI, not in the gate.
+2. **Protected paths.** It fails if the task changed any of these:
+   - `scripts/checks.sh`, `scripts/gate.sh`;
+   - `.github/workflows/**`;
+   - `biome.json`, `tsconfig.base.json`;
+   - `docs/superpowers/**`, `docs/brand-guidelines.md`;
+   - `.claude/agents/**`.
 
-Tests are **not** protected: tasks legitimately change them. The code reviewer fails any test that was deleted, skipped, loosened or special-cased to pass.
+   The exception is the task that **creates** a file. The owner changes these deliberately, outside a task.
+3. **Quality-bar guard.** It fails if the task's diff (`git diff base-ref`, added lines only) adds any of:
+   - `@ts-ignore`, `@ts-nocheck` or `biome-ignore`;
+   - `@ts-expect-error` without a reason on the same line;
+   - `.skip(`, `.only(`, `it.todo(`, `test.todo(` or `describe.skip`;
+   - `eslint-disable`;
+   - `as any` in a non-test file.
+
+   It also fails if the diff **deletes a test file**, or removes more `expect(`/`assert` lines than it adds in a test file without adding a new test file. An intentional exception needs the comment `gate-allow: <reason>` on the same line; reviewers judge the reason.
+4. **Output.** It writes `gate.log`, and prints one line: `GATE: PASS` or `GATE: FAIL <reason>`. It is non-interactive, never rewrites files, and exits non-zero on failure.
+
+Tests are not protected paths, because tasks legitimately change them. The guard and the code reviewer catch weakening instead.
 
 ## Reviewers
 
-Each reviewer writes its verdict in this shape:
+Each reviewer has an agent file in `.claude/agents/`. Each agent's own instructions hold its checklist, and its final message uses this format:
 
 ```
 VERDICT: PASS | CHANGES
 1. <file:line> — <what is wrong> — <what to do>
 ```
 
-Every reviewer stays inside its own checklist and doesn't repeat another reviewer's job.
+| Reviewer | Agent | Looks at |
+|---|---|---|
+| code | `reviewer-code` | plan conformance (exact names and types), test honesty, correctness, both DB dialects, scope |
+| security | `reviewer-security` | trust boundaries, user scoping, sessions, OAuth, secrets, input, rendering, caching |
+| ui | `reviewer-ui` | brand guidelines, both themes, phone and desktop layouts, markers, Korean wrapping |
+| ux | `reviewer-ux` | the wife's path, nothing lost silently, states, voice in Korean and English |
+| a11y | `reviewer-a11y` | WCAG 2.2 AA: keyboard, screen readers, the accessible place list, sheets and panel, live status, zoom |
 
-### code (every task)
-
-- The task is done as written: its files, interfaces, names and types match the plan exactly, so later tasks can rely on them.
-- Every test named in the task exists and asserts what the task says, and the Review Focus items owned by this task are tested.
-- No test was removed, skipped, weakened or made to pass with a special case.
-- It is correct beyond the tests: edge cases, error paths, off-by-one, null handling.
-- It is no bigger than needed: no speculative abstractions and no unused code.
-- For both database dialects: no SQL that only works on one, unless it lives in a dialect file.
-
-### security (tasks that touch identity, data access, secrets or input)
-
-- **User scoping.** Every query is scoped by `user_id`, and no route can reach another user's rows.
-- **Sessions and cookies.** Only the token hash is stored; the cookie flags are as specified; logout really revokes the session.
-- **Kakao OAuth.** The `state` is checked, Kakao tokens are not kept, and the allowlist is applied before any row is created.
-- **Secrets.** The REST key, client secret and import secret never reach the client, a response body or a log, and secrets are compared in constant time.
-- **Input.** Every request body is validated with the shared schemas, the size limits are enforced, and link URLs are `http(s)` only.
-- **The app.** Imported or user text is never rendered as HTML, external links use `rel="noopener noreferrer"`, and private data never goes into the service-worker cache.
-
-### ui (tasks that change what people see)
-
-- **Brand.** Colours, type, radius, elevation and marker styles come from `docs/brand-guidelines.md` and the token CSS, never as one-off values. Kakao yellow is never used.
-- **Themes.** Light and dark both work, and contrast is at least AA.
-- **Layouts.** Both work: phone (390×844) and desktop (1440×900, with the left panel). There is no horizontal scroll, and nothing is clipped or overlapping.
-- **Targets and focus.** Touch targets are at least 44 px, and keyboard focus is visible.
-- **Language.** Korean text uses `word-break: keep-all`, and long Korean addresses and titles wrap cleanly.
-- **How it's checked.** The reviewer looks at screenshots of the changed screens at both sizes, in both themes. The builder takes them with Playwright and saves them in `tmp/review-shots/<plan>-<task>/`, which is gitignored.
-
-### ux (tasks that change how people use the app)
-
-- **The user** is the owner's wife: not technical, phone first, often outdoors with bad signal, and writing a note at the place. Is the main path short and obvious?
-- **Nothing she writes is ever lost silently.** Unsynced and rejected changes are visible, and drafts survive.
-- **Words follow the brand voice.** Korean uses 해요체, English uses sentence case, and there are no technical words. Every string exists in both `ko.json` and `en.json`.
-- **States are designed:** empty, loading, offline, error and "needs sign-in". Every error says what to do next.
-- **Kakao data looks read-only** where it is read-only, and destructive actions say exactly what will happen.
+**Screenshots for ui, ux and a11y.** On screen tasks, the builder saves Playwright screenshots of the changed screens to `tmp/review-shots/<plan>-<task>/`, which is gitignored. They are taken at 390×844 and 1440×900, in light and dark.
 
 ## Who reviews which task
 
@@ -99,26 +100,55 @@ Every reviewer stays inside its own checklist and doesn't repeat another reviewe
 | 01 · 5 Import from kakao-list | code, security |
 | 01 · 6 Place search proxy | code, security |
 | 01 · 7 Deploy config, CI, docs | code, security |
-| 02 · 1 App shell, layouts, PWA, i18n, account | code, ui, ux, security |
+| 02 · 1 App shell, layouts, PWA, i18n, account | code, ui, ux, a11y, security |
 | 02 · 2 Local store, outbox, sync engine | code, ux |
-| 02 · 3 Map, markers, list picker | code, ui, ux |
-| 02 · 4 Search | code, ui, ux |
-| 02 · 5 Place page | code, ui, ux, security |
-| 02 · 6 Lists and import screens | code, ui, ux |
-| 02 · 7 Sync indicator and end-to-end tests | code, ui, ux |
-| 02 · 8 Homepage | code, ui, ux |
+| 02 · 3 Map, markers, list picker | code, ui, ux, a11y |
+| 02 · 4 Search | code, ui, ux, a11y |
+| 02 · 5 Place page | code, ui, ux, a11y, security |
+| 02 · 6 Lists and import screens | code, ui, ux, a11y |
+| 02 · 7 Sync indicator, end-to-end tests, performance audit | code, ui, ux, a11y, plus `auditor-performance` once |
+| 02 · 8 Homepage | code, ui, ux, a11y |
 | 03 · 1 Coordinate helper (kakao-list) | code |
 | 03 · 2 Raw coordinates, type, flags (kakao-list) | code |
 | 03 · 3 magomap endpoint (kakao-list) | code, security |
+| 03 · 4 Go-live | the owner, with `docs/launch-checklist.md` |
 
-**Models.** The builder and the security reviewer use the most capable model. The code, ui and ux reviewers use a mid-tier model, except that the code reviewer uses the most capable model on 01·4 and 01·5, where a mistake could lose diary entries.
+**Models.**
+- The builder and `reviewer-security` use the most capable model.
+- The other reviewers use the model in their frontmatter, a mid-tier one.
+- `reviewer-code` runs on the most capable model for 01·4 and 01·5, where a mistake could lose diary entries.
+
+## Definition of done
+
+These apply to every task, on top of the task's own steps.
+
+**Correctness**
+- Every step of the task is done, and every test it names exists and passes.
+- **Checked by running it**, not only by tests: the API route was called, or the screen was opened, at least once.
+- New behaviour has tests that fail without the change.
+- No existing test was weakened.
+- Error paths and empty states are handled, not only the happy path.
+
+**Quality**
+- Names and signatures match the plan exactly.
+- There is no dead code, debug output, commented-out blocks, or unrelated refactor.
+- The gate passes, including the quality-bar guard.
+
+**magomap-specific**
+- Database code works on **both** SQLite/D1 and Postgres.
+- Screens work in **both** themes and **both** layouts, and every string exists in **both** `ko.json` and `en.json`.
+- Nothing the user writes can be lost silently.
+
+**Records**
+- A decision that changes the design is added to the spec's "Implementation notes", stating what was decided and why.
+- The README stays true.
 
 ## kakao-list tasks (plan 03)
 
-Plan 03 runs in the `kakao-list` repo, which has its own commands. Its gate is a one-off command run from that repo:
+Plan 03 runs in the `kakao-list` repo with its own commands. Its gate is run from that repo:
 
 ```
 pnpm typecheck && pnpm -r test && pnpm check
 ```
 
-The plan 03 steps define what `pnpm check` means there. Nothing is copied into kakao-list from here.
+The magomap reviewer agents are given that repo's diff. Nothing is copied into kakao-list from here.

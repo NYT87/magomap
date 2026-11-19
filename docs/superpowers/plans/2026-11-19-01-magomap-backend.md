@@ -201,7 +201,10 @@ function mergeLocation(current: LocationFields, incoming: Partial<LocationFields
 - [ ] **Step 4: Run** `pnpm -r test && pnpm typecheck && pnpm check`. Expected: PASS.
 - [ ] **Step 5: Check the gate.**
   - `scripts/gate.sh` prints `GATE: PASS`.
-  - With a throwaway edit to `biome.json`, it prints `GATE: FAIL protected path: biome.json`. Revert the edit afterwards.
+  - With a throwaway edit to `biome.json`, it prints `GATE: FAIL protected path: biome.json`.
+  - With a throwaway `it.skip(` added to a test, it prints `GATE: FAIL quality guard: .skip(`.
+  - With `// gate-allow: reason` on that same line, it passes again.
+  - Revert all three edits afterwards.
 - [ ] **Step 6: Commit** with `feat(domain): wire types, ids, validation and location rule`.
 
 ### Task 2: Database connector, schema and migrations
