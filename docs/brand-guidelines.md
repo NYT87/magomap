@@ -132,16 +132,27 @@ These contrast ratios are measured:
 
 ## 3. Logo Usage
 
-**Direction (to be designed):** a map pin whose silhouette contains three strokes: a mountain ridge, a river line and an island dot. These are the three things Mago shaped, drawn as if by one hand. Pine fill, with the strokes in Hanji. The wordmark `magomap` is in lowercase Gowun Batang, with `마고맵` as the Korean lockup.
+**The mark: "the shaped peaks"** (chosen 2026-11-19).
+- Two hand-shaped peaks, the land Mago sculpted, whose outline quietly forms an "m".
+- A clay pin sits on the higher summit: a place that is yours.
+- It is drawn on a 64-unit grid: peaks in Pine, pin in Clay, and the pin hole in Hanji.
+- On dark, the peaks are Pine (dark) `#6FC2A8`, the pin is Clay (dark) `#E38B5E`, and the hole is Night `#141816`.
+- **No river line under the peaks** (owner's decision). The mark is only the peaks and the pin.
+
+The wordmark `magomap` is in lowercase Gowun Batang 700, with `마고맵` in Pine beneath it as the Korean line.
+
+**App icon:** a Pine square holding Hanji peaks and a light-clay pin (`#E38B5E`), with a Pine hole. It is full-bleed, so the same artwork also serves as the maskable icon; the maskable version scales the mark down to keep it inside the central 80%.
 
 ### Variants
 
 | Variant | File | Use Case |
 |---------|------|----------|
-| Full Horizontal | logo-full-horizontal.svg | Homepage header, README |
-| Stacked | logo-stacked.svg | Square spaces, social preview |
-| Icon Only | logo-icon.svg | PWA icon, favicon, maskable icon |
-| Monochrome | logo-mono.svg | One-colour contexts |
+| Lockup (mark + wordmark) | `assets/brand/magomap-lockup.svg` | Homepage header, README. The text uses Gowun Batang, so load that font or outline it before using the file elsewhere |
+| Mark | `assets/brand/magomap-mark.svg` | Light backgrounds; also `icons/favicon.svg` |
+| Mark (dark) | `assets/brand/magomap-mark-dark.svg` | Dark backgrounds |
+| Monochrome | `assets/brand/magomap-mark-mono.svg` | One-colour contexts |
+| App icon | `assets/brand/icons/app-icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon-180.png` | PWA manifest, iOS home screen |
+| Maskable icon | `assets/brand/icons/app-icon-maskable.svg`, `icon-maskable-512.png` | PWA manifest (`purpose: "maskable"`) |
 
 ### Clear Space
 
@@ -330,3 +341,4 @@ Calm hand-drawn Korean landscape in ink-line style, pine green #1F6F5C, clay #B4
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2026-11-19 | Initial guidelines: the Mago origin, the earthy palette, Pretendard and Gowun Batang, bilingual voice |
+| 1.1 | 2026-11-19 | Logo chosen: "the shaped peaks" (concept B, without the river line). Mark, lockup and PWA icons added in `assets/brand/` |
