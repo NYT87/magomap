@@ -232,7 +232,8 @@ async function decidePush(
   const valid: { m: Mutation; row?: Row }[] = [];
   for (const m of mutations) {
     if (m.clientUpdatedAt > now + CLOCK_ALLOWANCE_MS) {
-      set(m, "rejected", { reason: "invalid" });
+      // Recoverable: the client keeps it queued and retries unchanged once real time catches up.
+      set(m, "rejected", { reason: "clock_ahead" });
       continue;
     }
     if (m.op === "delete") {

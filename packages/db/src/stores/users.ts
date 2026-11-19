@@ -1,4 +1,5 @@
 import { newId } from "@magomap/domain/ids";
+import { sql } from "kysely";
 import type { Db } from "../core";
 import type { Database } from "../schema";
 
@@ -121,6 +122,11 @@ const USER_TABLES = [
 /** Removes every row of the user, in every table, all-or-nothing. */
 export async function deleteAccount(db: Db, userId: string): Promise<void> {
   await db.atomic([
+    // Lock the user row first, like every writer, so no write can land mid-deletion.
+    db.kysely
+      .updateTable("users")
+      .set({ write_token: "deleting", change_seq: sql`change_seq + 1` })
+      .where("id", "=", userId),
     ...USER_TABLES.map((t) => db.kysely.deleteFrom(t).where("user_id", "=", userId)),
     db.kysely.deleteFrom("users").where("id", "=", userId),
   ]);

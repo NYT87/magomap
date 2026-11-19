@@ -125,7 +125,8 @@ export type RejectReason =
   | "kakao_owned"
   | "server_owned"
   | "missing_parent"
-  | "not_allowed";
+  | "not_allowed"
+  | "clock_ahead";
 
 export interface PushRequest {
   mutations: Mutation[];

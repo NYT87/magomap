@@ -100,7 +100,7 @@ forEachDialect("concurrency (codex review)", (makeDb) => {
       [up("visit_notes", noteRow("n1", "kp_1"), T0 + CLOCK_ALLOWANCE_MS + 1)],
       T0,
     );
-    expect(res.results[0]).toMatchObject({ status: "rejected", reason: "invalid" });
+    expect(res.results[0]).toMatchObject({ status: "rejected", reason: "clock_ahead" });
   });
 
   it("1b. a retried mutation never overwrites a newer edit", async () => {
@@ -232,5 +232,59 @@ forEachDialect("concurrency (codex review)", (makeDb) => {
     const history = await db.kysely.selectFrom("place_locations").selectAll().execute();
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ lat: 33 });
+  });
+});
+
+forEachDialect("concurrency (second codex review)", (makeDb) => {
+  it("allows at most one running import per user, enforced by the database", async () => {
+    const db = await makeDb();
+    await withUser(db);
+    const row = (id: string) => ({
+      user_id: U,
+      id,
+      started_at: T0,
+      finished_at: null,
+      status: "running",
+      complete: 1,
+      summary_json: null,
+      error: null,
+    });
+    await db.kysely.insertInto("import_runs").values(row("r1")).execute();
+    await expect(db.kysely.insertInto("import_runs").values(row("r2")).execute()).rejects.toThrow();
+  });
+
+  it("starting an import takes part in the per-user write check", async () => {
+    const db = await makeDb();
+    await withUser(db);
+    const before = await db.kysely
+      .selectFrom("users")
+      .select("change_seq")
+      .executeTakeFirstOrThrow();
+    await startImportRun(db, U, { complete: true, importedAt: "x" }, T0);
+    const after = await db.kysely
+      .selectFrom("users")
+      .select("change_seq")
+      .executeTakeFirstOrThrow();
+    expect(Number(after.change_seq)).toBe(Number(before.change_seq) + 1);
+  });
+
+  it("answers clock_ahead, not invalid, for a time ahead of the server", async () => {
+    const db = await makeDb();
+    await withUser(db);
+    await applyPush(db, U, [up("places", placeRow("1"), T0 + 1)], T0);
+    const res = await applyPush(
+      db,
+      U,
+      [up("visit_notes", noteRow("n1", "kp_1"), T0 + CLOCK_ALLOWANCE_MS + 120_000)],
+      T0,
+    );
+    expect(res.results[0]).toMatchObject({ status: "rejected", reason: "clock_ahead" });
+    const later = await applyPush(
+      db,
+      U,
+      [up("visit_notes", noteRow("n1", "kp_1"), T0 + CLOCK_ALLOWANCE_MS + 120_000)],
+      T0 + 180_000,
+    );
+    expect(later.results[0]?.status).toBe("applied");
   });
 });

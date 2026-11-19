@@ -117,24 +117,27 @@ export async function startImportRun(
   now: number,
 ): Promise<{ runId: string }> {
   const runId = newId();
-  await db.atomic([
-    db.kysely
-      .updateTable("import_runs")
-      .set({ status: "superseded", finished_at: now })
-      .where("user_id", "=", userId)
-      .where("status", "=", "running"),
-    db.kysely.insertInto("import_runs").values({
-      user_id: userId,
-      id: runId,
-      started_at: now,
-      finished_at: null,
-      status: "running",
-      complete: opts.complete ? 1 : 0,
-      summary_json: JSON.stringify({ summary: EMPTY, finishedLists: 0 } satisfies RunState),
-      error: null,
-    }),
-  ]);
-  return { runId };
+  // Takes part in the per-user write check, so it serializes with every import write.
+  return withUserWrite(db, userId, async (ctx) => {
+    const summary = JSON.stringify({ summary: EMPTY, finishedLists: 0 } satisfies RunState);
+    return {
+      statements: [
+        db.kysely
+          .updateTable("import_runs")
+          .set({ status: "superseded", finished_at: now })
+          .where("user_id", "=", userId)
+          .where("status", "=", "running")
+          .where(ctx.guard),
+        {
+          compile: () =>
+            sql`INSERT INTO import_runs (user_id, id, started_at, finished_at, status, complete, summary_json, error)
+              SELECT ${userId}, ${runId}, ${now}, NULL, 'running', ${opts.complete ? 1 : 0}, ${summary}, NULL
+              WHERE ${ctx.guard}`.compile(db.kysely),
+        },
+      ],
+      result: { runId },
+    };
+  });
 }
 
 /** Place columns an import may refresh. */

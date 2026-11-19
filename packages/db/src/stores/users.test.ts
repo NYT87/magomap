@@ -117,3 +117,20 @@ forEachDialect("users store", (makeDb) => {
     }
   });
 });
+
+forEachDialect("account deletion ordering", (makeDb) => {
+  it("locks the user row before deleting anything", async () => {
+    const db = await makeDb();
+    const { userId } = await findOrCreateUserByIdentity(db, "kakao", "9", null, now);
+    const seen: string[] = [];
+    const recording = {
+      ...db,
+      atomic: (qs: Parameters<typeof db.atomic>[0]) => {
+        seen.push(...qs.map((q) => q.compile().sql));
+        return db.atomic(qs);
+      },
+    };
+    await deleteAccount(recording, userId);
+    expect(seen[0]).toMatch(/^update "users"/i);
+  });
+});
