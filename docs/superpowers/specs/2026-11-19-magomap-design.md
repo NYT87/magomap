@@ -345,6 +345,9 @@ It syncs to the PWA like the other tables (read-only on the client), so history 
 - **The import runs list by list, driven by the app.** It fetches the contract through the Worker, then starts a run, uploads each list, and completes the run. The reason is that D1 has no interactive transactions and Workers Free allows about 10 ms of CPU per request. The rules are unchanged: removals only after a complete run, nothing deleted, and diaries untouched.
 - **Places have deterministic ids**: `kp_<kakaoPlaceId>`, or `kf_<favoriteSeq>` for custom pins. A place saved from search and the same place imported later are therefore one row, with no merge step. Other ids are UUIDv7 generated on the client.
 - **A place the user deleted stays deleted** even while it is still in a Kakao list.
+- **Every write is an optimistic per-user write** (from the Codex review of plan 01). The server reads, decides, then writes in one batch that first claims the user's next change number with a fresh token. Every statement only applies if that claim held. If another device or an import wrote in between, nothing is written and the server decides again on fresh data. "Applied" therefore means stored.
+- **A change stamped more than a minute ahead of the server's clock is refused**, never clamped, so a retry can't overwrite a newer edit. The app shows it as "couldn't be saved", with a hint to check the phone's clock.
+- **Deletes of rows the server has never seen leave a tombstone**, so an older create arriving later stays deleted.
 
 ## Left to the builder
 
