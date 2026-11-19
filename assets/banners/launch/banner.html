@@ -1,0 +1,143 @@
+<!doctype html>
+<!-- magomap banner generator. Usage: banner.html?style=ink|type|product&w=1280&h=640 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  :root{
+    --pine:#1F6F5C; --pine-deep:#185848; --clay:#B4552A; --clay-light:#E38B5E; --river:#2F6FA3;
+    --hanji:#FBF8F2; --surface:#F3EEE4; --ink:#1E2321; --stone:#5E6660; --border:#E3DCCF;
+    --display:'Gowun Batang','Nanum Myeongjo',Georgia,serif;
+    --body:'Pretendard','Noto Sans KR',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{background:transparent}
+  #b{position:relative;overflow:hidden;width:var(--w);height:var(--h);font-family:var(--body);color:var(--ink)}
+  .copy{position:absolute;display:flex;flex-direction:column;gap:calc(var(--u)*2.6);z-index:2}
+  .lock{display:flex;align-items:center;gap:calc(var(--u)*1.8)}
+  .lock svg{width:calc(var(--u)*8.5);height:calc(var(--u)*8.5)}
+  .word{font-family:var(--display);font-weight:700;font-size:calc(var(--u)*6.2);letter-spacing:-.01em;line-height:1}
+  h1{font-family:var(--display);font-weight:700;line-height:1.08;letter-spacing:-.015em;font-size:calc(var(--u)*12.5)}
+  .sub{font-size:calc(var(--u)*4);line-height:1.45;color:var(--stone);max-width:calc(var(--u)*80)}
+  .url{font-size:calc(var(--u)*3);color:var(--pine);font-weight:500;letter-spacing:.02em}
+
+  /* ink */
+  #b.ink{background:var(--hanji)}
+  .ink .copy{left:calc(var(--w)*.075);top:50%;transform:translateY(-50%);max-width:calc(var(--w)*.48)}
+  .ink .land{position:absolute;right:0;bottom:0;width:62%;height:100%}
+
+  /* type */
+  #b.type{background:var(--pine);color:var(--hanji)}
+  .type .copy{left:calc(var(--w)*.075);top:50%;transform:translateY(-50%);max-width:calc(var(--w)*.62)}
+  .type h1{font-size:calc(var(--u)*15)}
+  .type .sub{color:#CFE3DC}
+  .type .url{color:var(--clay-light)}
+  .type .word{color:var(--hanji)}
+  .type .big{position:absolute;right:calc(var(--w)*-.04);bottom:calc(var(--h)*-.2);height:calc(var(--h)*1.15);width:auto;opacity:1}
+
+  /* product */
+  #b.product{background:var(--hanji)}
+  .product .copy{left:calc(var(--w)*.075);top:50%;transform:translateY(-50%);max-width:calc(var(--w)*.44)}
+  .product h1{font-size:calc(var(--u)*11)}
+  .stage{position:absolute;right:calc(var(--w)*.05);top:calc(var(--h)*.09);bottom:calc(var(--h)*-.12);width:calc(var(--w)*.46)}
+  .mapcard{position:absolute;inset:calc(var(--u)*6) 0 calc(var(--u)*14) calc(var(--u)*6);border-radius:calc(var(--u)*4);background:var(--surface);border:1px solid var(--border);overflow:hidden}
+  .mapcard svg{width:100%;height:100%;display:block}
+  .phone{position:absolute;left:0;top:0;width:calc(var(--u)*46);height:calc(var(--u)*92);border-radius:calc(var(--u)*6);background:var(--hanji);border:calc(var(--u)*1.1) solid var(--ink);box-shadow:0 2px 6px rgba(30,35,33,.12),0 calc(var(--u)*4) calc(var(--u)*10) rgba(30,35,33,.18);overflow:hidden;display:flex;flex-direction:column}
+  .ph-head{padding:calc(var(--u)*4) calc(var(--u)*3.4) calc(var(--u)*2.2);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:calc(var(--u)*.6)}
+  .ph-title{font-weight:700;font-size:calc(var(--u)*3.6)}
+  .ph-addr{font-size:calc(var(--u)*2.1);color:var(--stone)}
+  .ph-moved{font-size:calc(var(--u)*2);color:var(--clay)}
+  .ph-body{padding:calc(var(--u)*2.4) calc(var(--u)*3);display:flex;flex-direction:column;gap:calc(var(--u)*1.8)}
+  .chips{display:flex;gap:calc(var(--u)*1);flex-wrap:wrap}
+  .chip{font-size:calc(var(--u)*1.7);border:1px solid var(--border);border-radius:999px;padding:calc(var(--u)*.3) calc(var(--u)*1.4)}
+  .chip.p{color:var(--pine);border-color:var(--pine)}
+  .entry{background:var(--surface);border-radius:calc(var(--u)*2.4);padding:calc(var(--u)*2);display:flex;flex-direction:column;gap:calc(var(--u)*.8)}
+  .e-date{font-size:calc(var(--u)*1.7);color:var(--stone);font-weight:500}
+  .e-txt{font-size:calc(var(--u)*2.4);line-height:1.5}
+  .tag{font-size:calc(var(--u)*1.5);color:var(--clay);border:1px solid var(--clay);border-radius:999px;padding:0 calc(var(--u)*1);margin-left:calc(var(--u)*.8)}
+  .ph-btn{margin-top:auto;margin:auto calc(var(--u)*3) calc(var(--u)*3);background:var(--pine);color:var(--hanji);border-radius:calc(var(--u)*2);text-align:center;font-weight:700;font-size:calc(var(--u)*2.4);padding:calc(var(--u)*1.8)}
+
+  /* wide/short canvases: tighter copy */
+  .wide h1{font-size:calc(var(--u)*14)}
+  .short .sub{display:none}
+  .wide .land{width:50%}
+  .short h1{font-size:calc(var(--u)*12)}
+  .short.product .copy{max-width:calc(var(--w)*.4)}
+  .short .stage{width:calc(var(--w)*.42)}
+</style>
+</head>
+<body>
+<div id="b"></div>
+<script>
+const q=new URLSearchParams(location.search);
+const style=q.get('style')||'ink', W=+(q.get('w')||1280), H=+(q.get('h')||640);
+const b=document.getElementById('b');
+b.style.setProperty('--w',W+'px'); b.style.setProperty('--h',H+'px'); b.style.setProperty('--u',(H/100)+'px');
+b.className=style+(W/H>2.4?' wide':'')+(W/H>3?' short':'');
+const PEAKS='M6 53C9 43 14 31 21.5 31c6 0 8 9 10.5 9s5-14.5 12.5-14.5C52.5 25.5 56 41 58 53Z';
+const PIN='M44.5 11.5c-3.6 0-6.4 2.7-6.4 6.2 0 4.6 6.4 10 6.4 10s6.4-5.4 6.4-10c0-3.5-2.8-6.2-6.4-6.2Z';
+const mark=(body,pin,hole)=>`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="${PEAKS}" fill="${body}"/><path d="${PIN}" fill="${pin}"/><circle cx="44.5" cy="17.6" r="2.1" fill="${hole}"/></svg>`;
+const smallPin=(x,y,s,c,ghost)=>`<g transform="translate(${x} ${y}) scale(${s})" ${ghost?'opacity=".45"':''}><path d="M0-30c-11 0-19 8-19 18 0 14 19 30 19 30s19-16 19-30c0-10-8-18-19-18Z" fill="${c}" ${ghost?'stroke="#B4552A" stroke-width="2"':''}/>${ghost?'':'<circle cy="-12" r="6" fill="#FBF8F2"/>'}</g>`;
+const head=(dark)=>`<div class="lock">${dark?mark('#FBF8F2','#E38B5E','#1F6F5C'):mark('#1F6F5C','#B4552A','#FBF8F2')}<span class="word">magomap</span></div>`;
+const H1='Shape your own map.';
+const SUB='Save the places you love, keep a diary of every visit, and carry it all offline.';
+const URL='github.com/NYT87/magomap';
+
+if(style==='ink'){
+  b.innerHTML=`
+  <svg class="land" viewBox="0 0 800 640" preserveAspectRatio="xMaxYMax slice" aria-hidden="true">
+    <path d="M-20 640 C80 520 160 300 250 300 C300 300 320 360 350 360 C380 360 420 220 500 220 C580 220 640 330 720 300 C760 285 790 240 820 230 L820 640Z" fill="#1F6F5C" fill-opacity=".08"/>
+    <path d="M-20 640 C80 520 160 300 250 300 C300 300 320 360 350 360 C380 360 420 220 500 220 C580 220 640 330 720 300 C760 285 790 240 820 230" fill="none" stroke="#1F6F5C" stroke-width="3" stroke-linecap="round"/>
+    <path d="M180 520 C250 450 300 420 360 430 C420 440 450 390 520 380 C600 370 660 440 820 400" fill="none" stroke="#1F6F5C" stroke-opacity=".45" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M120 580 C220 540 300 600 420 560 S640 520 820 560" fill="none" stroke="#2F6FA3" stroke-opacity=".55" stroke-width="7" stroke-linecap="round"/>
+    <path d="M150 610 C250 580 330 630 450 600 S660 570 820 600" fill="none" stroke="#2F6FA3" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="300" cy="628" rx="38" ry="9" fill="#1F6F5C" fill-opacity=".18"/>
+    <ellipse cx="640" cy="622" rx="24" ry="6" fill="#1F6F5C" fill-opacity=".18"/>
+    <path d="M440 170 C470 150 500 150 530 170" fill="none" stroke="#5E6660" stroke-opacity=".4" stroke-width="2" stroke-linecap="round"/>
+    <path d="M600 130 C620 118 640 118 660 130" fill="none" stroke="#5E6660" stroke-opacity=".3" stroke-width="2" stroke-linecap="round"/>
+    <line x1="430" y1="330" x2="500" y2="212" stroke="#B4552A" stroke-width="2" stroke-dasharray="4 7"/>
+    ${smallPin(430,345,1.05,'#B4552A',true)}
+    ${smallPin(500,215,1.6,'#B4552A')}
+    ${smallPin(250,295,1.15,'#1F6F5C')}
+    ${smallPin(300,615,1,'#2F6FA3')}
+    ${smallPin(720,295,1.1,'#7A4E7E')}
+  </svg>
+  <div class="copy">${head(false)}<h1>${H1}</h1><p class="sub">${SUB}</p><span class="url">${URL}</span></div>`;
+}
+if(style==='type'){
+  b.innerHTML=`
+  <svg class="big" viewBox="0 0 64 64" aria-hidden="true"><path d="${PEAKS}" fill="#185848"/><path d="${PIN}" fill="#E38B5E"/><circle cx="44.5" cy="17.6" r="2.1" fill="#1F6F5C"/></svg>
+  <div class="copy">${head(true)}<h1>${H1}</h1><p class="sub">${SUB}</p><span class="url">${URL}</span></div>`;
+}
+if(style==='product'){
+  b.innerHTML=`
+  <div class="stage">
+    <div class="mapcard"><svg viewBox="0 0 600 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <rect width="600" height="420" fill="#F3EEE4"/>
+      <path d="M0 330 C120 300 180 360 300 330 S480 280 600 310" fill="none" stroke="#2F6FA3" stroke-opacity=".3" stroke-width="16" stroke-linecap="round"/>
+      <path d="M60 150 L130 90 L180 130 L240 70 L330 150" fill="none" stroke="#5E6660" stroke-opacity=".3" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M0 220 H600 M200 0 V420 M430 0 V420" stroke="#E3DCCF" stroke-width="6"/>
+      <line x1="430" y1="250" x2="500" y2="190" stroke="#B4552A" stroke-width="2" stroke-dasharray="4 6"/>
+      ${smallPin(430,262,1,'#B4552A',true)}
+      ${smallPin(500,195,1.4,'#B4552A')}
+      ${smallPin(360,300,1.1,'#1F6F5C')}
+      ${smallPin(540,330,1.1,'#2F6FA3')}
+      <g transform="translate(470 100)"><circle r="20" fill="#1F6F5C"/><text y="6" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="16" fill="#FBF8F2">12</text></g>
+    </svg></div>
+    <div class="phone">
+      <div class="ph-head"><span class="ph-title">Seaside Garden Café</span><span class="ph-addr">Aewol-eup, Jeju · Café</span><span class="ph-moved">⟿ Moved · 1 previous location</span></div>
+      <div class="ph-body">
+        <div class="chips"><span class="chip">Jeju trip (Kakao)</span><span class="chip p">Sea view</span></div>
+        <div class="entry"><span class="e-date">Nov 2, 2026</span><span class="e-txt">Window seat looked straight at the sea. Come back for sunset.</span></div>
+        <div class="entry"><span class="e-date">Aug 14, 2025<span class="tag">previous location</span></span><span class="e-txt">Back when it was down the alley. Great latte.</span></div>
+      </div>
+      <div class="ph-btn">Add visit note</div>
+    </div>
+  </div>
+  <div class="copy">${head(false)}<h1>${H1}</h1><p class="sub">${SUB}</p><span class="url">${URL}</span></div>`;
+}
+</script>
+</body>
+</html>
