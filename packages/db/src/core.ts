@@ -42,6 +42,8 @@ export interface BulkUpsertOptions<T extends keyof Database> {
   where?: RawBuilder<boolean>;
   /** Only update when the incoming client_updated_at is newer. */
   whereNewer?: boolean;
+  /** Insert or update nothing unless this holds (the per-user write check). */
+  guard?: RawBuilder<boolean>;
 }
 
 /** Splits rows into chunks of at most 500 rows and at most 1 MB of JSON. */
@@ -114,10 +116,10 @@ export function bulkUpsertQuery<T extends keyof Database>(
       db.dialect === "sqlite"
         ? sql`INSERT INTO ${tableRef} (${columnList}) SELECT ${sql.join(
             columns.map((c) => sql`json_extract(value, ${sql.lit(`$.${c}`)})`),
-          )} FROM json_each(${payload}) WHERE true ${onConflict}`
+          )} FROM json_each(${payload}) WHERE ${opts.guard ?? sql`true`} ${onConflict}`
         : sql`INSERT INTO ${tableRef} (${columnList}) SELECT ${columnList} FROM jsonb_to_recordset(${payload}::jsonb) AS r(${sql.join(
             columns.map((c) => sql`${sql.ref(c)} ${sql.raw(types[c] as string)}`),
-          )}) ${onConflict}`;
+          )}) WHERE ${opts.guard ?? sql`true`} ${onConflict}`;
     return { compile: () => query.compile(db.kysely) };
   });
 }

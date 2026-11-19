@@ -105,74 +105,104 @@ export interface TableWriteOptions {
   where?: RawBuilder<boolean>;
 }
 
+/** The per-write context: the seq every written row gets, and the guard every statement carries. */
+export interface WriteContext {
+  seq: number;
+  guard: RawBuilder<boolean>;
+}
+
+/** Another writer kept changing this user's data; the caller should retry later. */
+export class WriteConflictError extends Error {
+  constructor() {
+    super("Too many concurrent writes; try again");
+  }
+}
+
+const MAX_WRITE_ATTEMPTS = 5;
+
 /**
- * Statements that write rows and stamp them with the user's new change_seq, as one batch:
- * bump change_seq, upsert, run `extra`, then stamp seq on every touched row.
+ * Optimistic per-user write: read `change_seq`, let `decide` pre-read and build statements,
+ * then run them in one batch that first claims `change_seq + 1` with a fresh token. Every
+ * statement is guarded by that token, so if another writer committed in between, nothing is
+ * written and `decide` runs again on fresh data. Rows written get `seq = change_seq + 1`.
+ * `claimGuard` adds a condition to the claim itself (e.g. "the import run is still running").
  */
-export function writeStatements(
+export async function withUserWrite<T>(
   db: Db,
   userId: string,
+  decide: (ctx: WriteContext) => Promise<{ statements: Statement[]; result: T }>,
+  claimGuard?: RawBuilder<boolean>,
+): Promise<T> {
+  for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+    const user = await db.kysely
+      .selectFrom("users")
+      .select("change_seq")
+      .where("id", "=", userId)
+      .executeTakeFirst();
+    if (!user) throw new Error("Unknown user");
+    const current = Number(user.change_seq);
+    const token = newId();
+    const ctx: WriteContext = {
+      seq: current + 1,
+      guard: sql<boolean>`EXISTS (SELECT 1 FROM users WHERE id = ${userId} AND write_token = ${token})`,
+    };
+    const { statements, result } = await decide(ctx);
+    if (statements.length === 0) return result;
+    const claim = db.kysely
+      .updateTable("users")
+      .set({ change_seq: current + 1, write_token: token })
+      .where("id", "=", userId)
+      .where("change_seq", "=", current)
+      .where(claimGuard ?? sql<boolean>`true`);
+    const check = db.kysely.selectFrom("users").select("write_token").where("id", "=", userId);
+    const results = await db.atomic([claim, ...statements, check]);
+    const rows = (results.at(-1)?.rows ?? []) as { write_token: string | null }[];
+    if (rows[0]?.write_token === token) return result;
+  }
+  throw new WriteConflictError();
+}
+
+/** Upserts of sync rows, each stamped with the write's seq and guarded by it. */
+export function writeStatements(
+  db: Db,
+  ctx: WriteContext,
   writes: Map<SyncTable, Map<string, Row>>,
-  opts: {
-    newerOnly: Set<SyncTable>;
-    tableOptions?: Partial<Record<SyncTable, TableWriteOptions>>;
-    /** Targeted statements whose rows also need a new seq. */
-    extra?: { statements: Statement[]; touched: [SyncTable, string[]][] };
-  },
+  opts: { newerOnly: Set<SyncTable>; tableOptions?: Partial<Record<SyncTable, TableWriteOptions>> },
 ): Statement[] {
   const statements: Statement[] = [];
-  const touched = new Map<SyncTable, Set<string>>();
-  const touch = (table: SyncTable, ids: string[]) => {
-    if (!touched.has(table)) touched.set(table, new Set());
-    for (const id of ids) touched.get(table)?.add(id);
-  };
   for (const table of SYNC_TABLES) {
-    const rows = [...(writes.get(table)?.values() ?? [])];
+    const rows = [...(writes.get(table)?.values() ?? [])].map((r) => ({ ...r, seq: ctx.seq }));
     if (rows.length === 0) continue;
     const tableOpts = opts.tableOptions?.[table];
-    const columns = (tableOpts?.update ??
-      Object.keys(rows[0] as Row).filter((c) => c !== "user_id" && c !== "id")) as never[];
+    const columns = (
+      tableOpts?.update
+        ? [...tableOpts.update, "seq"]
+        : Object.keys(rows[0] as Row).filter((c) => c !== "user_id" && c !== "id")
+    ) as never[];
     statements.push(
       ...bulkUpsertQuery(db, table, rows as never[], {
         conflict: ["user_id", "id"] as never[],
         update: columns,
         whereNewer: opts.newerOnly.has(table),
+        guard: ctx.guard,
         ...(tableOpts?.where ? { where: tableOpts.where } : {}),
       }),
     );
-    touch(
-      table,
-      rows.map((r) => r.id),
-    );
   }
-  statements.push(...(opts.extra?.statements ?? []));
-  for (const [table, ids] of opts.extra?.touched ?? []) touch(table, ids);
-  if (statements.length === 0) return [];
-  const bump = db.kysely
-    .updateTable("users")
-    .set({ change_seq: sql`change_seq + 1` })
-    .where("id", "=", userId);
-  const stamps = [...touched].map(([table, ids]) =>
-    db.kysely
-      .updateTable(table)
-      .set({ seq: sql`(SELECT change_seq FROM users WHERE id = ${userId})` } as never)
-      .where("user_id", "=", userId)
-      .where(inJson(db, "id", [...ids])),
-  );
-  return [bump, ...statements, ...stamps];
+  return statements;
 }
 
-/** A device clock may run ahead; never accept a time more than this past the server's. */
+/** A device clock may run ahead; times further ahead of the server than this are refused. */
 export const CLOCK_ALLOWANCE_MS = 60_000;
 
-async function readTombstones(db: Db, userId: string, keys: { table: SyncTable; id: string }[]) {
+async function readTombstones(db: Db, userId: string, ids: string[]) {
   const out = new Map<string, number>();
-  if (keys.length === 0) return out;
+  if (ids.length === 0) return out;
   const rows = await db.kysely
     .selectFrom("tombstones")
     .select(["table_name", "id", "deleted_at"])
     .where("user_id", "=", userId)
-    .where(inJson(db, "id", [...new Set(keys.map((k) => k.id))]))
+    .where(inJson(db, "id", [...new Set(ids)]))
     .execute();
   for (const r of rows) out.set(`${r.table_name}:${r.id}`, Number(r.deleted_at));
   return out;
@@ -184,16 +214,27 @@ export async function applyPush(
   mutations: Mutation[],
   now: number,
 ): Promise<PushResponse> {
+  return withUserWrite(db, userId, (ctx) => decidePush(db, userId, mutations, now, ctx));
+}
+
+async function decidePush(
+  db: Db,
+  userId: string,
+  mutations: Mutation[],
+  now: number,
+  ctx: WriteContext,
+): Promise<{ statements: Statement[]; result: PushResponse }> {
   const results = new Map<string, PushResult>();
   const set = (m: Mutation, status: PushResult["status"], extra: Partial<PushResult> = {}) =>
     results.set(m.mutationId, { mutationId: m.mutationId, status, ...extra });
-  // Clamp times from clocks that run ahead, so one bad device can't lock a row.
-  const latest = now + CLOCK_ALLOWANCE_MS;
-  const at = (m: Mutation) => Math.min(m.clientUpdatedAt, latest);
 
-  // 1. Validate each mutation on its own.
+  // 1. Validate each mutation on its own; refuse times from clocks running far ahead.
   const valid: { m: Mutation; row?: Row }[] = [];
   for (const m of mutations) {
+    if (m.clientUpdatedAt > now + CLOCK_ALLOWANCE_MS) {
+      set(m, "rejected", { reason: "invalid" });
+      continue;
+    }
     if (m.op === "delete") {
       valid.push({ m });
       continue;
@@ -216,7 +257,7 @@ export async function applyPush(
     (a, b) => APPLY_ORDER.indexOf(a.m.table) - APPLY_ORDER.indexOf(b.m.table),
   );
 
-  // 3. Pre-read the rows, their parents, and tombstones.
+  // 3. Pre-read the rows, their parents, and tombstones (the write check makes them current).
   const idsOf = (t: SyncTable) => work.filter((w) => w.m.table === t).map((w) => w.m.id);
   const existingItems = await readByIds(db, userId, "list_items", idsOf("list_items"));
   const placeIds = new Set(idsOf("places"));
@@ -237,7 +278,7 @@ export async function applyPush(
   const tombstones = await readTombstones(
     db,
     userId,
-    work.map((w) => ({ table: w.m.table, id: w.m.id })),
+    work.map((w) => w.m.id),
   );
 
   // 4. Decide each mutation, in parent-first order.
@@ -251,7 +292,7 @@ export async function applyPush(
     [];
   const restores = new Set<string>();
   const dbRow = (table: SyncTable, row: Row, m: Mutation) =>
-    toDbRow(table, row as never, userId, { clientUpdatedAt: at(m) }) as unknown as Row;
+    toDbRow(table, row as never, userId, { clientUpdatedAt: m.clientUpdatedAt }) as unknown as Row;
   const isKakaoList = (listId: unknown) =>
     state.get("lists")?.get(String(listId))?.kind === "kakao";
 
@@ -272,29 +313,34 @@ export async function applyPush(
       continue;
     }
 
-    // Last write wins per row (the SQL repeats this check, for races).
-    if (existing && at(m) <= Number(existing.client_updated_at)) {
+    // Last write wins per row.
+    if (existing && m.clientUpdatedAt <= Number(existing.client_updated_at)) {
       set(m, "ignored_stale", { row: toAnyRow(table, existing) });
       continue;
     }
     // A row deleted before the server ever saw it stays deleted against older writes.
     const tombstone = existing ? undefined : tombstones.get(`${table}:${m.id}`);
-    if (tombstone !== undefined && at(m) <= tombstone) {
+    if (tombstone !== undefined && m.clientUpdatedAt <= tombstone) {
       set(m, "ignored_stale");
       continue;
     }
 
     if (m.op === "delete") {
       if (!existing) {
-        newTombstones.push({ user_id: userId, table_name: table, id: m.id, deleted_at: at(m) });
+        newTombstones.push({
+          user_id: userId,
+          table_name: table,
+          id: m.id,
+          deleted_at: m.clientUpdatedAt,
+        });
         set(m, "applied");
         continue;
       }
       const deleted: Row = {
         ...existing,
-        deleted_at: at(m),
+        deleted_at: m.clientUpdatedAt,
         updated_at: now,
-        client_updated_at: at(m),
+        client_updated_at: m.clientUpdatedAt,
       };
       if (table === "visit_notes" && existing.origin === "kakao_list") deleted.edited_by_user = 1;
       write(table, deleted);
@@ -425,35 +471,37 @@ export async function applyPush(
   // Superseded mutations report the outcome of the mutation that replaced them.
   for (const [key, earlier] of superseded) {
     const final = results.get(last.get(key)?.m.mutationId ?? "");
-    for (const m of earlier) {
+    for (const m of earlier)
       if (final) results.set(m.mutationId, { ...final, mutationId: m.mutationId });
-    }
   }
 
-  // 5. One atomic batch: bump change_seq, write, tombstones, restores, stamp seq.
-  const extra: Statement[] = [
+  // 5. Statements, all guarded by the write check.
+  const statements = writeStatements(db, ctx, writes, {
+    newerOnly: new Set<SyncTable>(["places", "lists", "list_items", "visit_notes", "links"]),
+  });
+  statements.push(
     ...bulkUpsertQuery(db, "tombstones", newTombstones, {
       conflict: ["user_id", "table_name", "id"],
       update: ["deleted_at"],
       where: sql<boolean>`excluded.deleted_at > tombstones.deleted_at`,
+      guard: ctx.guard,
     }),
-  ];
+  );
   if (restores.size > 0) {
-    extra.push(
+    statements.push(
       db.kysely
         .updateTable("places")
-        .set({ deleted_at: null, updated_at: now })
+        .set({ deleted_at: null, updated_at: now, seq: ctx.seq })
         .where("user_id", "=", userId)
         .where(inJson(db, "id", [...restores]))
-        .where("deleted_at", "is not", null),
+        .where("deleted_at", "is not", null)
+        .where(ctx.guard),
     );
   }
-  const statements = writeStatements(db, userId, writes, {
-    newerOnly: new Set<SyncTable>(["places", "lists", "list_items", "visit_notes", "links"]),
-    extra: { statements: extra, touched: [["places", [...restores]]] },
-  });
-  if (statements.length > 0) await db.atomic(statements);
-  return { results: mutations.map((m) => results.get(m.mutationId) as PushResult) };
+  return {
+    statements,
+    result: { results: mutations.map((m) => results.get(m.mutationId) as PushResult) },
+  };
 }
 
 type Cursor = Partial<Record<SyncTable, [number, string]>>;

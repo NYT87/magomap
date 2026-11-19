@@ -108,6 +108,7 @@ export const COLUMN_TYPES: {
     display_name: "text",
     change_seq: "bigint",
     created_at: "bigint",
+    write_token: "text",
   },
   identities: {
     user_id: "text",

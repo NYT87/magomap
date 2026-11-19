@@ -14,10 +14,16 @@ import {
   kakaoPlaceRowId,
   newId,
 } from "@magomap/domain/ids";
-import { sql } from "kysely";
+import { type RawBuilder, sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
 import { inJson, toAnyRow, toDbRow } from "../mapping";
-import { applyLocationUpdate, latestValidUntil, writeStatements } from "./sync";
+import {
+  applyLocationUpdate,
+  latestValidUntil,
+  type WriteContext,
+  withUserWrite,
+  writeStatements,
+} from "./sync";
 
 type Row = Record<string, unknown> & { id: string };
 
@@ -69,12 +75,24 @@ async function runningRun(db: Db, userId: string, runId: string) {
   return { run, state };
 }
 
-function saveState(db: Db, userId: string, runId: string, state: RunState): Statement {
+function saveState(
+  db: Db,
+  userId: string,
+  runId: string,
+  state: RunState,
+  ctx: WriteContext,
+): Statement {
   return db.kysely
     .updateTable("import_runs")
     .set({ summary_json: JSON.stringify(state) })
     .where("user_id", "=", userId)
-    .where("id", "=", runId);
+    .where("id", "=", runId)
+    .where(ctx.guard);
+}
+
+/** True while the run is the user's running import; checked at write time. */
+function runIsRunning(userId: string, runId: string): RawBuilder<boolean> {
+  return sql<boolean>`EXISTS (SELECT 1 FROM import_runs WHERE user_id = ${userId} AND id = ${runId} AND status = 'running')`;
 }
 
 async function readIds(db: Db, userId: string, table: SyncTable, ids: string[]) {
@@ -143,6 +161,23 @@ export async function importListChunk(
   items: ImportItem[],
   now: number,
 ): Promise<ImportSummary> {
+  return withUserWrite(
+    db,
+    userId,
+    (ctx) => decideChunk(db, userId, runId, meta, items, now, ctx),
+    runIsRunning(userId, runId),
+  );
+}
+
+async function decideChunk(
+  db: Db,
+  userId: string,
+  runId: string,
+  meta: Omit<ImportList, "items">,
+  items: ImportItem[],
+  now: number,
+  ctx: WriteContext,
+): Promise<{ statements: Statement[]; result: ImportSummary }> {
   const { state } = await runningRun(db, userId, runId);
   const counts: Partial<ImportSummary> = {};
   const inc = (k: keyof ImportSummary) => {
@@ -321,13 +356,13 @@ export async function importListChunk(
 
   const seen = memberIds.map((id) => ({ user_id: userId, run_id: runId, list_item_id: id }));
   const next: RunState = { ...state, summary: add(state.summary, counts) };
-  await db.atomic([
-    ...writeStatements(db, userId, writes, {
+  const statements: Statement[] = [
+    ...writeStatements(db, ctx, writes, {
       newerOnly: new Set(),
       tableOptions: {
         // A refresh never touches whether the user deleted the place, or its sync clock.
         places: { update: IMPORT_PLACE_COLUMNS },
-        // Never overwrite an imported note the user edited or deleted, even concurrently.
+        // Never overwrite an imported note the user edited or deleted.
         visit_notes: {
           update: ["body", "updated_at"],
           where: sql<boolean>`visit_notes.edited_by_user = 0 AND visit_notes.deleted_at IS NULL`,
@@ -337,10 +372,11 @@ export async function importListChunk(
     ...bulkUpsertQuery(db, "import_seen", seen, {
       conflict: ["user_id", "run_id", "list_item_id"],
       update: [],
+      guard: ctx.guard,
     }),
-    saveState(db, userId, runId, next),
-  ]);
-  return { ...EMPTY, ...counts };
+    saveState(db, userId, runId, next, ctx),
+  ];
+  return { statements, result: { ...EMPTY, ...counts } };
 }
 
 /** After the last chunk of a list: memberships the run didn't see are marked removed from Kakao. */
@@ -351,39 +387,44 @@ export async function finishImportList(
   kakaoFolderId: number,
   now: number,
 ): Promise<ImportSummary> {
-  const { run, state } = await runningRun(db, userId, runId);
-  // An incomplete kakao-list snapshot may hold partial lists, so it never marks removals.
-  const missing =
-    run.complete !== 1
-      ? []
-      : await db.kysely
-          .selectFrom("list_items")
-          .selectAll()
-          .where("user_id", "=", userId)
-          .where("list_id", "=", kakaoListRowId(kakaoFolderId))
-          .where("removed_from_kakao_at", "is", null)
-          .where(
-            sql<boolean>`id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`,
-          )
-          .execute();
-  const writes = new Map<SyncTable, Map<string, Row>>([
-    [
-      "list_items",
-      new Map(
-        missing.map((m) => [m.id, { ...m, removed_from_kakao_at: now, updated_at: now } as Row]),
-      ),
-    ],
-  ]);
-  const counts = { membershipsRemoved: missing.length };
-  const next: RunState = {
-    summary: add(state.summary, counts),
-    finishedLists: state.finishedLists + 1,
-  };
-  await db.atomic([
-    ...writeStatements(db, userId, writes, { newerOnly: new Set() }),
-    saveState(db, userId, runId, next),
-  ]);
-  return { ...EMPTY, ...counts };
+  return withUserWrite(
+    db,
+    userId,
+    async (ctx) => {
+      const { run, state } = await runningRun(db, userId, runId);
+      const notSeen = sql<boolean>`user_id = ${userId} AND list_id = ${kakaoListRowId(kakaoFolderId)} AND removed_from_kakao_at IS NULL AND id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`;
+      // An incomplete kakao-list snapshot may hold partial lists, so it never marks removals.
+      const removing =
+        run.complete === 1
+          ? Number(
+              (
+                await db.kysely
+                  .selectFrom("list_items")
+                  .select(sql<number>`count(*)`.as("n"))
+                  .where(notSeen)
+                  .executeTakeFirst()
+              )?.n ?? 0,
+            )
+          : 0;
+      const counts = { membershipsRemoved: removing };
+      const next: RunState = {
+        summary: add(state.summary, counts),
+        finishedLists: state.finishedLists + 1,
+      };
+      const statements: Statement[] = [saveState(db, userId, runId, next, ctx)];
+      if (removing > 0) {
+        statements.unshift(
+          db.kysely
+            .updateTable("list_items")
+            .set({ removed_from_kakao_at: now, updated_at: now, seq: ctx.seq })
+            .where(notSeen)
+            .where(ctx.guard),
+        );
+      }
+      return { statements, result: { ...EMPTY, ...counts } };
+    },
+    runIsRunning(userId, runId),
+  );
 }
 
 /** Ends the run. Only a complete run that finished at least one list marks missing lists as removed. */
@@ -394,38 +435,57 @@ export async function completeImportRun(
   kakaoFolderIds: number[],
   now: number,
 ): Promise<ImportSummary> {
-  const { run, state } = await runningRun(db, userId, runId);
-  let removed: Row[] = [];
-  if (run.complete === 1 && state.finishedLists > 0) {
-    const keep = new Set(kakaoFolderIds.map(kakaoListRowId));
-    const lists = await db.kysely
-      .selectFrom("lists")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("kind", "=", "kakao")
-      .where("removed_from_kakao_at", "is", null)
-      .execute();
-    removed = lists
-      .filter((l) => !keep.has(l.id))
-      .map((l) => ({ ...l, removed_from_kakao_at: now, updated_at: now }) as Row);
-  }
-  const summary = add(state.summary, { listsRemoved: removed.length });
-  await db.atomic([
-    ...writeStatements(db, userId, new Map([["lists", new Map(removed.map((r) => [r.id, r]))]]), {
-      newerOnly: new Set(),
-    }),
-    db.kysely.deleteFrom("import_seen").where("user_id", "=", userId).where("run_id", "=", runId),
-    db.kysely
-      .updateTable("import_runs")
-      .set({
-        status: "completed",
-        finished_at: now,
-        summary_json: JSON.stringify({ ...state, summary }),
-      })
-      .where("user_id", "=", userId)
-      .where("id", "=", runId),
-  ]);
-  return summary;
+  return withUserWrite(
+    db,
+    userId,
+    async (ctx) => {
+      const { run, state } = await runningRun(db, userId, runId);
+      const keep = kakaoFolderIds.map(kakaoListRowId);
+      const missing = sql<boolean>`user_id = ${userId} AND kind = 'kakao' AND removed_from_kakao_at IS NULL AND NOT ${inJson(db, "id", keep.length > 0 ? keep : ["-"])}`;
+      const removing =
+        run.complete === 1 && state.finishedLists > 0
+          ? Number(
+              (
+                await db.kysely
+                  .selectFrom("lists")
+                  .select(sql<number>`count(*)`.as("n"))
+                  .where(missing)
+                  .executeTakeFirst()
+              )?.n ?? 0,
+            )
+          : 0;
+      const summary = add(state.summary, { listsRemoved: removing });
+      const statements: Statement[] = [];
+      if (removing > 0) {
+        statements.push(
+          db.kysely
+            .updateTable("lists")
+            .set({ removed_from_kakao_at: now, updated_at: now, seq: ctx.seq })
+            .where(missing)
+            .where(ctx.guard),
+        );
+      }
+      statements.push(
+        db.kysely
+          .deleteFrom("import_seen")
+          .where("user_id", "=", userId)
+          .where("run_id", "=", runId)
+          .where(ctx.guard),
+        db.kysely
+          .updateTable("import_runs")
+          .set({
+            status: "completed",
+            finished_at: now,
+            summary_json: JSON.stringify({ ...state, summary }),
+          })
+          .where("user_id", "=", userId)
+          .where("id", "=", runId)
+          .where(ctx.guard),
+      );
+      return { statements, result: summary };
+    },
+    runIsRunning(userId, runId),
+  );
 }
 
 export async function latestImportRun(db: Db, userId: string): Promise<ImportRunInfo | null> {

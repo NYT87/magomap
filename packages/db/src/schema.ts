@@ -109,6 +109,7 @@ export interface UsersTable {
   display_name: string | null;
   change_seq: number;
   created_at: number;
+  write_token: string | null;
 }
 
 export interface IdentitiesTable {
