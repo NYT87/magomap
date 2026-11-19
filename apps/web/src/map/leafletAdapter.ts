@@ -3,6 +3,14 @@ import type * as Leaflet from "leaflet";
 import type { LatLng, MapAdapter, MapMarker } from "./MapAdapter";
 import { HIT, markerHtml } from "./markerHtml";
 
+let leafletModule: Promise<typeof import("leaflet")> | null = null;
+
+/** Starts downloading Leaflet early (before the config and data arrive); safe to call often. */
+export function preloadLeaflet() {
+  leafletModule ??= import("leaflet");
+  return leafletModule;
+}
+
 export function createLeafletAdapter(): MapAdapter {
   let L: typeof Leaflet | null = null;
   let map: Leaflet.Map | null = null;
@@ -13,6 +21,12 @@ export function createLeafletAdapter(): MapAdapter {
   let pending: MapMarker[] | null = null;
   let pendingFit: LatLng[] | null = null;
   let center: LatLng = { lat: 0, lng: 0 };
+  let tiles: Leaflet.TileLayer | null = null;
+  let tileTimer: ReturnType<typeof setTimeout> | undefined;
+  const addTiles = () => {
+    clearTimeout(tileTimer);
+    if (map && tiles && !map.hasLayer(tiles)) tiles.addTo(map);
+  };
 
   const draw = (markers: MapMarker[]) => {
     if (!L || !cluster || !loose) {
@@ -47,13 +61,15 @@ export function createLeafletAdapter(): MapAdapter {
     }
     if (points.length === 1) {
       const p = points[0] as LatLng;
-      map.setView([p.lat, p.lng], 15);
-      return;
+      map.setView([p.lat, p.lng], 15, { animate: false });
+    } else {
+      map.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng])), {
+        padding: [48, 48],
+        maxZoom: 16,
+        animate: false,
+      });
     }
-    map.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng])), {
-      padding: [48, 48],
-      maxZoom: 16,
-    });
+    addTiles();
   };
 
   return {
@@ -61,24 +77,27 @@ export function createLeafletAdapter(): MapAdapter {
     mount(el, view) {
       center = view.center;
       void (async () => {
-        const mod = await import("leaflet");
-        L = (mod.default ?? mod) as typeof Leaflet;
+        const mod = await preloadLeaflet();
+        L = ((mod as { default?: typeof Leaflet }).default ?? mod) as typeof Leaflet;
         (globalThis as { L?: typeof Leaflet }).L = L;
         await import("leaflet.markercluster");
         await import("leaflet/dist/leaflet.css");
         await import("leaflet.markercluster/dist/MarkerCluster.css");
         // Phones pinch to zoom; desktop gets the buttons, away from the search bar.
         const desktop = window.matchMedia("(min-width: 768px)").matches;
-        map = L.map(el, { zoomControl: false, attributionControl: true }).setView(
+        // maxZoom here: the clusters need it before the (deferred) tile layer brings one.
+        map = L.map(el, { zoomControl: false, attributionControl: true, maxZoom: 19 }).setView(
           [view.center.lat, view.center.lng],
           view.zoom,
         );
         if (desktop) L.control.zoom({ position: "bottomright" }).addTo(map);
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           crossOrigin: true,
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        }).addTo(map);
+        });
+        // Tiles load once the first real view is known, so the default view's tiles aren't fetched.
+        tileTimer = setTimeout(addTiles, 600);
         cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 48 });
         loose = L.layerGroup();
         map.addLayer(cluster);
@@ -115,6 +134,7 @@ export function createLeafletAdapter(): MapAdapter {
       map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
     },
     destroy() {
+      clearTimeout(tileTimer);
       map?.remove();
       map = null;
     },

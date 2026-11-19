@@ -223,5 +223,10 @@
     "deleted": "A deletion",
     "copy": "Copy text",
     "copied": "Copied"
+  },
+  "crash": {
+    "title": "Something went wrong on this screen",
+    "body": "Your notes are safe on this device. Reload to continue.",
+    "reload": "Reload"
   }
 }

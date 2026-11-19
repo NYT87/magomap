@@ -21,12 +21,17 @@ test("re-imports keep notes, mark removed favourites and show previous locations
   await setVariant(page, { name: "moved", args: ["9001", 200] });
   await importFromKakao(page);
   await setVariant(page, { name: "base" });
-  await page.goto("/");
   const previous = page.locator(".mm-pin--previous");
-  for (let i = 0; i < 5 && (await previous.count()) === 0; i++) {
-    await page.locator(".marker-cluster").first().click({ force: true });
-    await page.waitForTimeout(800);
+  if (info.project.name === "desktop") {
+    // The place page zooms the map beside it to the place; its old spot, 200 m away, is in view.
+    await page.goto(`/places/${BADA}`);
+    await expect(page.getByRole("button", { name: "Moved" })).toBeVisible();
+    await expect(previous.first()).toBeAttached();
+  } else {
+    // On the phone, the accessible list of places on the map marks the moved place.
+    await page.goto("/");
+    await page.getByRole("button", { name: "Show as a list" }).click();
+    await expect(page.getByRole("link", { name: /바다정원 카페.*Moved/ })).toBeVisible();
   }
-  await expect(previous.first()).toBeAttached();
   info.annotations.push({ type: "project", description: info.project.name });
 });

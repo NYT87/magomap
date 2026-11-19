@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
+import { preloadLeaflet } from "./leafletAdapter";
 import { loadMapAdapter } from "./loadMapAdapter";
 import { DEFAULT_VIEW, type MapAdapter } from "./MapAdapter";
 import { useMapStage } from "./MapStage";
@@ -23,6 +24,11 @@ export function MapView({ data }: { data: Data | null }) {
   const [previous, setPrevious] = useState<{ location: PlaceLocationRow; place: PlaceRow } | null>(
     null,
   );
+
+  // Without a Kakao key the map is Leaflet: start its download now, not after config and data.
+  useEffect(() => {
+    if (!config?.kakaoJavascriptKey) void preloadLeaflet();
+  }, [config?.kakaoJavascriptKey]);
 
   // Load once: with the config if it arrives quickly, otherwise as if there were no Kakao key.
   const loading = useRef(false);
