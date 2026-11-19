@@ -1,5 +1,6 @@
 import type { Me } from "@magomap/domain";
 import { Route, Switch } from "wouter";
+import { PlaceScreen } from "./place/PlaceScreen";
 import { Account } from "./screens/Account";
 import { HomePanel } from "./screens/MapScreen";
 
@@ -10,6 +11,7 @@ export function PageRoutes({ me }: { me: Me }) {
       <Route path="/account">
         <Account me={me} />
       </Route>
+      <Route path="/places/:id">{(p) => <PlaceScreen id={decodeURIComponent(p.id)} />}</Route>
       <Route path="/">
         <HomePanel />
       </Route>

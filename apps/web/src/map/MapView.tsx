@@ -75,7 +75,8 @@ export function MapView({ data }: { data: Data | null }) {
   }, [adapter, data, stage.searchMarkers]);
 
   useEffect(() => {
-    if (adapter && stage.focus) adapter.panTo(stage.focus);
+    // Looking at one place: bring it close, not just to the middle of the country.
+    if (adapter && stage.focus) adapter.fitTo([stage.focus]);
   }, [adapter, stage.focus]);
 
   const providerName =
