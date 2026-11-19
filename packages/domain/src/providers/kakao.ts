@@ -114,7 +114,12 @@ export const kakaoListsSchema = z.object({
   importedAt: required(40),
   complete: z.boolean(),
   subscriptionKnown: z.boolean().optional(),
-  lists: z.array(kakaoListSummary).max(LIMITS.importLists),
+  lists: z
+    .array(kakaoListSummary)
+    .max(LIMITS.importLists)
+    .refine((lists) => new Set(lists.map((l) => l.kakaoFolderId)).size === lists.length, {
+      message: "A list appears twice",
+    }),
 });
 
 /** kakao-list's GET /api/integrations/magomap/lists/:folderId/items body. */

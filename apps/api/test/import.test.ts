@@ -119,6 +119,17 @@ describe("server-driven import", () => {
     }
   });
 
+  it("answers 502 when kakao-list names the same list twice", async () => {
+    const cookie = await devLogin("111");
+    const body = listsBody(baseContract("111"));
+    network.use(
+      http.get(`${BASE}/lists`, () =>
+        HttpResponse.json({ ...body, lists: [...body.lists, body.lists[0]] }),
+      ),
+    );
+    expect((await start(cookie)).res.status).toBe(502);
+  });
+
   it("refuses a page whose snapshot changed since the run started", async () => {
     const cookie = await devLogin("111");
     serveKakaoList();

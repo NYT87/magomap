@@ -176,6 +176,9 @@ export async function startImportRun(
   if (!Number.isFinite(snapshotAt) || snapshotAt > now + CLOCK_ALLOWANCE_MS) {
     throw new Error("Invalid importedAt");
   }
+  if (new Set(opts.lists.map((l) => l.externalId)).size !== opts.lists.length) {
+    throw new Error("Duplicate list in the summaries");
+  }
   await assertUserExists(db, userId);
   const summary = JSON.stringify({ summary: EMPTY } satisfies RunState);
   // One row per list (never one large value): progress is tracked per list.
@@ -559,6 +562,8 @@ async function decideChunk(
         });
         inc("notesImported");
       } else if (
+        // An older snapshot than the shared list's may create a missing note, never change one.
+        listIsCurrent &&
         Number(existingNote.edited_by_user) === 0 &&
         existingNote.deleted_at == null &&
         existingNote.body !== body

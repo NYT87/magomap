@@ -230,4 +230,53 @@ forEachDialect("import integrity", (makeDb) => {
     expect(got).toContain("places:p_kakao_Y");
     expect(got).toContain("place_sources:s_kakao_Y");
   });
+
+  it("records a newer search observation even when nothing changed", async () => {
+    const db = await setup(makeDb);
+    const north = 33.46 + 500 / 111_320;
+    await push(db, WIFE, [up("places", searchedPlace("A", { signedAt: T0 }))], T0);
+    await push(
+      db,
+      WIFE,
+      [up("places", searchedPlace("A", { signedAt: T0 + 50 }), T0 + 50)],
+      T0 + 50,
+    );
+    await push(
+      db,
+      ME,
+      [up("places", searchedPlace("A", { lat: north, signedAt: T0 + 40 }), T0 + 60)],
+      T0 + 60,
+    );
+    const place = await db.kysely.selectFrom("places").selectAll().executeTakeFirstOrThrow();
+    expect(place.lat).toBeCloseTo(33.46, 6);
+    expect(place.provider_snapshot_at).toBe(T0 + 50);
+    expect(await db.kysely.selectFrom("place_locations").selectAll().execute()).toHaveLength(0);
+  });
+
+  it("never lets an older snapshot change an imported note", async () => {
+    const db = await setup(makeDb);
+    const withNote = (body: string) => [list("1", [item("10", "A", { localNote: body })])];
+    await importSnapshot(db, WIFE, withNote("new note"), { at: T0 + 20 });
+    await importSnapshot(db, ME, [list("1", [item("10", "A")], { followed: true })], {
+      at: T0 + 30,
+    });
+    await importSnapshot(db, WIFE, withNote("old note"), { snapshot: T0 + 10, at: T0 + 30 });
+    const notes = await db.kysely
+      .selectFrom("visit_notes")
+      .selectAll()
+      .where("user_id", "=", WIFE)
+      .execute();
+    expect(notes.map((n) => n.body)).toEqual(["new note"]);
+  });
+
+  it("refuses list summaries that name the same list twice", async () => {
+    const db = await setup(makeDb);
+    await expect(
+      start(db, WIFE, [
+        { externalId: "1", itemCount: 1 },
+        { externalId: "1", itemCount: 2 },
+      ]),
+    ).rejects.toThrow(/Duplicate list/);
+    expect(await db.kysely.selectFrom("import_runs").selectAll().execute()).toHaveLength(0);
+  });
 });

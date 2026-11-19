@@ -135,6 +135,11 @@ describe("paged kakao-list endpoints", () => {
     });
   });
 
+  it("rejects summaries that name the same list twice", () => {
+    const twice = { ...listsBody, lists: [...listsBody.lists, { ...listsBody.lists[0] }] };
+    expect(() => kakaoListsToImport(twice)).toThrow();
+  });
+
   it("rejects a page of more than 500 items", () => {
     const items = Array.from({ length: 501 }, (_, i) => ({
       favoriteSeq: String(i),

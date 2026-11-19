@@ -389,6 +389,9 @@ async function decidePush(
             updated_at: now,
             provider_snapshot_at: source.signedAt,
           } as Row);
+        } else {
+          // Nothing moved, but this newer observation still outranks anything signed before it.
+          write("places", { ...existing, provider_snapshot_at: source.signedAt });
         }
         if (update.history) {
           write(
