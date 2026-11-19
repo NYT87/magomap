@@ -110,6 +110,8 @@ A map app, installed on the phone as a PWA, for keeping a personal record of pla
 
 ### Data model
 
+> **Superseded** by the addendum "shared places and shared Kakao lists": places and provider lists are shared and provider-neutral, and places are never deleted. The table below is kept for history.
+
 Every table except `users`/`identities` has `user_id`, and every query is scoped by the signed-in user.
 
 | Table | One row per | Main columns |

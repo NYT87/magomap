@@ -29,7 +29,8 @@
   Until G1 is done, Task 1 uses only the published fixture below.
 - **G2 (during Task 2, Step 4):** run a real import with the built extension. Record:
   - the distinct favourite `type` values, with an example place for each;
-  - whether `subscribe` appears only on lists the owner follows, or on her own public lists too.
+  - whether `subscribe` appears only on lists the owner follows, or on her own public lists too;
+  - **whether the owner and a follower see the same favourite `seq`** for the same favourite in a shared list. Compare her import with his. magomap keys shared memberships by it; if they differ, tell the magomap owner, because magomap's key must change to the list plus the place id.
 
   Write the answers into `docs/kakao-maps-private-api.md`.
 
@@ -39,7 +40,7 @@
 - Use `pnpm` only, with `workspace:*` for internal packages, and Biome. Commits use conventional prefixes, because Release Please reads them.
 - **Never throw on bad Kakao data inside `parseSnapshot`.** It runs on every stored-snapshot read, so a throw would lock the account. Invalid coordinates are dropped instead.
 - The new endpoint is **read-only** and returns data for exactly one `kakaoUserId`.
-- Contract field names are exactly: `contractVersion`, `kakaoUserId`, `importedAt`, `complete`, `lists[].kakaoFolderId`, `name`, `description`, `icon`, `subscribed`, `ownerName`, `items[].favoriteSeq`, `favoriteType`, `placeKey`, `title`, `address`, `category`, `phone`, `lat`, `lng`, `kakaoNote`, `kakaoColor`, `localNote`, `position`.
+- Contract field names are exactly: `contractVersion`, `kakaoUserId`, `importedAt`, `complete`, `subscriptionKnown` (always `true` from this endpoint, which serves the new importer's data; magomap only treats someone as a list's owner when it's present), `lists[].kakaoFolderId`, `name`, `description`, `icon`, `subscribed`, `ownerName`, `items[].favoriteSeq`, `favoriteType`, `placeKey`, `title`, `address`, `category`, `phone`, `lat`, `lng`, `kakaoNote`, `kakaoColor`, `localNote`, `position`.
   - `favoriteSeq` is the stored item `id`, a stable favourite id; it is usually Kakao's `seq`.
   - `placeKey` is emitted **only for favourites whose `type` is a place type**, per G2. Other favourites have no `placeKey`, so magomap keys them as custom pins.
 - WCONGNAMUL is **EPSG:5181 (GRS80, no datum shift) × 2.5**. The proj4 definition is `+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +units=m +no_defs`, applied to `(x / 2.5, y / 2.5)`.
