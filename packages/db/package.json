@@ -11,7 +11,8 @@
     "./migrate": "./src/migrate.ts",
     "./testing": "./src/testing/dbs.ts",
     "./stores/users": "./src/stores/users.ts",
-    "./stores/sync": "./src/stores/sync.ts"
+    "./stores/sync": "./src/stores/sync.ts",
+    "./stores/importRuns": "./src/stores/importRuns.ts"
   },
   "scripts": {
     "test": "vitest run",

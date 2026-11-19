@@ -23,6 +23,7 @@ export default defineConfig(async () => {
         },
       }),
     ],
-    test: { setupFiles: ["./test/setup.ts"] },
+    // Each test file boots workerd + D1; under machine load the 5 s default is too tight.
+    test: { setupFiles: ["./test/setup.ts"], testTimeout: 30_000, hookTimeout: 30_000 },
   };
 });

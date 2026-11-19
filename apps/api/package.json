@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "wrangler dev --env d1",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "dev:seed": "tsx scripts/dev-seed.ts",
+    "dev:fake-kakao-list": "tsx scripts/fake-kakao-list.ts"
   },
   "dependencies": {
     "@magomap/db": "workspace:*",
@@ -20,6 +22,7 @@
     "@cloudflare/workers-types": "^5.20261104.1",
     "@msw/cloudflare": "^0.2.0",
     "msw": "^3.0.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0",
     "wrangler": "^4.157.0"
