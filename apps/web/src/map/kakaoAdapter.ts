@@ -52,7 +52,7 @@ export function createKakaoAdapter(): MapAdapter {
   const overlay = (m: MapMarker) => {
     const el = document.createElement("button");
     el.type = "button";
-    el.className = "mm-pin-host";
+    el.className = `mm-pin-host mm-pin-host--${m.kind}`;
     el.setAttribute("aria-label", m.label);
     el.innerHTML = markerHtml(m);
     el.addEventListener("click", () => select(m.id));

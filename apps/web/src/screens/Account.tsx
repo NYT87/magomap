@@ -3,13 +3,16 @@ import Dexie from "dexie";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
-import { apiFetch } from "../api/client";
+import { apiFetch, NetworkError } from "../api/client";
 import { forgetMe } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 
-type Dialog = null | { kind: "unsynced"; count: number; everywhere: boolean } | { kind: "delete" };
+type Dialog =
+  | null
+  | { kind: "unsynced"; count: number; rejected: number; everywhere: boolean }
+  | { kind: "delete" };
 
 export function Account({ me }: { me: Me }) {
   const { t, i18n } = useTranslation();
@@ -28,13 +31,13 @@ export function Account({ me }: { me: Me }) {
 
   const signOut = async (everywhere: boolean, force = false) => {
     setError(null);
-    if (!force && sync.unsynced > 0) {
+    if (!force && (sync.unsynced > 0 || sync.rejected > 0)) {
       setBusy(true);
-      await sync.syncNow().catch(() => {});
+      if (sync.unsynced > 0) await sync.syncNow().catch(() => {});
       const left = sync.countUnsynced ? await sync.countUnsynced() : sync.unsynced;
       setBusy(false);
-      if (left > 0) {
-        setDialog({ kind: "unsynced", count: left, everywhere });
+      if (left > 0 || sync.rejected > 0) {
+        setDialog({ kind: "unsynced", count: left, rejected: sync.rejected, everywhere });
         return;
       }
     }
@@ -43,8 +46,8 @@ export function Account({ me }: { me: Me }) {
       await apiFetch(everywhere ? "/api/auth/logout-all" : "/api/auth/logout", { method: "POST" });
       // The local database is kept: unsynced changes go out at the next sign-in here.
       leave();
-    } catch {
-      setError(t("account.failed"));
+    } catch (e) {
+      setError(e instanceof NetworkError ? t("account.signOutOffline") : t("account.failed"));
     } finally {
       setBusy(false);
     }
@@ -72,9 +75,7 @@ export function Account({ me }: { me: Me }) {
           {me.displayName ? t("account.signedInAs", { name: me.displayName }) : t("account.noName")}
         </p>
         <p className="mm-muted">{t("account.kakao")}</p>
-        <button type="button" className="mm-button mm-button--secondary" disabled>
-          {t("account.linkGoogle")}
-        </button>
+        <p className="mm-muted">{t("account.linkGoogle")}</p>
       </section>
 
       <section className="mm-card">
@@ -85,8 +86,12 @@ export function Account({ me }: { me: Me }) {
             value={i18n.language}
             onChange={(e) => setLanguage(e.target.value as Lang)}
           >
-            <option value="ko">한국어</option>
-            <option value="en">English</option>
+            <option value="ko" lang="ko">
+              한국어
+            </option>
+            <option value="en" lang="en">
+              English
+            </option>
           </select>
         </label>
       </section>
@@ -153,7 +158,8 @@ export function Account({ me }: { me: Me }) {
             </>
           }
         >
-          <p>{t("account.unsyncedBody", { count: dialog.count })}</p>
+          {dialog.count > 0 && <p>{t("account.unsyncedBody", { count: dialog.count })}</p>}
+          {dialog.rejected > 0 && <p>{t("account.rejectedNote", { count: dialog.rejected })}</p>}
         </ConfirmDialog>
       )}
 
@@ -182,6 +188,9 @@ export function Account({ me }: { me: Me }) {
           }
         >
           <p>{t("account.deleteBody")}</p>
+          {sync.unsynced > 0 && (
+            <p className="mm-strong">{t("account.deleteUnsynced", { count: sync.unsynced })}</p>
+          )}
           <label className="mm-field">
             <span className="mm-field__label">{t("account.deletePrompt", { word })}</span>
             <input

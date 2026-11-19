@@ -1,14 +1,14 @@
 // Leaflet + OpenStreetMap: the fallback map. https://leafletjs.com/reference.html
 import type * as Leaflet from "leaflet";
 import type { LatLng, MapAdapter, MapMarker } from "./MapAdapter";
-import { markerHtml, pinSize } from "./markerHtml";
+import { HIT, markerHtml } from "./markerHtml";
 
 export function createLeafletAdapter(): MapAdapter {
   let L: typeof Leaflet | null = null;
   let map: Leaflet.Map | null = null;
   let cluster: Leaflet.MarkerClusterGroup | null = null;
   let loose: Leaflet.LayerGroup | null = null;
-  let me: Leaflet.CircleMarker | null = null;
+  let me: Leaflet.Marker | null = null;
   let select: (id: string) => void = () => {};
   let pending: MapMarker[] | null = null;
   let pendingFit: LatLng[] | null = null;
@@ -22,16 +22,15 @@ export function createLeafletAdapter(): MapAdapter {
     cluster.clearLayers();
     loose.clearLayers();
     for (const m of markers) {
-      const size = pinSize(m);
       const marker = L.marker([m.position.lat, m.position.lng], {
         title: m.label,
         alt: m.label,
         keyboard: true,
         icon: L.divIcon({
-          className: "mm-pin-host",
+          className: `mm-pin-host mm-pin-host--${m.kind}`,
           html: markerHtml(m),
-          iconSize: [size, size],
-          iconAnchor: m.kind === "search" ? [size / 2, size / 2] : [size / 2, size - 2],
+          iconSize: [HIT, HIT],
+          iconAnchor: m.kind === "search" ? [HIT / 2, HIT / 2] : [HIT / 2, HIT - 2],
         }),
         opacity: 1,
       });
@@ -108,12 +107,10 @@ export function createLeafletAdapter(): MapAdapter {
     showMyLocation(p) {
       if (!map || !L) return;
       me?.remove();
-      me = L.circleMarker([p.lat, p.lng], {
-        radius: 8,
-        color: "#FBF8F2",
-        weight: 3,
-        fillColor: "#2F6FA3",
-        fillOpacity: 1,
+      me = L.marker([p.lat, p.lng], {
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({ className: "", html: '<span class="mm-me"></span>', iconSize: [18, 18] }),
       }).addTo(map);
       map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
     },

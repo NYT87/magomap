@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useInertBackground } from "./useInertBackground";
 
 /** A bottom sheet on phones: modal, Esc or the scrim closes it, focus returns afterwards. */
 export function Sheet({
@@ -16,6 +17,7 @@ export function Sheet({
   const { t } = useTranslation();
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
+  useInertBackground();
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.focus();

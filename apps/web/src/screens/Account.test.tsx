@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
 import { describe, expect, it, vi } from "vitest";
 import "../i18n";
+import { NetworkError } from "../api/client";
 import { SyncContext, type SyncControls } from "../data/SyncContext";
 import i18n from "../i18n";
 import { Account } from "./Account";
@@ -16,7 +17,12 @@ const { apiFetch } = await import("../api/client");
 const me = { userId: "u1", displayName: "지은", identities: [{ provider: "kakao" as const }] };
 
 function renderAccount(sync: Partial<SyncControls> = {}) {
-  const controls: SyncControls = { unsynced: 0, syncNow: vi.fn(async () => {}), ...sync };
+  const controls: SyncControls = {
+    unsynced: 0,
+    rejected: 0,
+    syncNow: vi.fn(async () => {}),
+    ...sync,
+  };
   render(
     <SyncContext.Provider value={controls}>
       <Account me={me} />
@@ -70,5 +76,31 @@ describe("Account", () => {
       expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" }),
     );
     expect(await Dexie.exists("magomap-u1")).toBe(true);
+  });
+
+  it("also mentions changes the server couldn't save", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+    renderAccount({ unsynced: 0, rejected: 1, syncNow: vi.fn(async () => {}) });
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("couldn't be saved on the server");
+  });
+
+  it("says plainly that signing out needs a connection", async () => {
+    await i18n.changeLanguage("en");
+    vi.mocked(apiFetch).mockRejectedValueOnce(new NetworkError());
+    const user = userEvent.setup();
+    renderAccount();
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("once you're online");
+  });
+
+  it("warns that unsent changes are lost when deleting the account", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+    renderAccount({ unsynced: 3 });
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("3 changes on this phone");
   });
 });

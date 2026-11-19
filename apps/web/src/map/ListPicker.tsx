@@ -1,4 +1,5 @@
 import type { ListRow } from "@magomap/domain";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { SAVED_GROUP } from "../data/queries";
 import { providerUi } from "../providers";
@@ -57,10 +58,13 @@ function Section({
 }) {
   const { t } = useTranslation();
   const { setVisible } = useMapPrefs();
+  const id = useId();
   return (
-    <fieldset className="mm-picker__section" aria-label={title}>
+    <fieldset className="mm-picker__section" aria-labelledby={id}>
       <div className="mm-picker__head">
-        <h3 className="mm-picker__title">{title}</h3>
+        <h3 className="mm-picker__title" id={id}>
+          {title}
+        </h3>
         {ids.length > 0 && (
           <span className="mm-picker__bulk">
             <button type="button" className="mm-link-button" onClick={() => setVisible(ids, true)}>
@@ -107,17 +111,19 @@ export function ListPicker({ sections, heading = true }: Props) {
 
   return (
     <div className="mm-picker">
-      <div className="mm-picker__head">
-        {heading && <h2 className="mm-h4">{t("picker.title")}</h2>}
-        <span className="mm-picker__bulk">
-          <button type="button" className="mm-link-button" onClick={() => setVisible(all, true)}>
-            {t("picker.showAll")}
-          </button>
-          <button type="button" className="mm-link-button" onClick={() => setVisible(all, false)}>
-            {t("picker.hideAll")}
-          </button>
-        </span>
-      </div>
+      {heading && (
+        <div className="mm-picker__head">
+          <h2 className="mm-h4">{t("picker.title")}</h2>
+          <span className="mm-picker__bulk">
+            <button type="button" className="mm-link-button" onClick={() => setVisible(all, true)}>
+              {t("picker.showAll")}
+            </button>
+            <button type="button" className="mm-link-button" onClick={() => setVisible(all, false)}>
+              {t("picker.hideAll")}
+            </button>
+          </span>
+        </div>
+      )}
       <Section title={t("picker.mine")} ids={ids(sections.mine)}>
         <ul className="mm-picker__list">
           {sections.mine.map((l) => row(l))}
@@ -142,18 +148,19 @@ export function ListPicker({ sections, heading = true }: Props) {
           )}
         </ul>
       </Section>
-      <Section title={t(provider.listsKey)} ids={ids(sections.provider)}>
-        <ul className="mm-picker__list">
-          {sections.provider.map((l) => row(l))}
-          {sections.provider.length === 0 && <li className="mm-muted">{t("picker.none")}</li>}
-        </ul>
-      </Section>
-      <Section title={t(subscribedUi.subscribedKey)} ids={ids(sections.subscribed)}>
-        <ul className="mm-picker__list">
-          {sections.subscribed.map((l) => row(l, true))}
-          {sections.subscribed.length === 0 && <li className="mm-muted">{t("picker.none")}</li>}
-        </ul>
-      </Section>
+      {sections.provider.length > 0 && (
+        <Section title={t(provider.listsKey)} ids={ids(sections.provider)}>
+          <ul className="mm-picker__list">{sections.provider.map((l) => row(l))}</ul>
+        </Section>
+      )}
+      {sections.subscribed.length > 0 && (
+        <Section title={t(subscribedUi.subscribedKey)} ids={ids(sections.subscribed)}>
+          <ul className="mm-picker__list">{sections.subscribed.map((l) => row(l, true))}</ul>
+        </Section>
+      )}
+      {sections.provider.length === 0 && sections.subscribed.length === 0 && (
+        <p className="mm-muted">{t("picker.hint")}</p>
+      )}
       <Switch checked={showPrevious} onChange={setShowPrevious}>
         <span className="mm-switch__label">
           <span className="mm-switch__name">{t("picker.showPrevious")}</span>

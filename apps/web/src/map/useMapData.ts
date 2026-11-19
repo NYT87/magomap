@@ -1,5 +1,7 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { type Library, SAVED_GROUP, savedNotInList, sectionOf, useLibrary } from "../data/queries";
+import { formatDate } from "../i18n";
 import type { PickerList } from "./ListPicker";
 import { useMapPrefs } from "./mapPrefs";
 import { buildMarkers, membershipColor, THEME_PRIMARY } from "./markers";
@@ -16,6 +18,7 @@ function swatch(lib: Library, listId: string): string {
 export function useMapData() {
   const lib = useLibrary();
   const { hidden, showPrevious } = useMapPrefs();
+  const { t } = useTranslation();
   return useMemo(() => {
     if (!lib) return null;
     const count = (id: string) =>
@@ -35,6 +38,7 @@ export function useMapData() {
     const visibleListIds = new Set(
       [...lib.lists.map((l) => l.id), SAVED_GROUP].filter((id) => !hidden.has(id)),
     );
+    const until = new Map(lib.locations.map((l) => [`prev:${l.id}`, l.validUntil]));
     const markers = buildMarkers({
       places: [...lib.places.values()],
       memberships: lib.items,
@@ -44,6 +48,12 @@ export function useMapData() {
       saved: lib.saved,
       visibleListIds,
       showPrevious,
+    }).map((m) => {
+      // A previous location says so, and until when, so it isn't mistaken for the current one.
+      const date = until.get(m.id);
+      return m.kind === "previous" && date !== undefined
+        ? { ...m, label: t("map.previousLabel", { title: m.label, date: formatDate(date) }) }
+        : m;
     });
     const visibleIds = new Set(markers.filter((m) => m.kind === "saved").map((m) => m.id));
     const shownPlaces = [...lib.places.values()].filter(
@@ -54,12 +64,14 @@ export function useMapData() {
             (visibleListIds.has(SAVED_GROUP) && savedNotInList(lib).includes(p.id)))),
     );
     const withoutLocation = shownPlaces.filter((p) => p.lat == null || p.lng == null).length;
+    const moved = new Set(lib.locations.map((l) => l.placeId));
     return {
       lib,
+      moved,
       sections: { ...sections, savedNotInList: savedNotInList(lib).length },
       markers,
       shownPlaces,
       withoutLocation,
     };
-  }, [lib, hidden, showPrevious]);
+  }, [lib, hidden, showPrevious, t]);
 }

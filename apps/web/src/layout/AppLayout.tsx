@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, List, Map as MapIcon, UserRound } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { useLayout } from "./useLayout";
@@ -71,6 +71,22 @@ export function AppLayout({ map, children, status }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [layout, location, navigate]);
 
+  // The window title follows the screen; on phones, focus moves to the new page's heading.
+  useEffect(() => {
+    const section = location.split("/")[1] ?? "";
+    const key = { lists: "nav.lists", import: "nav.import", account: "nav.account" }[section];
+    document.title = key ? `${t(key)} – ${t("app.name")}` : t("app.name");
+  }, [location, t]);
+  const page = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (layout !== "phone" || location === "/") return;
+    const heading = page.current?.querySelector<HTMLElement>("h1");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }, [layout, location]);
+
   const back = () => {
     if (window.history.length > 1) window.history.back();
     else navigate("/");
@@ -97,7 +113,8 @@ export function AppLayout({ map, children, status }: Props) {
 
   return (
     <div className="mm-shell mm-shell--phone">
-      <main className="mm-map" aria-hidden={atRoot ? undefined : true}>
+      {/* One map element throughout (no remount); hidden from everyone while a page covers it. */}
+      <main className="mm-map" hidden={!atRoot}>
         {map}
       </main>
       {atRoot ? (
@@ -106,7 +123,7 @@ export function AppLayout({ map, children, status }: Props) {
           <Nav current={location} />
         </>
       ) : (
-        <section className="mm-page">
+        <main className="mm-page" ref={page}>
           <header className="mm-page__header">
             <button type="button" className="mm-icon-button" onClick={back}>
               <ArrowLeft aria-hidden size={22} strokeWidth={1.75} />
@@ -115,7 +132,7 @@ export function AppLayout({ map, children, status }: Props) {
             {status}
           </header>
           <div className="mm-page__body">{children}</div>
-        </section>
+        </main>
       )}
     </div>
   );

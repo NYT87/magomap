@@ -79,10 +79,13 @@ export function MapScreen() {
           <div className="mm-map-notes" aria-live="polite">
             {denied && <p className="mm-note">{t("map.locationDenied")}</p>}
             <MissingLocationNote count={data?.withoutLocation ?? 0} />
+            {data && data.shownPlaces.length === 0 && !asList && (
+              <p className="mm-note">{t("map.empty")}</p>
+            )}
           </div>
           {asList && data && (
             <div className="mm-list-overlay">
-              <VisiblePlacesList places={data.shownPlaces} />
+              <VisiblePlacesList places={data.shownPlaces} moved={data.moved} />
             </div>
           )}
           {sheet && data && (
@@ -98,7 +101,7 @@ export function MapScreen() {
             <LocateFixed aria-hidden size={22} strokeWidth={1.75} />
             <span className="mm-visually-hidden">{t("map.myLocation")}</span>
           </button>
-          {denied && <p className="mm-note">{t("map.locationDenied")}</p>}
+          <div role="status">{denied && <p className="mm-note">{t("map.locationDenied")}</p>}</div>
         </div>
       )}
     </>
@@ -114,7 +117,7 @@ export function HomePanel() {
       <SearchBar />
       <ListPicker sections={data.sections} />
       <MissingLocationNote count={data.withoutLocation} />
-      <VisiblePlacesList places={data.shownPlaces} />
+      <VisiblePlacesList places={data.shownPlaces} moved={data.moved} />
     </div>
   );
 }

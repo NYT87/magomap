@@ -1,5 +1,6 @@
 import type { PlaceLocationRow, PlaceRow } from "@magomap/domain";
 import { X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { formatDate } from "../i18n";
@@ -16,8 +17,22 @@ export function PreviousLocationCard({
 }) {
   const { t } = useTranslation();
   const now = place.roadAddress ?? place.address;
+  const ref = useRef<HTMLElement>(null);
+  // Focus moves to the card, Esc closes it, and focus goes back to where it was.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      before?.focus?.();
+    };
+  }, [onClose]);
   return (
-    <div className="mm-floating-card" role="dialog" aria-label={place.title}>
+    <section ref={ref} className="mm-floating-card" aria-label={place.title} tabIndex={-1}>
       <div className="mm-floating-card__head">
         <h2 className="mm-h4">{place.title}</h2>
         <button type="button" className="mm-icon-button" onClick={onClose}>
@@ -35,6 +50,6 @@ export function PreviousLocationCard({
       >
         {t("map.openPlace")}
       </Link>
-    </div>
+    </section>
   );
 }

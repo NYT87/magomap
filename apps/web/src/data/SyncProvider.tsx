@@ -11,10 +11,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const controls = useMemo<SyncControls>(
     () => ({
       unsynced: status.unsynced,
+      rejected: status.rejected,
       syncNow,
       countUnsynced: () => currentDb().outbox.count(),
     }),
-    [status.unsynced],
+    [status.unsynced, status.rejected],
   );
   return <SyncContext.Provider value={controls}>{children}</SyncContext.Provider>;
 }

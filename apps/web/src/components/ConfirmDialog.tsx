@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useInertBackground } from "./useInertBackground";
 
 interface Props {
   title: string;
@@ -12,6 +13,7 @@ interface Props {
 export function ConfirmDialog({ title, children, actions, onCancel }: Props) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
+  useInertBackground();
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>("input, button")?.focus();

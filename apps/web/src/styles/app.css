@@ -73,6 +73,12 @@ a {
   isolation: isolate;
 }
 
+/* Kept laid out (Leaflet needs its size) but invisible and unreachable under a phone page. */
+.mm-map[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
 .mm-map__placeholder {
   width: 100%;
   height: 100%;
@@ -344,8 +350,8 @@ a {
 }
 
 .mm-button--danger {
-  color: #ffffff;
-  background: #b3261e;
+  color: var(--color-on-danger);
+  background: var(--color-danger-bg);
 }
 
 .mm-button--danger-text {
@@ -382,7 +388,7 @@ a {
   display: grid;
   place-items: end center;
   padding: var(--space-md);
-  background: rgba(20, 24, 22, 0.4);
+  background: var(--color-scrim);
 }
 
 @media (min-width: 768px) {
@@ -480,12 +486,21 @@ a {
   bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
+/* Every marker has a 44 px hit area; the pin sits at its bottom centre. */
 .mm-pin-host {
-  display: block;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
   padding: 0;
   background: none;
   border: 0;
   cursor: pointer;
+}
+
+.mm-pin-host--search {
+  align-items: center;
 }
 
 .mm-pin {
@@ -503,7 +518,7 @@ a {
   width: 18px;
   height: 18px;
   background: var(--color-river);
-  border: 3px solid #fbf8f2;
+  border: 3px solid var(--color-bg);
   border-radius: 50%;
   box-shadow: var(--shadow);
 }
@@ -511,8 +526,8 @@ a {
 .marker-cluster {
   display: grid;
   place-items: center;
-  color: #ffffff;
-  background: color-mix(in srgb, #1f6f5c 35%, transparent);
+  color: var(--color-on-primary);
+  background: color-mix(in srgb, var(--color-pine) 35%, transparent);
   border-radius: 50%;
 }
 
@@ -522,7 +537,7 @@ a {
   width: 30px;
   height: 30px;
   margin: 5px;
-  background: #1f6f5c;
+  background: var(--color-pine);
   border-radius: 50%;
   font: 600 13px var(--font-body);
 }
@@ -636,6 +651,11 @@ a {
   border-bottom: 1px solid var(--color-border);
 }
 
+.mm-moved-hint {
+  color: var(--color-clay);
+  font-size: 14px;
+}
+
 .mm-place-row__title {
   font-weight: 600;
 }
@@ -657,8 +677,12 @@ a {
   box-shadow: var(--shadow);
 }
 
+.mm-shell--phone .mm-floating-card {
+  bottom: calc(132px + env(safe-area-inset-bottom));
+}
+
 .mm-shell--desktop .mm-floating-card {
-  bottom: var(--space-xl);
+  bottom: var(--space-2xl);
   left: var(--space-xl);
 }
 
@@ -755,6 +779,7 @@ a {
   width: 44px;
   height: 26px;
   background: var(--color-border);
+  box-shadow: inset 0 0 0 1.5px var(--color-text-secondary);
   border-radius: var(--radius-pill);
   transition: background 120ms;
 }
@@ -773,6 +798,7 @@ a {
 
 .mm-switch[aria-checked="true"] .mm-switch__track {
   background: var(--color-pine);
+  box-shadow: none;
 }
 
 .mm-switch[aria-checked="true"] .mm-switch__thumb {
@@ -804,7 +830,7 @@ a {
 .mm-sheet-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(20, 24, 22, 0.35);
+  background: var(--color-scrim);
   border: 0;
 }
 

@@ -14,10 +14,10 @@ export function markerHtml(m: MapMarker): string {
   const previous = m.kind === "previous";
   const size = previous ? 22 : 32;
   const body = previous
-    ? `<path d="M12 2.5c-4 0-7 3-7 7 0 5.2 7 12 7 12s7-6.8 7-12c0-4-3-7-7-7Z" fill="${m.color}" fill-opacity="0.45" stroke="#B4552A" stroke-width="1.5"/><circle cx="12" cy="9.5" r="2.6" fill="#FBF8F2"/>`
-    : `<path d="M12 2.5c-4 0-7 3-7 7 0 5.2 7 12 7 12s7-6.8 7-12c0-4-3-7-7-7Z" fill="${m.color}" stroke="#FBF8F2" stroke-width="1.5"/><circle cx="12" cy="9.5" r="2.6" fill="#FBF8F2"/>`;
+    ? `<path d="M12 2.5c-4 0-7 3-7 7 0 5.2 7 12 7 12s7-6.8 7-12c0-4-3-7-7-7Z" fill="${m.color}" fill-opacity="0.45" stroke="var(--color-clay)" stroke-width="1.5"/><circle cx="12" cy="9.5" r="2.6" fill="var(--color-bg)"/>`
+    : `<path d="M12 2.5c-4 0-7 3-7 7 0 5.2 7 12 7 12s7-6.8 7-12c0-4-3-7-7-7Z" fill="${m.color}" stroke="var(--color-bg)" stroke-width="1.5"/><circle cx="12" cy="9.5" r="2.6" fill="var(--color-bg)"/>`;
   return `<span class="mm-pin mm-pin--${m.kind}" title="${label}"><svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${body}</svg></span>`;
 }
 
-export const pinSize = (m: MapMarker) =>
-  m.kind === "previous" ? 22 : m.kind === "search" ? 26 : 32;
+/** Every marker is a 44 px target. */
+export const HIT = 44;

@@ -2,6 +2,7 @@ import {
   createContext,
   type MutableRefObject,
   type ReactNode,
+  useCallback,
   useContext,
   useMemo,
   useRef,
@@ -29,6 +30,10 @@ export function MapStageProvider({ children }: { children: ReactNode }) {
   const [focus, setFocus] = useState<LatLng | null>(null);
   const map = useRef<MapAdapter | null>(null);
   const [onSearchSelect, setSelect] = useState<((id: string) => void) | null>(null);
+  const setOnSearchSelect = useCallback(
+    (fn: ((id: string) => void) | null) => setSelect(() => fn),
+    [],
+  );
   const value = useMemo<Stage>(
     () => ({
       searchMarkers,
@@ -37,9 +42,9 @@ export function MapStageProvider({ children }: { children: ReactNode }) {
       setFocus,
       map,
       onSearchSelect,
-      setOnSearchSelect: (fn) => setSelect(() => fn),
+      setOnSearchSelect,
     }),
-    [searchMarkers, focus, onSearchSelect],
+    [searchMarkers, focus, onSearchSelect, setOnSearchSelect],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

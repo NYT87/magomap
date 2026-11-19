@@ -9,7 +9,7 @@ import { SAVED_GROUP } from "../data/queries";
 import { KAKAO_PLACE_COLORS } from "./kakaoColors";
 import type { MapMarker } from "./MapAdapter";
 
-export const THEME_PRIMARY = "#1F6F5C";
+export const THEME_PRIMARY = "var(--color-pine)";
 
 export interface MarkerInput {
   places: PlaceRow[];
