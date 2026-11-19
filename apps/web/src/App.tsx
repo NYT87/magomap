@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Redirect, Route, Switch } from "wouter";
 import { useMe } from "./auth/useMe";
+import { SyncIndicator } from "./components/SyncIndicator";
 import { openUserDb } from "./data/db";
 import { SyncProvider } from "./data/SyncProvider";
 import { AppLayout } from "./layout/AppLayout";
@@ -42,7 +43,7 @@ function Shell() {
     <SyncProvider key={me.userId}>
       <MapPrefsProvider userId={me.userId}>
         <MapStageProvider>
-          <AppLayout map={<MapScreen />}>
+          <AppLayout map={<MapScreen />} status={<SyncIndicator />}>
             <PageRoutes me={me} />
           </AppLayout>
         </MapStageProvider>

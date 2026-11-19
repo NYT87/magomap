@@ -199,5 +199,29 @@
       "slate": "Slate",
       "rose": "Rose"
     }
+  },
+  "sync": {
+    "synced": "Synced",
+    "syncing": "Syncing…",
+    "offline": "Offline",
+    "offlineSaved_one": "Offline — {{count}} change saved on this phone",
+    "offlineSaved_other": "Offline — {{count}} changes saved on this phone",
+    "needsSignin_one": "Sign in to finish saving {{count}} change",
+    "needsSignin_other": "Sign in to finish saving {{count}} changes",
+    "needsSigninNone": "Sign in again to keep syncing",
+    "error": "Can't reach the server — retrying",
+    "clockAhead": "Your phone's clock is ahead — changes are saved here and will sync once it's corrected",
+    "rejected_one": "{{count}} change couldn't be saved",
+    "rejected_other": "{{count}} changes couldn't be saved",
+    "rejectedTitle": "Changes that couldn't be saved",
+    "rejectedLead": "The server didn't accept these. They're kept on this phone so you can copy the text.",
+    "note": "Visit note",
+    "link": "Link",
+    "list": "List",
+    "place": "Place",
+    "membership": "List membership",
+    "deleted": "A deletion",
+    "copy": "Copy text",
+    "copied": "Copied"
   }
 }

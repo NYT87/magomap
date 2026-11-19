@@ -199,5 +199,29 @@
       "slate": "석판",
       "rose": "장미"
     }
+  },
+  "sync": {
+    "synced": "동기화됨",
+    "syncing": "동기화 중…",
+    "offline": "오프라인",
+    "offlineSaved_one": "오프라인 · 변경 {{count}}개를 이 휴대폰에 저장했어요",
+    "offlineSaved_other": "오프라인 · 변경 {{count}}개를 이 휴대폰에 저장했어요",
+    "needsSignin_one": "다시 로그인하면 변경 {{count}}개를 마저 저장해요",
+    "needsSignin_other": "다시 로그인하면 변경 {{count}}개를 마저 저장해요",
+    "needsSigninNone": "동기화하려면 다시 로그인해 주세요",
+    "error": "서버에 연결하지 못했어요. 계속 다시 시도할게요",
+    "clockAhead": "휴대폰 시계가 빨라요. 변경은 여기 저장했고, 시계가 맞춰지면 동기화돼요",
+    "rejected_one": "변경 {{count}}개를 저장하지 못했어요",
+    "rejected_other": "변경 {{count}}개를 저장하지 못했어요",
+    "rejectedTitle": "저장하지 못한 변경",
+    "rejectedLead": "서버가 받아 주지 않은 변경이에요. 내용을 복사할 수 있도록 이 휴대폰에 남겨 뒀어요.",
+    "note": "방문 메모",
+    "link": "링크",
+    "list": "리스트",
+    "place": "장소",
+    "membership": "리스트 항목",
+    "deleted": "삭제",
+    "copy": "내용 복사",
+    "copied": "복사했어요"
   }
 }

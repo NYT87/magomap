@@ -12,6 +12,8 @@ const port = Number(process.env.FAKE_KAKAO_LIST_PORT ?? 8788);
 const secret = process.env.MAGOMAP_IMPORT_SECRET ?? "m".repeat(48);
 const knownUsers = new Set((process.env.FAKE_KAKAO_USERS ?? "111,222,dev").split(","));
 let variant: Variant = { name: "base" };
+// Each variant is a new kakao-list snapshot, as a real re-import would be (the base keeps the fixture's time).
+let variantAt: string | null = null;
 
 const send = (res: import("node:http").ServerResponse, status: number, body: unknown) => {
   res.writeHead(status, { "content-type": "application/json" });
@@ -20,10 +22,12 @@ const send = (res: import("node:http").ServerResponse, status: number, body: unk
 
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+  if (url.pathname === "/__health") return send(res, 200, { ok: true });
   if (req.method === "POST" && url.pathname === "/__variant") {
     let raw = "";
     for await (const chunk of req) raw += chunk;
     variant = JSON.parse(raw) as Variant;
+    variantAt = variant.name === "base" ? null : new Date(Date.now() - 1_000).toISOString();
     return send(res, 200, { ok: true, variant });
   }
   if (req.method === "GET" && url.pathname.startsWith("/api/integrations/magomap/lists")) {
@@ -32,6 +36,7 @@ createServer(async (req, res) => {
     const user = url.searchParams.get("kakaoUserId") ?? "";
     if (!knownUsers.has(user)) return send(res, 404, { error: "no_snapshot" });
     const contract = contractFor(variant, user);
+    if (variantAt) contract.importedAt = variantAt;
     if (url.pathname === "/api/integrations/magomap/lists")
       return send(res, 200, listsBody(contract));
     const match = url.pathname.match(/^\/api\/integrations\/magomap\/lists\/(\d+)\/items$/);
