@@ -71,10 +71,11 @@ Secrets, which are never stored in the file:
 ```bash
 npx wrangler secret put KAKAO_REST_API_KEY --env d1      # or --env postgres
 npx wrangler secret put KAKAO_CLIENT_SECRET --env d1
-npx wrangler secret put MAGOMAP_IMPORT_SECRET --env d1   # at least 32 characters
+npx wrangler secret put MAGOMAP_IMPORT_SECRET --env d1   # at least 32 characters: openssl rand -hex 32
+npx wrangler secret put SIGNING_SECRET --env d1          # signs search results: openssl rand -hex 32
 ```
 
-Set **the same** `MAGOMAP_IMPORT_SECRET` on the kakao-list server.
+Set **the same** `MAGOMAP_IMPORT_SECRET` on the kakao-list server. Generate real secrets; never reuse the values in `.dev.vars.example`.
 
 ## 5. Deploy
 

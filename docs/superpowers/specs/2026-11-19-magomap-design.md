@@ -417,6 +417,15 @@ Adding a provider means adding an adapter. The schema stays the same.
   - If they follow it again and re-import, it comes back with current content, through the "access gained later" rule.
 - **No migration needed.** Nothing is deployed yet, so the schema is reshaped directly. The development databases are recreated.
 
+**Trust rules (from the plan 01b reviews)**
+- **The server fetches import data itself.** Each request from the app reads one thing from kakao-list, for the caller's own Kakao id: either the list summaries, or one page of at most 500 items. The app only says "next page". It never sends import contents, so it can't change shared lists or places. A page from a different snapshot than the run's is refused (`snapshot_changed`); the app restarts the import.
+- **Search results are signed** by the server (`SIGNING_SECRET`). A pushed place must carry that signature, over exactly its fields, for up to 30 days. Nobody can create or move a shared place with made-up data.
+- **Client-created ids are UUIDs:** own lists, notes and links. They can't impersonate provider rows. Composite ids encode each part, so they never collide.
+- **Removals record the snapshot that made them**, so an older snapshot can't undo them. An older snapshot never changes which items a list has.
+- **Everyone who has a list receives all of its places**, including places added later.
+- **Notes, links and own-list items** can only be attached to places the user has, or sees in one of their lists.
+- **Writes for a deleted account are refused.**
+
 **Naming in code.** Domain, database and API names are neutral: `provider`, `externalId`, `providerNote`, `removedAtProvider`, `importContract`. The wire contract kakao-list serves keeps its own Kakao field names. An adapter (`apps/api/src/providers/kakao/`) maps it into the neutral import format.
 
 **Deleting an account** removes that person's own data: their own lists and those lists' items, notes, links, `user_lists`, `user_places`, sessions and import runs. Shared places and provider lists stay, because they belong to the provider's lists, not to one user.
