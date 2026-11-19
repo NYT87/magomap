@@ -1,196 +1,166 @@
-import { kakaoContractToImport } from "@magomap/domain/providers/kakao";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { baseContract } from "./fixtures/contract";
+import { itemsBody, listsBody } from "./fixtures/pages";
 import { call, devLogin } from "./helpers";
 import { network } from "./msw";
 
-const START = {
-  provider: "kakao",
-  complete: true,
-  subscriptionKnown: true,
-  importedAt: "2026-11-19T00:00:00.000Z",
-};
-const KAKAO_LIST = "http://localhost:8788/api/integrations/magomap/snapshot";
-const jsonInit = (method: string, body: unknown, cookie: string) => ({
-  method,
+const BASE = "http://localhost:8788/api/integrations/magomap";
+const SECRET = `Bearer ${"m".repeat(48)}`;
+const post = (cookie: string, body: unknown = {}) => ({
+  method: "POST",
   headers: { "content-type": "application/json", cookie },
   body: JSON.stringify(body),
 });
 
-describe("import source", () => {
-  it("passes kakao-list's body through and sends the secret", async () => {
+/** A stand-in kakao-list that serves the fixture for any user, checking the secret. */
+function serveKakaoList(contract = baseContract("111")) {
+  const seen: { auth: string; user: string; url: string }[] = [];
+  network.use(
+    http.get(`${BASE}/lists`, ({ request }) => {
+      const url = new URL(request.url);
+      seen.push({
+        auth: request.headers.get("authorization") ?? "",
+        user: url.searchParams.get("kakaoUserId") ?? "",
+        url: url.pathname,
+      });
+      return HttpResponse.json(listsBody(contract));
+    }),
+    http.get(`${BASE}/lists/:folderId/items`, ({ request, params }) => {
+      const url = new URL(request.url);
+      seen.push({
+        auth: request.headers.get("authorization") ?? "",
+        user: url.searchParams.get("kakaoUserId") ?? "",
+        url: url.pathname,
+      });
+      const body = itemsBody(
+        contract,
+        Number(params.folderId),
+        Number(url.searchParams.get("offset") ?? 0),
+      );
+      return body
+        ? HttpResponse.json(body)
+        : HttpResponse.json({ error: "no_snapshot" }, { status: 404 });
+    }),
+  );
+  return seen;
+}
+
+async function start(cookie: string) {
+  const res = await call("/api/import/runs", post(cookie, { provider: "kakao" }));
+  return {
+    res,
+    body: (await res.json()) as {
+      runId: string;
+      lists: { externalId: string; itemCount: number }[];
+    },
+  };
+}
+
+describe("server-driven import", () => {
+  it("starts a run from the caller's own kakao-list data, sending the secret", async () => {
     const cookie = await devLogin("111");
-    const body = JSON.stringify(baseContract("111"));
-    let auth = "";
-    let asked = "";
-    network.use(
-      http.get(KAKAO_LIST, ({ request }) => {
-        auth = request.headers.get("authorization") ?? "";
-        asked = new URL(request.url).searchParams.get("kakaoUserId") ?? "";
-        return new HttpResponse(body, { headers: { "content-type": "application/json" } });
-      }),
-    );
-    const res = await call("/api/import/kakao/source", { headers: { cookie } });
+    const seen = serveKakaoList();
+    const { res, body } = await start(cookie);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe(body);
-    expect(auth).toBe(`Bearer ${"m".repeat(48)}`);
-    expect(asked).toBe("111");
+    expect(body.lists.map((l) => l.externalId)).toEqual(["101", "102", "205"]);
+    expect(seen[0]).toMatchObject({ auth: SECRET, user: "111" });
   });
 
-  it("maps kakao-list's no_snapshot to 404 no_snapshot", async () => {
+  it("imports a list page by page, then finishes and completes it", async () => {
+    const cookie = await devLogin("111");
+    const seen = serveKakaoList();
+    const { body } = await start(cookie);
+    const page = await call(`/api/import/runs/${body.runId}/lists/101/pages/0`, post(cookie));
+    expect(page.status).toBe(200);
+    expect(await page.json()).toMatchObject({ placesAdded: 2, notesImported: 1, done: true });
+    expect(seen.at(-1)).toMatchObject({
+      auth: SECRET,
+      user: "111",
+      url: "/api/integrations/magomap/lists/101/items",
+    });
+    expect(
+      (await call(`/api/import/runs/${body.runId}/lists/101/finish`, post(cookie))).status,
+    ).toBe(200);
+    const done = await call(`/api/import/runs/${body.runId}/complete`, post(cookie));
+    expect(await done.json()).toMatchObject({ listsAdded: 1, placesAdded: 2 });
+    expect(
+      await (await call("/api/import/runs/latest", { headers: { cookie } })).json(),
+    ).toMatchObject({ status: "completed" });
+  });
+
+  it("answers no_snapshot when kakao-list has nothing for the user", async () => {
     const cookie = await devLogin("111");
     network.use(
-      http.get(KAKAO_LIST, () => HttpResponse.json({ error: "no_snapshot" }, { status: 404 })),
+      http.get(`${BASE}/lists`, () => HttpResponse.json({ error: "no_snapshot" }, { status: 404 })),
     );
-    const res = await call("/api/import/kakao/source", { headers: { cookie } });
+    const { res, body } = await start(cookie);
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: "no_snapshot" });
+    expect(body).toEqual({ error: "no_snapshot" });
   });
 
-  it("maps any other failure to 502", async () => {
+  it("answers 502 for other failures, redirects or a future snapshot", async () => {
     const cookie = await devLogin("111");
-    network.use(http.get(KAKAO_LIST, () => HttpResponse.text("nope", { status: 404 })));
-    expect((await call("/api/import/kakao/source", { headers: { cookie } })).status).toBe(502);
-    network.use(http.get(KAKAO_LIST, () => HttpResponse.text("boom", { status: 500 })));
-    const res = await call("/api/import/kakao/source", { headers: { cookie } });
-    expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "kakao_list_unavailable" });
+    for (const respond of [
+      () => HttpResponse.text("boom", { status: 500 }),
+      () => new HttpResponse(null, { status: 302, headers: { location: "https://evil.example/" } }),
+      () =>
+        HttpResponse.json({
+          ...listsBody(baseContract("111")),
+          importedAt: "2999-01-01T00:00:00.000Z",
+        }),
+    ]) {
+      network.use(http.get(`${BASE}/lists`, respond));
+      expect((await start(cookie)).res.status).toBe(502);
+    }
   });
-});
 
-describe("import runs", () => {
-  it("imports a list through the run endpoints", async () => {
+  it("refuses a page whose snapshot changed since the run started", async () => {
     const cookie = await devLogin("111");
-    const contract = kakaoContractToImport(baseContract());
-    const start = await call(
-      "/api/import/runs",
-      jsonInit("POST", { ...START, importedAt: contract.importedAt }, cookie),
+    serveKakaoList();
+    const { body } = await start(cookie);
+    network.use(
+      http.get(`${BASE}/lists/:folderId/items`, () =>
+        HttpResponse.json({
+          ...itemsBody(baseContract("111"), 101, 0),
+          importedAt: "2026-11-20T00:00:00.000Z",
+        }),
+      ),
     );
-    const { runId } = (await start.json()) as { runId: string };
-    const { items, ...meta } = contract.lists[0] as (typeof contract.lists)[number];
-    const chunk = await call(
-      `/api/import/runs/${runId}/lists/101/chunks/0`,
-      jsonInit("PUT", { meta, items }, cookie),
-    );
-    expect(chunk.status).toBe(200);
-    expect(await chunk.json()).toMatchObject({ placesAdded: 2, notesImported: 1 });
-    expect(
-      (await call(`/api/import/runs/${runId}/lists/101/finish`, jsonInit("POST", {}, cookie)))
-        .status,
-    ).toBe(200);
-    const done = await call(
-      `/api/import/runs/${runId}/complete`,
-      jsonInit("POST", { externalIds: ["101"] }, cookie),
-    );
-    expect(await done.json()).toMatchObject({ listsAdded: 1, placesAdded: 2 });
-    const latest = await call("/api/import/runs/latest", { headers: { cookie } });
-    expect(await latest.json()).toMatchObject({ runId, status: "completed" });
+    const res = await call(`/api/import/runs/${body.runId}/lists/101/pages/0`, post(cookie));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "snapshot_changed" });
   });
 
-  it("does not let another user write to a run", async () => {
+  it("refuses a list that isn't in the run, another user's run, and a superseded run", async () => {
     const owner = await devLogin("111");
     const other = await devLogin("222");
-    const { runId } = (await (
-      await call("/api/import/runs", jsonInit("POST", START, owner))
-    ).json()) as { runId: string };
-    const meta = { externalId: "101", name: "x", followed: false };
-    const res = await call(
-      `/api/import/runs/${runId}/lists/101/chunks/0`,
-      jsonInit("PUT", { meta, items: [] }, other),
+    serveKakaoList();
+    const first = await start(owner);
+    expect(
+      (await call(`/api/import/runs/${first.body.runId}/lists/999/pages/0`, post(owner))).status,
+    ).toBe(404);
+    expect(
+      (await call(`/api/import/runs/${first.body.runId}/lists/101/pages/0`, post(other))).status,
+    ).toBe(404);
+    await start(owner);
+    const closed = await call(
+      `/api/import/runs/${first.body.runId}/lists/101/pages/0`,
+      post(owner),
     );
+    expect(closed.status).toBe(409);
+    expect(await closed.json()).toEqual({ error: "run_closed" });
+  });
+
+  it("no longer accepts import data from the app", async () => {
+    const cookie = await devLogin("111");
+    serveKakaoList();
+    const { body } = await start(cookie);
+    const res = await call(`/api/import/runs/${body.runId}/lists/101/chunks/0`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ meta: { externalId: "101", name: "x", followed: false }, items: [] }),
+    });
     expect(res.status).toBe(404);
-  });
-
-  it("rejects a chunk over 500 items and a folder mismatch", async () => {
-    const cookie = await devLogin("111");
-    const { runId } = (await (
-      await call("/api/import/runs", jsonInit("POST", START, cookie))
-    ).json()) as { runId: string };
-    const meta = { externalId: "101", name: "x", followed: false };
-    const items = Array.from({ length: 501 }, (_, i) => ({
-      favoriteSeq: String(i),
-      placeKey: `P${i}`,
-      title: "t",
-      position: i,
-    }));
-    expect(
-      (
-        await call(
-          `/api/import/runs/${runId}/lists/101/chunks/0`,
-          jsonInit("PUT", { meta, items }, cookie),
-        )
-      ).status,
-    ).toBe(400);
-    expect(
-      (
-        await call(
-          `/api/import/runs/${runId}/lists/999/chunks/0`,
-          jsonInit("PUT", { meta, items: [] }, cookie),
-        )
-      ).status,
-    ).toBe(400);
-  });
-
-  it("answers 409 for a superseded run", async () => {
-    const cookie = await devLogin("111");
-    const first = (await (
-      await call("/api/import/runs", jsonInit("POST", START, cookie))
-    ).json()) as { runId: string };
-    await call("/api/import/runs", jsonInit("POST", START, cookie));
-    const meta = { externalId: "101", name: "x", followed: false };
-    const res = await call(
-      `/api/import/runs/${first.runId}/lists/101/chunks/0`,
-      jsonInit("PUT", { meta, items: [] }, cookie),
-    );
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "run_closed" });
-  });
-});
-
-describe("import hardening (security review)", () => {
-  it("does not follow a redirect from kakao-list, so the secret can't travel to another host", async () => {
-    const cookie = await devLogin("111");
-    let leaked = false;
-    let contacted = false;
-    network.use(
-      http.get(
-        KAKAO_LIST,
-        () =>
-          new HttpResponse(null, {
-            status: 302,
-            headers: { location: "https://evil.example/steal" },
-          }),
-      ),
-      http.get("https://evil.example/steal", ({ request }) => {
-        contacted = true;
-        leaked = (request.headers.get("authorization") ?? "") !== "";
-        return HttpResponse.json(baseContract("111"));
-      }),
-    );
-    const res = await call("/api/import/kakao/source", { headers: { cookie } });
-    expect(res.status).toBe(502);
-    expect(leaked).toBe(false);
-    expect(contacted).toBe(false);
-  });
-
-  it("rejects an import chunk body over 2 MB with 413", async () => {
-    const cookie = await devLogin("111");
-    const { runId } = (await (
-      await call("/api/import/runs", jsonInit("POST", START, cookie))
-    ).json()) as { runId: string };
-    const meta = { externalId: "101", name: "x", followed: false };
-    const items = Array.from({ length: 450 }, (_, i) => ({
-      favoriteSeq: String(i),
-      placeKey: `P${i}`,
-      title: "t",
-      position: i,
-      kakaoNote: "가".repeat(2_000),
-    }));
-    const res = await call(
-      `/api/import/runs/${runId}/lists/101/chunks/0`,
-      jsonInit("PUT", { meta, items }, cookie),
-    );
-    expect(res.status).toBe(413);
   });
 });

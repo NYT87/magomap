@@ -54,10 +54,32 @@ export function toAnyRow(table: SyncTable, row: Record<string, unknown>): AnyRow
   return fromDbRow(table, row as never) as AnyRow;
 }
 
-/** `column IN (<values>)` with the values bound as ONE JSON parameter (stays under D1's 100-param limit). */
+const MAX_JSON_BYTES = 900_000;
+const encoder = new TextEncoder();
+
+/**
+ * `column IN (<values>)` with the values bound as JSON parameters, split so each stays well
+ * under D1's 1 MB limit (one parameter for normal sizes; OR-ed groups for very large lists).
+ */
 export function inJson(db: Db, column: string, values: readonly string[]): RawBuilder<boolean> {
-  const payload = JSON.stringify(values);
-  return db.dialect === "sqlite"
-    ? sql<boolean>`${sql.ref(column)} IN (SELECT value FROM json_each(${payload}))`
-    : sql<boolean>`${sql.ref(column)} IN (SELECT jsonb_array_elements_text(${payload}::jsonb))`;
+  const groups: string[][] = [[]];
+  let bytes = 2;
+  for (const value of values) {
+    const size = encoder.encode(JSON.stringify(value)).length + 1;
+    const current = groups[groups.length - 1] as string[];
+    if (current.length > 0 && bytes + size > MAX_JSON_BYTES) {
+      groups.push([]);
+      bytes = 2;
+    }
+    (groups[groups.length - 1] as string[]).push(value);
+    bytes += size;
+  }
+  const one = (group: string[]) => {
+    const payload = JSON.stringify(group);
+    return db.dialect === "sqlite"
+      ? sql<boolean>`${sql.ref(column)} IN (SELECT value FROM json_each(${payload}))`
+      : sql<boolean>`${sql.ref(column)} IN (SELECT jsonb_array_elements_text(${payload}::jsonb))`;
+  };
+  if (groups.length === 1) return one(groups[0] as string[]);
+  return sql<boolean>`(${sql.join(groups.map(one), sql` OR `)})`;
 }

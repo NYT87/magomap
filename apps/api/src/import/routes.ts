@@ -1,151 +1,191 @@
+// The server-driven import: the Worker fetches the caller's own provider data from kakao-list,
+// one list summary call and one ≤500-item page per request. The app only says "next page";
+// it never supplies import data, so it can't change shared lists or places.
 import {
   completeImportRun,
   finishImportList,
+  ImportConflictError,
   importListChunk,
   latestImportRun,
   RunClosedError,
   RunNotFoundError,
+  runSnapshot,
   startImportRun,
 } from "@magomap/db/stores/importRuns";
-import { importItemsChunkSchema, importListMetaSchema, providerNameSchema } from "@magomap/domain";
+import { LIMITS } from "@magomap/domain";
+import { KAKAO, kakaoItemsToImport, kakaoListsToImport } from "@magomap/domain/providers/kakao";
 import { type Context, Hono } from "hono";
-import { z } from "zod";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
-
-const CHUNK_BYTES = 2_000_000;
 
 export const importRoutes = new Hono<AppEnv>();
 importRoutes.use("/import/*", requireUser);
 
-async function kakaoIdentity(c: Context<AppEnv>): Promise<string | null> {
+const PAGE = LIMITS.importChunkItems;
+
+class SnapshotChangedError extends Error {}
+
+class UpstreamError extends Error {
+  constructor(readonly code: "no_snapshot" | "kakao_list_unavailable") {
+    super(code);
+  }
+}
+
+async function kakaoIdentity(c: Context<AppEnv>): Promise<string> {
   const row = await c.var.db.kysely
     .selectFrom("identities")
     .select("provider_user_id")
     .where("user_id", "=", c.var.userId)
     .where("provider", "=", "kakao")
     .executeTakeFirst();
-  return row?.provider_user_id ?? null;
+  if (!row) throw new UpstreamError("no_snapshot");
+  return row.provider_user_id;
 }
 
-/** Runs a store call, mapping run errors to 404 / 409. */
-async function onRun<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
+/** GET from kakao-list for the caller's own Kakao id; never follows redirects (the secret stays put). */
+async function fromKakaoList(
+  c: Context<AppEnv>,
+  path: string,
+  query: Record<string, string> = {},
+): Promise<unknown> {
+  const url = new URL(`/api/integrations/magomap${path}`, c.env.KAKAO_LIST_URL);
+  url.searchParams.set("kakaoUserId", await kakaoIdentity(c));
+  for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+  let res: Response;
   try {
-    return c.json(await fn());
-  } catch (error) {
-    if (error instanceof RunNotFoundError) return c.json({ error: "not_found" }, 404);
-    if (error instanceof RunClosedError) return c.json({ error: "run_closed" }, 409);
-    throw error;
-  }
-}
-
-importRoutes.get("/import/kakao/source", async (c) => {
-  const kakaoUserId = await kakaoIdentity(c);
-  if (!kakaoUserId) return c.json({ error: "no_snapshot" }, 404);
-  const url = new URL("/api/integrations/magomap/snapshot", c.env.KAKAO_LIST_URL);
-  url.searchParams.set("kakaoUserId", kakaoUserId);
-  let upstream: Response;
-  try {
-    // Never follow redirects: the secret must not travel to another host.
-    upstream = await fetch(url, {
+    res = await fetch(url, {
       headers: { authorization: `Bearer ${c.env.MAGOMAP_IMPORT_SECRET}` },
       redirect: "manual",
     });
   } catch {
-    return c.json({ error: "kakao_list_unavailable" }, 502);
+    throw new UpstreamError("kakao_list_unavailable");
   }
-  if (upstream.status === 200) {
-    // Stream the body through without parsing it (CPU budget).
-    return new Response(upstream.body, {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+  if (res.status === 200) {
+    try {
+      return await res.json();
+    } catch {
+      throw new UpstreamError("kakao_list_unavailable");
+    }
   }
-  if (upstream.status === 404) {
-    const body = (await upstream.json().catch(() => null)) as { error?: unknown } | null;
-    if (body?.error === "no_snapshot") return c.json({ error: "no_snapshot" }, 404);
+  if (res.status === 404) {
+    const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+    if (body?.error === "no_snapshot") throw new UpstreamError("no_snapshot");
   }
-  return c.json({ error: "kakao_list_unavailable" }, 502);
-});
+  throw new UpstreamError("kakao_list_unavailable");
+}
 
-importRoutes.post("/import/runs", async (c) => {
-  const body = z
-    .object({
-      provider: providerNameSchema,
-      complete: z.boolean(),
-      subscriptionKnown: z.boolean(),
-      importedAt: z.string().min(1).max(40),
-    })
-    .safeParse(await c.req.json().catch(() => null));
-  if (!body.success) return c.json({ error: "invalid" }, 400);
-  return c.json(await startImportRun(c.var.db, c.var.userId, body.data, Date.now()));
-});
-
-const listParam = (c: Context<AppEnv>) => {
-  const value = c.req.param("externalId") ?? "";
-  return value.length > 0 && value.length <= 200 ? value : null;
-};
-
-importRoutes.put("/import/runs/:runId/lists/:externalId/chunks/:index", async (c) => {
-  const externalId = listParam(c);
-  // A chunk is at most 500 places; real ones are far below 2 MB. Keeps a request within the CPU budget.
-  if (Number(c.req.header("content-length") ?? 0) > CHUNK_BYTES) {
-    return c.json({ error: "too_large" }, 413);
-  }
-  const text = await c.req.text();
-  if (new TextEncoder().encode(text).length > CHUNK_BYTES)
-    return c.json({ error: "too_large" }, 413);
-  let raw: { meta?: unknown; items?: unknown } | null = null;
+async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
   try {
-    raw = JSON.parse(text) as { meta?: unknown; items?: unknown };
-  } catch {
-    raw = null;
+    return c.json(await fn());
+  } catch (error) {
+    if (error instanceof UpstreamError) {
+      return error.code === "no_snapshot"
+        ? c.json({ error: "no_snapshot" }, 404)
+        : c.json({ error: "kakao_list_unavailable" }, 502);
+    }
+    if (error instanceof RunNotFoundError) return c.json({ error: "not_found" }, 404);
+    if (error instanceof RunClosedError) return c.json({ error: "run_closed" }, 409);
+    if (error instanceof ImportConflictError) return c.json({ error: "list_conflict" }, 409);
+    if (error instanceof SnapshotChangedError) return c.json({ error: "snapshot_changed" }, 409);
+    throw error;
   }
-  const meta = importListMetaSchema.safeParse(raw?.meta);
-  const items = importItemsChunkSchema.safeParse(raw?.items);
-  if (
-    externalId === null ||
-    !meta.success ||
-    !items.success ||
-    meta.data.externalId !== externalId
-  ) {
-    return c.json({ error: "invalid" }, 400);
-  }
-  return onRun(c, () =>
-    importListChunk(
+}
+
+importRoutes.post("/import/runs", (c) =>
+  handled(c, async () => {
+    let snapshot: ReturnType<typeof kakaoListsToImport>;
+    try {
+      snapshot = kakaoListsToImport(await fromKakaoList(c, "/lists"));
+    } catch (error) {
+      if (error instanceof UpstreamError) throw error;
+      throw new UpstreamError("kakao_list_unavailable");
+    }
+    let started: { runId: string };
+    try {
+      started = await startImportRun(
+        c.var.db,
+        c.var.userId,
+        { ...snapshot, provider: KAKAO, lists: snapshot.lists },
+        Date.now(),
+      );
+    } catch (error) {
+      // A snapshot dated in the future (or unreadable) is kakao-list's problem, not the user's.
+      if (error instanceof Error && error.message === "Invalid importedAt")
+        throw new UpstreamError("kakao_list_unavailable");
+      throw error;
+    }
+    return {
+      runId: started.runId,
+      lists: snapshot.lists.map((l) => ({
+        externalId: l.externalId,
+        name: l.name,
+        itemCount: l.itemCount,
+      })),
+    };
+  }),
+);
+
+importRoutes.post("/import/runs/:runId/lists/:externalId/pages/:index", (c) =>
+  handled(c, async () => {
+    const runId = c.req.param("runId");
+    const externalId = c.req.param("externalId");
+    const index = Number(c.req.param("index"));
+    const run = await runSnapshot(c.var.db, c.var.userId, runId);
+    const meta = run.lists.find((l) => l.externalId === externalId);
+    if (!meta || !Number.isSafeInteger(index) || index < 0) throw new RunNotFoundError();
+    let page: ReturnType<typeof kakaoItemsToImport>;
+    try {
+      page = kakaoItemsToImport(
+        await fromKakaoList(c, `/lists/${encodeURIComponent(externalId)}/items`, {
+          offset: String(index * PAGE),
+          limit: String(PAGE),
+        }),
+      );
+    } catch (error) {
+      if (error instanceof UpstreamError) throw error;
+      throw new UpstreamError("kakao_list_unavailable");
+    }
+    if (Date.parse(page.importedAt) !== run.snapshotAt || page.externalId !== externalId) {
+      // kakao-list was re-imported since this run started: restart the import.
+      throw new SnapshotChangedError();
+    }
+    const { itemCount: _count, ...listMeta } = meta;
+    const summary = await importListChunk(
+      c.var.db,
+      c.var.userId,
+      runId,
+      listMeta,
+      page.items,
+      Date.now(),
+    );
+    return { ...summary, done: page.offset + page.items.length >= page.total };
+  }),
+);
+
+importRoutes.post("/import/runs/:runId/lists/:externalId/finish", (c) =>
+  handled(c, () =>
+    finishImportList(
       c.var.db,
       c.var.userId,
       c.req.param("runId"),
-      meta.data,
-      items.data,
+      c.req.param("externalId"),
       Date.now(),
     ),
-  );
-});
+  ),
+);
 
-importRoutes.post("/import/runs/:runId/lists/:externalId/finish", async (c) => {
-  const externalId = listParam(c);
-  if (externalId === null) return c.json({ error: "invalid" }, 400);
-  return onRun(c, () =>
-    finishImportList(c.var.db, c.var.userId, c.req.param("runId"), externalId, Date.now()),
-  );
-});
-
-importRoutes.post("/import/runs/:runId/complete", async (c) => {
-  const body = z
-    .object({ externalIds: z.array(z.string().min(1).max(200)).max(500) })
-    .safeParse(await c.req.json().catch(() => null));
-  if (!body.success) return c.json({ error: "invalid" }, 400);
-  return onRun(c, () =>
-    completeImportRun(
+importRoutes.post("/import/runs/:runId/complete", (c) =>
+  handled(c, async () => {
+    const run = await runSnapshot(c.var.db, c.var.userId, c.req.param("runId"));
+    return completeImportRun(
       c.var.db,
       c.var.userId,
       c.req.param("runId"),
-      body.data.externalIds,
+      run.lists.map((l) => l.externalId),
       Date.now(),
-    ),
-  );
-});
+    );
+  }),
+);
 
 importRoutes.get("/import/runs/latest", async (c) =>
   c.json(await latestImportRun(c.var.db, c.var.userId)),

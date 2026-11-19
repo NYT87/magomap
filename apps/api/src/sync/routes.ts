@@ -3,6 +3,7 @@ import { LIMITS, type Mutation, pushEnvelopeSchema } from "@magomap/domain";
 import { Hono } from "hono";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
+import { verifyPushedPlace } from "../search/signing";
 
 export const syncRoutes = new Hono<AppEnv>();
 
@@ -23,11 +24,15 @@ syncRoutes.post("/sync/push", async (c) => {
   }
   const envelope = pushEnvelopeSchema.safeParse(body);
   if (!envelope.success) return c.json({ error: "invalid" }, 400);
+  const now = Date.now();
   const result = await applyPush(
     c.var.db,
     c.var.userId,
     envelope.data.mutations as Mutation[],
-    Date.now(),
+    now,
+    {
+      verifySource: (place) => verifyPushedPlace(c.env.SIGNING_SECRET, place, now),
+    },
   );
   return c.json(result);
 });

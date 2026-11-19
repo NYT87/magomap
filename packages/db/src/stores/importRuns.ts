@@ -1,6 +1,7 @@
 import type {
   ImportItem,
   ImportList,
+  ImportListSummary,
   ImportRunInfo,
   ImportSummary,
   PlaceRow,
@@ -17,17 +18,31 @@ import {
   userListRowId,
   userPlaceRowId,
 } from "@magomap/domain/ids";
+import { CLOCK_ALLOWANCE_MS } from "@magomap/domain/limits";
 import { type RawBuilder, sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
 import { inJson, toAnyRow, toDbRow } from "../mapping";
 import { grantStatements, type Row, type WriteContext, withWrite, writeStatements } from "../write";
-import { applyLocationUpdate, latestValidUntil, readByIds } from "./sync";
+import {
+  applyLocationUpdate,
+  assertUserExists,
+  latestValidUntil,
+  readByIds,
+  userExists,
+} from "./sync";
 
 export class RunClosedError extends Error {
   constructor() {
     super("This import run is no longer running");
   }
 }
+/** A list row with this id exists but isn't that provider's list; the import refuses to touch it. */
+export class ImportConflictError extends Error {
+  constructor() {
+    super("A list with this id exists and isn't this provider's list");
+  }
+}
+
 export class RunNotFoundError extends Error {
   constructor() {
     super("Import run not found");
@@ -48,6 +63,8 @@ const EMPTY: ImportSummary = {
 interface RunState {
   summary: ImportSummary;
   finishedLists: number;
+  /** The provider's list summaries the server fetched when the run started. */
+  lists?: ImportListSummary[];
 }
 
 function add(a: ImportSummary, b: Partial<ImportSummary>): ImportSummary {
@@ -113,30 +130,49 @@ const same = (a: Row, b: Row) => Object.keys(b).every((k) => k === "seq" || a[k]
 export async function startImportRun(
   db: Db,
   userId: string,
-  opts: { provider: string; complete: boolean; subscriptionKnown: boolean; importedAt: string },
+  opts: {
+    provider: string;
+    complete: boolean;
+    subscriptionKnown: boolean;
+    importedAt: string;
+    lists?: ImportListSummary[];
+  },
   now: number,
 ): Promise<{ runId: string }> {
   const runId = newId();
   const snapshotAt = Date.parse(opts.importedAt);
-  const summary = JSON.stringify({ summary: EMPTY, finishedLists: 0 } satisfies RunState);
-  return withWrite(db, async (ctx) => ({
-    statements: [
-      db.kysely
-        .updateTable("import_runs")
-        .set({ status: "superseded", finished_at: now })
-        .where("user_id", "=", userId)
-        .where("status", "=", "running")
-        .where(ctx.guard),
-      {
-        compile: () =>
-          sql`INSERT INTO import_runs (user_id, id, provider, started_at, finished_at, status, complete, subscription_known, snapshot_at, summary_json, error)
+  // Refused, never clamped: a future snapshot would freeze shared data for everyone.
+  if (!Number.isFinite(snapshotAt) || snapshotAt > now + CLOCK_ALLOWANCE_MS) {
+    throw new Error("Invalid importedAt");
+  }
+  await assertUserExists(db, userId);
+  const summary = JSON.stringify({
+    summary: EMPTY,
+    finishedLists: 0,
+    lists: opts.lists ?? [],
+  } satisfies RunState);
+  return withWrite(
+    db,
+    async (ctx) => ({
+      statements: [
+        db.kysely
+          .updateTable("import_runs")
+          .set({ status: "superseded", finished_at: now })
+          .where("user_id", "=", userId)
+          .where("status", "=", "running")
+          .where(ctx.guard),
+        {
+          compile: () =>
+            sql`INSERT INTO import_runs (user_id, id, provider, started_at, finished_at, status, complete, subscription_known, snapshot_at, summary_json, error)
             SELECT ${userId}, ${runId}, ${opts.provider}, ${now}, NULL, 'running', ${opts.complete ? 1 : 0},
               ${opts.subscriptionKnown ? 1 : 0}, ${Number.isFinite(snapshotAt) ? snapshotAt : now}, ${summary}, NULL
             WHERE ${ctx.guard}`.compile(db.kysely),
-      },
-    ],
-    result: { runId },
-  }));
+        },
+      ],
+      result: { runId },
+    }),
+    userExists(userId),
+  );
 }
 
 /** Imports one chunk (≤ 500 items) of one provider list. */
@@ -207,6 +243,14 @@ async function decideChunk(
 
   // The shared list
   const existingList = lists.get(listId);
+  if (
+    existingList &&
+    (existingList.provider !== provider || existingList.external_id !== meta.externalId)
+  ) {
+    throw new ImportConflictError();
+  }
+  // An older snapshot than the list's own never changes what's in the list (it still grants access).
+  const listIsCurrent = !existingList || isNewer(snapshotAt, existingList);
   const listRow: Row = {
     id: listId,
     provider,
@@ -264,7 +308,7 @@ async function decideChunk(
 
   // Places, sources, memberships and imported notes
   const seenPlaces = new Map<string, Row>();
-  for (const item of items) {
+  for (const item of listIsCurrent ? items : []) {
     const placeId = placeIdOf(item);
     const existing = seenPlaces.get(placeId) ?? places.get(placeId);
     if (!existing) {
@@ -369,6 +413,8 @@ async function decideChunk(
 
     const memberId = providerItemRowId(provider, meta.externalId, item.externalId);
     const member = members.get(memberId);
+    // Everyone who has this list now sees this place: re-stamp an existing one so they receive it.
+    if (!member && places.has(placeId)) grantPlaces.push(placeId);
     if (isNewer(snapshotAt, member)) {
       const memberRow: Row = {
         id: memberId,
@@ -476,7 +522,9 @@ export async function finishImportList(
       const { run, state } = await runningRun(db, userId, runId);
       const listId = providerListRowId(run.provider, externalId);
       const list = (await readByIds(db, userId, "lists", [listId])).get(listId);
-      const notSeen = sql<boolean>`list_id = ${listId} AND removed_at_provider IS NULL AND id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`;
+      const snapshotAt = Number(run.snapshot_at);
+      // Unseen items not already protected by a newer snapshot; the removal records this snapshot.
+      const notSeen = sql<boolean>`list_id = ${listId} AND (provider_snapshot_at IS NULL OR provider_snapshot_at < ${snapshotAt}) AND id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`;
       // An incomplete or older snapshot may hold a partial or outdated list: it never marks removals.
       const removing =
         run.complete === 1 && isNewer(Number(run.snapshot_at), list)
@@ -486,6 +534,7 @@ export async function finishImportList(
                   .selectFrom("list_items")
                   .select(sql<number>`count(*)`.as("n"))
                   .where(notSeen)
+                  .where("removed_at_provider", "is", null)
                   .executeTakeFirst()
               )?.n ?? 0,
             )
@@ -496,15 +545,20 @@ export async function finishImportList(
           db,
           userId,
           runId,
-          { summary: add(state.summary, counts), finishedLists: state.finishedLists + 1 },
+          { ...state, summary: add(state.summary, counts), finishedLists: state.finishedLists + 1 },
           ctx,
         ),
       ];
-      if (removing > 0) {
+      if (run.complete === 1 && isNewer(snapshotAt, list)) {
         statements.unshift(
           db.kysely
             .updateTable("list_items")
-            .set({ removed_at_provider: now, updated_at: now, seq: ctx.seq })
+            .set({
+              removed_at_provider: sql`COALESCE(removed_at_provider, ${now})`,
+              provider_snapshot_at: snapshotAt,
+              updated_at: now,
+              seq: ctx.seq,
+            })
             .where(notSeen)
             .where(ctx.guard),
         );
@@ -564,7 +618,12 @@ export async function completeImportRun(
           statements.push(
             db.kysely
               .updateTable("lists")
-              .set({ removed_at_provider: now, updated_at: now, seq: ctx.seq })
+              .set({
+                removed_at_provider: now,
+                provider_snapshot_at: Number(run.snapshot_at),
+                updated_at: now,
+                seq: ctx.seq,
+              })
               .where(inJson(db, "id", everyone))
               .where(ctx.guard),
           );
@@ -621,4 +680,14 @@ export async function latestImportRun(db: Db, userId: string): Promise<ImportRun
     finishedAt: run.finished_at,
     summary: state?.summary ?? null,
   };
+}
+
+/** The running run's snapshot time and fetched list summaries (for the server-driven import). */
+export async function runSnapshot(
+  db: Db,
+  userId: string,
+  runId: string,
+): Promise<{ provider: string; snapshotAt: number; lists: ImportListSummary[] }> {
+  const { run, state } = await runningRun(db, userId, runId);
+  return { provider: run.provider, snapshotAt: Number(run.snapshot_at), lists: state.lists ?? [] };
 }

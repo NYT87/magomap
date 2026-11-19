@@ -2,8 +2,7 @@ import { CLOCK_ALLOWANCE_MS } from "@magomap/domain";
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
-import { applyPush } from "./sync";
-import { addUser, del, note, searchedPlace, T0, up } from "./testkit";
+import { addUser, del, note, push, searchedPlace, T0, uid, up } from "./testkit";
 
 const A = "user-a";
 const B = "user-b";
@@ -64,7 +63,7 @@ async function _insertProviderList(db: Db, id = "l_kakao_9") {
 forEachDialect("push review regressions", (makeDb) => {
   it("rejects text Postgres can't store in one mutation only", async () => {
     const db = await setup(makeDb);
-    const res = await applyPush(
+    const res = await push(
       db,
       A,
       [
@@ -79,7 +78,7 @@ forEachDialect("push review regressions", (makeDb) => {
 
   it("reports superseded mutations with the final outcome", async () => {
     const db = await setup(makeDb);
-    const res = await applyPush(
+    const res = await push(
       db,
       A,
       [
@@ -93,42 +92,40 @@ forEachDialect("push review regressions", (makeDb) => {
 
   it("keeps a row deleted before its create arrived, and accepts a newer create", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(db, A, [del("visit_notes", "n1", T0 + 5)], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(db, A, [del("visit_notes", "n1", T0 + 5)], T0);
     expect(
-      (await applyPush(db, A, [up("visit_notes", note("n1", P1), T0 + 3)], T0)).results[0]?.status,
+      (await push(db, A, [up("visit_notes", note("n1", P1), T0 + 3)], T0)).results[0]?.status,
     ).toBe("ignored_stale");
-    expect(await mine(db, "visit_notes", A, "n1")).toHaveLength(0);
+    expect(await mine(db, "visit_notes", A, uid("n1"))).toHaveLength(0);
     expect(
-      (await applyPush(db, A, [up("visit_notes", note("n1", P1), T0 + 9)], T0)).results[0]?.status,
+      (await push(db, A, [up("visit_notes", note("n1", P1), T0 + 9)], T0)).results[0]?.status,
     ).toBe("applied");
   });
 
   it("answers clock_ahead for a time ahead of the server, and accepts it later", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
     const ahead = up("visit_notes", note("n1", P1), T0 + CLOCK_ALLOWANCE_MS + 120_000);
-    expect((await applyPush(db, A, [ahead], T0)).results[0]).toMatchObject({
+    expect((await push(db, A, [ahead], T0)).results[0]).toMatchObject({
       status: "rejected",
       reason: "clock_ahead",
     });
-    expect((await applyPush(db, A, [ahead], T0 + 180_000)).results[0]?.status).toBe("applied");
+    expect((await push(db, A, [ahead], T0 + 180_000)).results[0]?.status).toBe("applied");
   });
 
   it("never lets a retry overwrite a newer edit", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
     const original = up("visit_notes", note("n1", P1, { body: "old" }), T0 + 30_000, "orig");
-    await applyPush(db, A, [original], T0);
-    await applyPush(
+    await push(db, A, [original], T0);
+    await push(
       db,
       A,
       [up("visit_notes", note("n1", P1, { body: "newer" }), T0 + 120_000)],
       T0 + 120_000,
     );
-    expect((await applyPush(db, A, [original], T0 + 600_000)).results[0]?.status).toBe(
-      "ignored_stale",
-    );
-    expect((await mine(db, "visit_notes", A, "n1"))[0]?.body).toBe("newer");
+    expect((await push(db, A, [original], T0 + 600_000)).results[0]?.status).toBe("ignored_stale");
+    expect((await mine(db, "visit_notes", A, uid("n1")))[0]?.body).toBe("newer");
   });
 });

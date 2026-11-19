@@ -10,7 +10,7 @@ import {
   userListRowId,
   userPlaceRowId,
 } from "./ids";
-import { mutationRowSchemas, pushEnvelopeSchema } from "./sync";
+import { mutationRowSchemas, pushEnvelopeSchema, searchSignaturePayload } from "./sync";
 
 const mutation = (i: number, table = "visit_notes") => ({
   mutationId: `m${i}`,
@@ -61,7 +61,7 @@ describe("row schemas", () => {
   it("accepts an https link", () => {
     const row = {
       ...baseRow,
-      id: "l1",
+      id: newId(),
       placeId: "p_kakao_1",
       url: "https://example.com/a",
       title: null,
@@ -86,7 +86,7 @@ describe("row schemas", () => {
   it("accepts a valid visit note", () => {
     const row = {
       ...baseRow,
-      id: "n1",
+      id: newId(),
       placeId: "p_kakao_1",
       visitedOn: "2026-11-19",
       body: "창가 자리에서 바다가 보였어요.",
@@ -100,7 +100,7 @@ describe("row schemas", () => {
   it("rejects a visit note body over 20,000 characters", () => {
     const row = {
       ...baseRow,
-      id: "n1",
+      id: newId(),
       placeId: "p_kakao_1",
       visitedOn: null,
       body: "가".repeat(20_001),
@@ -121,7 +121,7 @@ describe("ids", () => {
     expect(ownItemRowId("list-a", "p_kakao_1")).toBe("li_list-a_p_kakao_1");
     expect(userListRowId("l_kakao_101")).toBe("ul_l_kakao_101");
     expect(userPlaceRowId("p_kakao_1")).toBe("up_p_kakao_1");
-    expect(importedNoteRowId("p_kakao_1", "l_kakao_101")).toBe("kn_p_kakao_1_l_kakao_101");
+    expect(importedNoteRowId("p_kakao_1", "l_kakao_101")).toBe("kn_p%5Fkakao%5F1_l%5Fkakao%5F101");
   });
 
   it("makes UUIDv7 ids", () => {
@@ -147,7 +147,7 @@ describe("push envelope tables", () => {
 
 describe("text and numbers Postgres can store", () => {
   const note = (body: string) => ({
-    id: "n1",
+    id: newId(),
     placeId: "p_kakao_1",
     visitedOn: null,
     body,
@@ -187,5 +187,91 @@ describe("text and numbers Postgres can store", () => {
       deletedAt: null,
     };
     expect(mutationRowSchemas.list_items.safeParse(item).success).toBe(false);
+  });
+});
+
+describe("review fixes: ids and signatures", () => {
+  it("builds unambiguous ids even when parts contain separators", () => {
+    expect(providerItemRowId("kakao", "a_b", "c")).not.toBe(providerItemRowId("kakao", "a", "b_c"));
+    expect(pinRowId("kakao", "a_b", "c")).not.toBe(pinRowId("kakao", "a", "b_c"));
+    expect(placeRowId("kakao", "x_y")).not.toBe(`${placeRowId("kakao", "x")}_y`);
+    expect(placeRowId("kakao", "27324155")).toBe("p_kakao_27324155");
+  });
+
+  it("requires UUIDs for own lists, notes and links", () => {
+    const list = {
+      id: "l_kakao_1",
+      provider: null,
+      externalId: null,
+      name: "x",
+      description: null,
+      color: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    expect(mutationRowSchemas.lists.safeParse(list).success).toBe(false);
+    expect(mutationRowSchemas.lists.safeParse({ ...list, id: newId() }).success).toBe(true);
+    const link = {
+      ...baseRow,
+      id: "custom-id",
+      placeId: "p_kakao_1",
+      url: "https://example.com",
+      title: null,
+    };
+    expect(mutationRowSchemas.links.safeParse(link).success).toBe(false);
+    expect(mutationRowSchemas.links.safeParse({ ...link, id: newId() }).success).toBe(true);
+  });
+
+  it("describes a search result as one canonical string to sign", () => {
+    const result = {
+      provider: "kakao",
+      externalId: "1",
+      title: "카페",
+      address: "제주",
+      roadAddress: null,
+      category: null,
+      phone: null,
+      lat: 33.4,
+      lng: 126.3,
+    };
+    expect(searchSignaturePayload(result, 1000)).toBe(searchSignaturePayload({ ...result }, 1000));
+    expect(searchSignaturePayload(result, 1000)).not.toBe(
+      searchSignaturePayload({ ...result, lat: 33.5 }, 1000),
+    );
+    expect(searchSignaturePayload(result, 1000)).not.toBe(searchSignaturePayload(result, 1001));
+  });
+});
+
+describe("pushed places carry their search signature", () => {
+  it("keeps the signature and signing time when parsing a place", () => {
+    const row = {
+      id: "p_kakao_42",
+      title: "t",
+      address: null,
+      roadAddress: null,
+      addressSource: "search",
+      category: null,
+      phone: null,
+      lat: 33.46,
+      lng: 126.31,
+      providerSnapshotAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+      source: { provider: "kakao", externalId: "42", signature: "abc", signedAt: 5 },
+    };
+    expect(mutationRowSchemas.places.parse(row).source).toEqual({
+      provider: "kakao",
+      externalId: "42",
+      signature: "abc",
+      signedAt: 5,
+    });
+    expect(
+      mutationRowSchemas.places.safeParse({
+        ...row,
+        source: { provider: "kakao", externalId: "42" },
+      }).success,
+    ).toBe(false);
   });
 });

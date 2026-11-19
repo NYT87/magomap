@@ -1,7 +1,12 @@
 // The Kakao provider adapter: maps kakao-list's import contract (v1) into the neutral ImportContract.
 // This is the only place in the domain package that knows Kakao's field names.
 import { z } from "zod";
-import { type ImportContract, importContractSchema } from "../importContract";
+import {
+  type ImportContract,
+  type ImportItemsPage,
+  type ImportListsSnapshot,
+  importContractSchema,
+} from "../importContract";
 import { LIMITS } from "../limits";
 import { position, storableText } from "../sync";
 
@@ -88,4 +93,85 @@ export function kakaoContractToImport(raw: unknown): ImportContract {
       }),
     ),
   }) as ImportContract;
+}
+
+// --- Paged endpoints (the server fetches these itself; the app never supplies import data) ---
+
+const kakaoListSummary = z.object({
+  kakaoFolderId: z.number().int().nonnegative(),
+  name: required(LIMITS.importTitle),
+  description: text(LIMITS.importText).optional(),
+  icon: text(200).optional(),
+  subscribed: z.boolean(),
+  ownerName: text(LIMITS.importTitle).optional(),
+  itemCount: z.number().int().nonnegative().max(LIMITS.importListItems),
+});
+
+/** kakao-list's GET /api/integrations/magomap/lists body. */
+export const kakaoListsSchema = z.object({
+  contractVersion: z.literal(1),
+  kakaoUserId: required(200),
+  importedAt: required(40),
+  complete: z.boolean(),
+  subscriptionKnown: z.boolean().optional(),
+  lists: z.array(kakaoListSummary).max(LIMITS.importLists),
+});
+
+/** kakao-list's GET /api/integrations/magomap/lists/:folderId/items body. */
+export const kakaoItemsSchema = z.object({
+  contractVersion: z.literal(1),
+  kakaoFolderId: z.number().int().nonnegative(),
+  importedAt: required(40),
+  total: z.number().int().nonnegative().max(LIMITS.importListItems),
+  offset: z.number().int().nonnegative(),
+  items: z.array(kakaoItem).max(LIMITS.importChunkItems),
+});
+
+export type KakaoLists = z.infer<typeof kakaoListsSchema>;
+export type KakaoItems = z.infer<typeof kakaoItemsSchema>;
+
+export function kakaoListsToImport(raw: unknown): ImportListsSnapshot {
+  const c = kakaoListsSchema.parse(raw);
+  return {
+    provider: KAKAO,
+    importedAt: c.importedAt,
+    complete: c.complete,
+    subscriptionKnown: c.subscriptionKnown ?? false,
+    lists: c.lists.map((l) =>
+      defined({
+        externalId: String(l.kakaoFolderId),
+        name: l.name,
+        description: l.description,
+        followed: l.subscribed,
+        ownerName: l.ownerName,
+        itemCount: l.itemCount,
+      }),
+    ),
+  };
+}
+
+export function kakaoItemsToImport(raw: unknown): ImportItemsPage {
+  const c = kakaoItemsSchema.parse(raw);
+  return {
+    externalId: String(c.kakaoFolderId),
+    importedAt: c.importedAt,
+    total: c.total,
+    offset: c.offset,
+    items: c.items.map((i) =>
+      defined({
+        externalId: i.favoriteSeq,
+        placeExternalId: i.placeKey,
+        title: i.title,
+        address: i.address,
+        category: i.category,
+        phone: i.phone,
+        lat: i.lat,
+        lng: i.lng,
+        providerNote: i.kakaoNote,
+        providerColor: i.kakaoColor,
+        localNote: i.localNote,
+        position: i.position,
+      }),
+    ),
+  };
 }

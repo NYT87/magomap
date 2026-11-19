@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { signSearchResult } from "../src/search/signing";
 import { call, devLogin } from "./helpers";
 
 const T0 = 1_763_000_000_000;
-const place = {
+/** Signed at call time (in the Workers runtime the clock reads 0 at module load). */
+const signedPlace = () => ({
   id: "p_kakao_42",
   title: "바다정원 카페",
   address: "제주 애월읍",
@@ -16,8 +18,26 @@ const place = {
   createdAt: T0,
   updatedAt: T0,
   deletedAt: null,
-  source: { provider: "kakao", externalId: "42" },
-};
+  source: {
+    provider: "kakao",
+    externalId: "42",
+    ...signSearchResult(
+      "s".repeat(48),
+      {
+        provider: "kakao",
+        externalId: "42",
+        title: "바다정원 카페",
+        address: "제주 애월읍",
+        roadAddress: null,
+        category: "카페",
+        phone: null,
+        lat: 33.46,
+        lng: 126.31,
+      },
+      Date.now(),
+    ),
+  },
+});
 
 const json = (body: unknown, cookie?: string) => ({
   method: "POST",
@@ -54,6 +74,32 @@ describe("sync routes", () => {
     expect((await call("/api/sync/push", json(big, cookie))).status).toBe(413);
   });
 
+  it("refuses a place whose location doesn't match its search signature", async () => {
+    const cookie = await devLogin("111");
+    const tampered = { ...signedPlace(), lat: 37.5 };
+    const res = await call(
+      "/api/sync/push",
+      json(
+        {
+          mutations: [
+            {
+              mutationId: "m1",
+              table: "places",
+              op: "upsert",
+              id: "p_kakao_42",
+              row: tampered,
+              clientUpdatedAt: Date.now(),
+            },
+          ],
+        },
+        cookie,
+      ),
+    );
+    expect(await res.json()).toEqual({
+      results: [{ mutationId: "m1", status: "rejected", reason: "invalid" }],
+    });
+  });
+
   it("round-trips a push and a pull", async () => {
     const cookie = await devLogin("111");
     const push = await call(
@@ -66,8 +112,8 @@ describe("sync routes", () => {
               table: "places",
               op: "upsert",
               id: "p_kakao_42",
-              row: place,
-              clientUpdatedAt: T0 + 1,
+              row: signedPlace(),
+              clientUpdatedAt: Date.now(),
             },
           ],
         },

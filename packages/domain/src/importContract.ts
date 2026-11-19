@@ -88,3 +88,26 @@ export const importContractSchema = z.object({
     )
     .max(LIMITS.importLists),
 });
+
+/** A provider list as the server reads it before importing its items. */
+export interface ImportListSummary extends Omit<ImportList, "items"> {
+  itemCount: number;
+}
+
+/** The provider's list summaries, as fetched by the server at the start of an import. */
+export interface ImportListsSnapshot {
+  provider: string;
+  importedAt: string;
+  complete: boolean;
+  subscriptionKnown: boolean;
+  lists: ImportListSummary[];
+}
+
+/** One page (at most 500) of a list's items, as fetched by the server. */
+export interface ImportItemsPage {
+  externalId: string;
+  importedAt: string;
+  total: number;
+  offset: number;
+  items: ImportItem[];
+}

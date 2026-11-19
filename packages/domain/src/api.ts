@@ -21,6 +21,9 @@ export interface SearchResult {
   phone: string | null;
   lat: number;
   lng: number;
+  /** When the server signed this result, and its signature; pushed places must carry both. */
+  signedAt: number;
+  signature: string;
 }
 
 export interface ImportRunInfo {

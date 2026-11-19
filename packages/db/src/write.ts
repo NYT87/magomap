@@ -154,6 +154,25 @@ export function grantStatements(
         .where(inJson(db, "list_id", lists))
         .where(ctx.guard),
     );
+    // The list's places come with it.
+    const listed = sql`SELECT place_id FROM list_items WHERE ${inJson(db, "list_id", lists)}`;
+    out.push(
+      db.kysely
+        .updateTable("places")
+        .set(stamp)
+        .where(sql<boolean>`id IN (${listed})`)
+        .where(ctx.guard),
+      db.kysely
+        .updateTable("place_sources")
+        .set(stamp)
+        .where(sql<boolean>`place_id IN (${listed})`)
+        .where(ctx.guard),
+      db.kysely
+        .updateTable("place_locations")
+        .set(stamp)
+        .where(sql<boolean>`place_id IN (${listed})`)
+        .where(ctx.guard),
+    );
   }
   return out;
 }

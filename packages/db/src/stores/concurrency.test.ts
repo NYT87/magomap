@@ -1,8 +1,7 @@
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
-import { applyPush } from "./sync";
-import { addUser, del, interleaved, note, searchedPlace, T0, up } from "./testkit";
+import { addUser, del, interleaved, note, push, searchedPlace, T0, uid, up } from "./testkit";
 
 const A = "user-a";
 const B = "user-b";
@@ -63,16 +62,16 @@ async function _insertProviderList(db: Db, id = "l_kakao_9") {
 forEachDialect("push concurrency", (makeDb) => {
   it("reports a write another device beat as stale, with the winner", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [up("places", searchedPlace("1")), up("visit_notes", note("n1", P1), T0 + 1)],
       T0,
     );
     const racing = interleaved(db, () =>
-      applyPush(db, A, [up("visit_notes", note("n1", P1, { body: "B newer" }), T0 + 9)], T0),
+      push(db, A, [up("visit_notes", note("n1", P1, { body: "B newer" }), T0 + 9)], T0),
     );
-    const res = await applyPush(
+    const res = await push(
       racing,
       A,
       [up("visit_notes", note("n1", P1, { body: "A older" }), T0 + 5)],
@@ -83,20 +82,20 @@ forEachDialect("push concurrency", (makeDb) => {
 
   it("lets a newer delete that lands first beat an older create", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const racing = interleaved(db, () => applyPush(db, A, [del("visit_notes", "n1", T0 + 9)], T0));
-    const res = await applyPush(racing, A, [up("visit_notes", note("n1", P1), T0 + 5)], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    const racing = interleaved(db, () => push(db, A, [del("visit_notes", "n1", T0 + 9)], T0));
+    const res = await push(racing, A, [up("visit_notes", note("n1", P1), T0 + 5)], T0);
     expect(res.results[0]?.status).toBe("ignored_stale");
-    expect(await mine(db, "visit_notes", A, "n1")).toHaveLength(0);
+    expect(await mine(db, "visit_notes", A, uid("n1"))).toHaveLength(0);
   });
 
   it("adds no location history for a move another device's newer move beat", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1", { lat: 33 }), T0 + 1)], T0);
+    await push(db, A, [up("places", searchedPlace("1", { lat: 33 }), T0 + 1)], T0);
     const racing = interleaved(db, () =>
-      applyPush(db, B, [up("places", searchedPlace("1", { lat: 34 }), T0 + 9)], T0),
+      push(db, B, [up("places", searchedPlace("1", { lat: 34 }), T0 + 9)], T0),
     );
-    await applyPush(racing, A, [up("places", searchedPlace("1", { lat: 35 }), T0 + 5)], T0);
+    await push(racing, A, [up("places", searchedPlace("1", { lat: 35 }), T0 + 5)], T0);
     expect((await shared(db, "places", P1))[0]?.lat).toBe(34);
     expect(await shared(db, "place_locations")).toMatchObject([{ lat: 33 }]);
   });

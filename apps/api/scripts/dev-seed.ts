@@ -1,6 +1,5 @@
 // Signs in with dev login on a local `wrangler dev` and runs a full Kakao import from the fake kakao-list.
 //   pnpm --filter @magomap/api dev:seed     (API_URL defaults to http://localhost:8787, KAKAO_USER to 111)
-import { kakaoContractToImport } from "@magomap/domain/providers/kakao";
 
 const api = process.env.API_URL ?? "http://localhost:8787";
 const kakaoUserId = process.env.KAKAO_USER ?? "111";
@@ -23,24 +22,23 @@ const call = async (path: string, method = "GET", body?: unknown) => {
   return res.json();
 };
 
-const contract = kakaoContractToImport(await call("/api/import/kakao/source"));
-const { runId } = (await call("/api/import/runs", "POST", {
-  provider: contract.provider,
-  complete: contract.complete,
-  subscriptionKnown: contract.subscriptionKnown,
-  importedAt: contract.importedAt,
-})) as { runId: string };
-for (const list of contract.lists) {
-  const { items, ...meta } = list;
-  for (let i = 0; i * 500 < Math.max(items.length, 1); i++) {
-    await call(`/api/import/runs/${runId}/lists/${meta.externalId}/chunks/${i}`, "PUT", {
-      meta,
-      items: items.slice(i * 500, (i + 1) * 500),
-    });
+// The server fetches everything from kakao-list itself; this script only drives the pages.
+const { runId, lists } = (await call("/api/import/runs", "POST", { provider: "kakao" })) as {
+  runId: string;
+  lists: { externalId: string; itemCount: number }[];
+};
+for (const list of lists) {
+  for (let page = 0; ; page++) {
+    const result = (await call(
+      `/api/import/runs/${runId}/lists/${list.externalId}/pages/${page}`,
+      "POST",
+      {},
+    )) as { done: boolean };
+    if (result.done) break;
   }
-  await call(`/api/import/runs/${runId}/lists/${meta.externalId}/finish`, "POST", {});
+  await call(`/api/import/runs/${runId}/lists/${list.externalId}/finish`, "POST", {});
 }
-const summary = await call(`/api/import/runs/${runId}/complete`, "POST", {
-  externalIds: contract.lists.map((l) => l.externalId),
-});
+const summary = await call(`/api/import/runs/${runId}/complete`, "POST", {});
 console.log("imported", summary);
+
+export {};

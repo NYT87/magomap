@@ -3,3 +3,5 @@ KAKAO_REST_API_KEY=your-kakao-rest-api-key
 KAKAO_CLIENT_SECRET=your-kakao-client-secret
 MAGOMAP_IMPORT_SECRET=mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ALLOW_DEV_LOGIN=true
+# Signs search results; generate with: openssl rand -hex 32
+SIGNING_SECRET=change-me-to-32-or-more-random-characters-0000

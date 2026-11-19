@@ -32,6 +32,27 @@ import { grantStatements, type Row, type WriteContext, withWrite, writeStatement
 
 export { WriteConflictError } from "../write";
 
+/** The account was deleted while a write was in flight; nothing was written. */
+export class AccountGoneError extends Error {
+  constructor() {
+    super("This account no longer exists");
+  }
+}
+
+/** True while the user still exists; every write for a user carries it in its claim. */
+export function userExists(userId: string) {
+  return sql<boolean>`EXISTS (SELECT 1 FROM users WHERE id = ${userId})`;
+}
+
+export async function assertUserExists(db: Db, userId: string): Promise<void> {
+  const row = await db.kysely
+    .selectFrom("users")
+    .select("id")
+    .where("id", "=", userId)
+    .executeTakeFirst();
+  if (!row) throw new AccountGoneError();
+}
+
 const APPLY_ORDER: ClientWritableTable[] = [
   "places",
   "lists",
@@ -120,13 +141,23 @@ async function readTombstones(db: Db, userId: string, ids: string[]) {
   return out;
 }
 
+export interface PushOptions {
+  /** Verifies a pushed place's search signature (the API checks it with the server key). */
+  verifySource: (place: Record<string, unknown>) => boolean;
+}
+
 export async function applyPush(
   db: Db,
   userId: string,
   mutations: Mutation[],
   now: number,
+  options: PushOptions,
 ): Promise<PushResponse> {
-  return withWrite(db, (ctx) => decidePush(db, userId, mutations, now, ctx));
+  return withWrite(
+    db,
+    (ctx) => decidePush(db, userId, mutations, now, ctx, options),
+    userExists(userId),
+  );
 }
 
 async function decidePush(
@@ -135,7 +166,9 @@ async function decidePush(
   mutations: Mutation[],
   now: number,
   ctx: WriteContext,
+  options: PushOptions,
 ): Promise<{ statements: Statement[]; result: PushResponse }> {
+  await assertUserExists(db, userId);
   const results = new Map<string, PushResult>();
   const set = (m: Mutation, status: PushResult["status"], extra: Partial<PushResult> = {}) =>
     results.set(m.mutationId, { mutationId: m.mutationId, status, ...extra });
@@ -154,7 +187,9 @@ async function decidePush(
     }
     const parsed = mutationRowSchemas[m.table].safeParse(m.row);
     if (!parsed.success || parsed.data.id !== m.id) set(m, "rejected", { reason: "invalid" });
-    else valid.push({ m, row: parsed.data as Row });
+    else if (m.table === "places" && !options.verifySource(parsed.data as Row)) {
+      set(m, "rejected", { reason: "invalid" });
+    } else valid.push({ m, row: parsed.data as Row });
   }
 
   // 2. Coalesce: keep the last mutation per row; earlier ones share its outcome.
@@ -190,6 +225,21 @@ async function decidePush(
   const myLists = await readByIds(db, userId, "user_lists", [...listIds].map(userListRowId));
   const myPlaces = await readByIds(db, userId, "user_places", [...placeIds].map(userPlaceRowId));
   const validUntil = await latestValidUntil(db, idsOf("places"));
+  // Places a user may attach notes, links and own-list items to: theirs, or in a list they have.
+  const listedPlaces = new Set(
+    placeIds.size === 0
+      ? []
+      : (
+          await db.kysely
+            .selectFrom("list_items")
+            .select("place_id")
+            .where(inJson(db, "place_id", [...placeIds]))
+            .where(
+              sql<boolean>`list_id IN (SELECT list_id FROM user_lists WHERE user_id = ${userId} AND removed_at IS NULL AND deleted_at IS NULL)`,
+            )
+            .execute()
+        ).map((r) => r.place_id),
+  );
   const tombstones = await readTombstones(
     db,
     userId,
@@ -235,14 +285,26 @@ async function decidePush(
     );
   };
 
+  const canSeePlace = (placeId: unknown) => {
+    const id = String(placeId);
+    return Boolean(
+      state.get("places")?.get(id) && (myPlaces.has(userPlaceRowId(id)) || listedPlaces.has(id)),
+    );
+  };
+
   for (const { m, row } of work) {
     const table = m.table;
     const existing = state.get(table)?.get(m.id);
     const r = row as Row;
 
+    // An existing item is judged by the list it really belongs to.
+    if (table === "list_items" && existing && r && String(r.listId) !== String(existing.list_id)) {
+      set(m, "rejected", { reason: "not_allowed" });
+      continue;
+    }
     // Provider lists and their items are read-only; own lists belong to their owner.
     if (table === "lists" || table === "list_items") {
-      const listId = table === "lists" ? m.id : (r?.listId ?? existing?.list_id);
+      const listId = table === "lists" ? m.id : (existing?.list_id ?? r?.listId);
       const list = listOf(listId);
       if (list && list.provider != null) {
         set(m, "rejected", { reason: "provider_owned" });
@@ -252,7 +314,7 @@ async function decidePush(
         set(m, "rejected", { reason: "not_allowed" });
         continue;
       }
-      if (table === "list_items" && list && !iOwn(listId)) {
+      if (table === "list_items" && ((list && !iOwn(listId)) || (existing && !list))) {
         set(m, "rejected", { reason: "not_allowed" });
         continue;
       }
@@ -261,7 +323,10 @@ async function decidePush(
     if (table === "places") {
       // Create from a search result, or refresh an existing shared place's location.
       const source = r.source as { provider: string; externalId: string };
-      if (m.id !== placeRowId(source.provider, source.externalId)) {
+      if (
+        source.externalId.startsWith("pin:") ||
+        m.id !== placeRowId(source.provider, source.externalId)
+      ) {
         set(m, "rejected", { reason: "not_allowed" });
         continue;
       }
@@ -312,6 +377,8 @@ async function decidePush(
               clientUpdatedAt: m.clientUpdatedAt,
             }),
             updated_at: now,
+            // A fresh search result outranks any import snapshot taken before now.
+            provider_snapshot_at: now,
           } as Row);
         }
         if (update.history) {
@@ -405,7 +472,7 @@ async function decidePush(
         set(m, "rejected", { reason: "not_allowed" });
         continue;
       }
-      if (!listOf(r.listId) || !state.get("places")?.get(String(r.placeId))) {
+      if (!listOf(r.listId) || !canSeePlace(r.placeId)) {
         set(m, "rejected", { reason: "missing_parent" });
         continue;
       }
@@ -431,7 +498,7 @@ async function decidePush(
     }
 
     // visit_notes and links
-    if (!state.get("places")?.get(String(r.placeId))) {
+    if (!canSeePlace(r.placeId)) {
       set(m, "rejected", { reason: "missing_parent" });
       continue;
     }
@@ -458,6 +525,7 @@ async function decidePush(
   // 5. Statements, all guarded by the write check.
   const newer = { whereNewer: true };
   const statements = writeStatements(db, ctx, writes, {
+    place_sources: { update: [] },
     lists: newer,
     list_items: newer,
     visit_notes: newer,
@@ -508,8 +576,8 @@ export function decodeCursor(value: string | null): Cursor {
 
 /** Which rows of each table user U may see. */
 function scope(table: SyncTable, userId: string) {
-  const myPlaces = sql`SELECT place_id FROM user_places WHERE user_id = ${userId}`;
   const myLists = sql`SELECT list_id FROM user_lists WHERE user_id = ${userId} AND removed_at IS NULL AND deleted_at IS NULL`;
+  const myPlaces = sql`SELECT place_id FROM user_places WHERE user_id = ${userId} UNION SELECT place_id FROM list_items WHERE list_id IN (${myLists})`;
   switch (table) {
     case "places":
       return sql<boolean>`id IN (${myPlaces})`;

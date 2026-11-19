@@ -3,6 +3,7 @@ import { KAKAO } from "@magomap/domain/providers/kakao";
 import { Hono } from "hono";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
+import { signSearchResult } from "./signing";
 
 export const searchRoutes = new Hono<AppEnv>();
 searchRoutes.use("/search/*", requireUser);
@@ -51,7 +52,7 @@ searchRoutes.get("/search/places", async (c) => {
   }
   if (!res.ok) return c.json({ error: "search_unavailable" }, 502);
   const body = (await res.json()) as { documents?: KakaoDocument[]; meta?: { is_end?: boolean } };
-  const results: SearchResult[] = (body.documents ?? [])
+  const results = (body.documents ?? [])
     .map((d) => ({
       provider: KAKAO,
       externalId: d.id,
@@ -64,5 +65,10 @@ searchRoutes.get("/search/places", async (c) => {
       lng: Number(d.x),
     }))
     .filter((r) => r.externalId && Number.isFinite(r.lat) && Number.isFinite(r.lng));
-  return c.json({ results, isEnd: body.meta?.is_end ?? true });
+  const now = Date.now();
+  const signed: SearchResult[] = results.map((r) => ({
+    ...r,
+    ...signSearchResult(c.env.SIGNING_SECRET, r, now),
+  }));
+  return c.json({ results: signed, isEnd: body.meta?.is_end ?? true });
 });

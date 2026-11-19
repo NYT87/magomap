@@ -1,4 +1,5 @@
 import type { ImportItem, ImportList } from "@magomap/domain";
+import { importedNoteRowId } from "@magomap/domain/ids";
 import { expect, it } from "vitest";
 import type { Db, Statement } from "../core";
 import { forEachDialect } from "../testing/dbs";
@@ -10,8 +11,8 @@ import {
   RunClosedError,
   startImportRun,
 } from "./importRuns";
-import { applyPush, pull } from "./sync";
-import { addUser, del, interleaved, note, searchedPlace, T0, up } from "./testkit";
+import { pull } from "./sync";
+import { addUser, del, interleaved, note, push, searchedPlace, T0, up } from "./testkit";
 
 const WIFE = "wife";
 const ME = "me";
@@ -164,7 +165,7 @@ forEachDialect("import (shared)", (makeDb) => {
   it("marks a removed favourite for everyone, keeps the place and notes, and restores it", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A"), item("11", "B")])]);
-    await applyPush(db, WIFE, [up("visit_notes", note("n1", "p_kakao_B"))], T0);
+    await push(db, WIFE, [up("visit_notes", note("n1", "p_kakao_B"))], T0);
     const gone = await runImport(db, WIFE, [list("1", [item("10", "A")])], { at: T0 + 10 });
     expect(gone.summary.membershipsRemoved).toBe(1);
     expect(await all(db, "places")).toHaveLength(2);
@@ -277,12 +278,12 @@ forEachDialect("import (shared)", (makeDb) => {
     );
     const [n] = await mine(db, "visit_notes", WIFE);
     expect(n).toMatchObject({
-      id: "kn_p_kakao_A_l_kakao_1",
+      id: importedNoteRowId("p_kakao_A", "l_kakao_1"),
       body: "주차 어려움, 공영주차장",
       origin: "import",
       visited_on: null,
     });
-    await applyPush(
+    await push(
       db,
       WIFE,
       [
@@ -303,7 +304,7 @@ forEachDialect("import (shared)", (makeDb) => {
       at: T0 + 3,
     });
     expect((await mine(db, "visit_notes", WIFE))[0]?.body).toBe("내가 고침");
-    await applyPush(db, WIFE, [del("visit_notes", n?.id as string, T0 + 4)], T0 + 4);
+    await push(db, WIFE, [del("visit_notes", n?.id as string, T0 + 4)], T0 + 4);
     await runImport(db, WIFE, [list("1", [item("10", "A", { localNote: "again" })])], {
       at: T0 + 5,
     });
@@ -320,13 +321,13 @@ forEachDialect("import (shared)", (makeDb) => {
       T0 + 1,
     );
     const racing = interleaved(db, () =>
-      applyPush(
+      push(
         db,
         WIFE,
         [
           up(
             "visit_notes",
-            note("kn_p_kakao_A_l_kakao_1", "p_kakao_A", {
+            note(importedNoteRowId("p_kakao_A", "l_kakao_1"), "p_kakao_A", {
               origin: "import",
               originKey: "l_kakao_1",
               visitedOn: null,
@@ -355,7 +356,7 @@ forEachDialect("import (shared)", (makeDb) => {
 
   it("matches a place saved from search, keeps its notes and records no move", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       WIFE,
       [up("places", searchedPlace("123")), up("visit_notes", note("n1", "p_kakao_123"))],
@@ -404,7 +405,7 @@ forEachDialect("import (shared)", (makeDb) => {
   it("delivers a list someone imported long ago to a new follower", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A"), item("11", "B")])]);
-    await applyPush(db, ME, [up("places", searchedPlace("Z"))], T0);
+    await push(db, ME, [up("places", searchedPlace("Z"))], T0);
     const myCursor = (await pull(db, ME, null)).cursor;
     await runImport(db, ME, [list("1", [item("10", "A"), item("11", "B")], { followed: true })], {
       at: T0 + 100,

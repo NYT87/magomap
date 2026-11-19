@@ -22,6 +22,9 @@ export const storableText = (max: number) =>
 export const position = z.number().int().nonnegative().max(2_147_483_647);
 
 const id = storableText(300).pipe(z.string().min(1));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Ids the client creates (own lists, notes, links) are UUIDs, so they can't impersonate server ids. */
+const clientId = z.string().regex(UUID, "Expected a UUID");
 const ms = z.number().int().nonnegative();
 const nullableText = (max: number) => storableText(max).nullable();
 
@@ -73,10 +76,14 @@ export const mutationRowSchemas = {
     source: z.object({
       provider: providerName,
       externalId: storableText(200).pipe(z.string().min(1)),
+      /** The server's signature over the search result (see searchSignaturePayload). */
+      signature: z.string().min(1).max(200),
+      signedAt: ms,
     }),
   }),
   lists: z.object({
     ...base,
+    id: clientId,
     provider: z.null(),
     externalId: z.null(),
     name: storableText(LIMITS.listName).pipe(z.string().trim().min(1)),
@@ -103,6 +110,8 @@ export const mutationRowSchemas = {
   }),
   visit_notes: z.object({
     ...base,
+    // Imported notes keep their server id (kn_…); every other note is a client UUID.
+    id: z.union([clientId, z.string().regex(/^kn_[^\s]{1,290}$/)]),
     placeId: id,
     visitedOn: isoDate.nullable(),
     body: storableText(LIMITS.noteBody),
@@ -112,6 +121,7 @@ export const mutationRowSchemas = {
   }),
   links: z.object({
     ...base,
+    id: clientId,
     placeId: id,
     url: httpUrl,
     title: nullableText(LIMITS.linkTitle),
@@ -153,6 +163,36 @@ export interface PullResponse {
   rows: { table: SyncTable; row: AnyRow }[];
   cursor: string;
   hasMore: boolean;
+}
+
+/** The exact text the server signs for a search result, so a pushed place can prove it came from search. */
+export function searchSignaturePayload(
+  r: {
+    provider: string;
+    externalId: string;
+    title: string;
+    address: string | null;
+    roadAddress: string | null;
+    category: string | null;
+    phone: string | null;
+    lat: number | null;
+    lng: number | null;
+  },
+  signedAt: number,
+): string {
+  return JSON.stringify([
+    "magomap-search-v1",
+    r.provider,
+    r.externalId,
+    r.title,
+    r.address,
+    r.roadAddress,
+    r.category,
+    r.phone,
+    r.lat,
+    r.lng,
+    signedAt,
+  ]);
 }
 
 /** Shape-only validation of a push; each row is validated separately with `mutationRowSchemas`. */

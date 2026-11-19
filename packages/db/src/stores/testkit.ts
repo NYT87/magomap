@@ -1,7 +1,25 @@
 // Test helpers shared by the store tests (not imported by production code).
+
+import { createHash } from "node:crypto";
 import type { ListItemRow, ListRow, Mutation, PlaceRow, VisitNoteRow } from "@magomap/domain";
 import { ownItemRowId, placeRowId } from "@magomap/domain/ids";
 import type { Db } from "../core";
+import { applyPush } from "./sync";
+
+/** A deterministic UUID for a readable test name ("n1" → the same UUID every time). */
+export function uid(name: string): string {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) return name;
+  const h = createHash("sha1").update(name).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-7${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+/** applyPush with signatures trusted (store tests exercise rules, not the signature check). */
+export const push = (
+  db: Db,
+  userId: string,
+  mutations: Parameters<typeof applyPush>[2],
+  now: number,
+) => applyPush(db, userId, mutations, now, { verifySource: () => true });
 
 export const T0 = 1_763_000_000_000;
 let counter = 0;
@@ -30,14 +48,14 @@ export function searchedPlace(
     createdAt: T0,
     updatedAt: T0,
     deletedAt: null,
-    source: { provider, externalId },
+    source: { provider, externalId, signature: "test", signedAt: T0 },
     ...rest,
   };
 }
 
 export function ownList(id: string, extra: Partial<ListRow> = {}): ListRow {
   return {
-    id,
+    id: uid(id),
     provider: null,
     externalId: null,
     name: "바다 뷰",
@@ -54,10 +72,11 @@ export function ownList(id: string, extra: Partial<ListRow> = {}): ListRow {
 }
 
 export function ownItem(
-  listId: string,
+  listName: string,
   placeId: string,
   extra: Partial<ListItemRow> = {},
 ): ListItemRow {
+  const listId = listName.startsWith("l_") ? listName : uid(listName);
   return {
     id: ownItemRowId(listId, placeId),
     listId,
@@ -78,7 +97,7 @@ export function ownItem(
 
 export function note(id: string, placeId: string, extra: Partial<VisitNoteRow> = {}): VisitNoteRow {
   return {
-    id,
+    id: id.startsWith("kn_") ? id : uid(id),
     placeId,
     visitedOn: "2026-11-19",
     body: "바다가 보였어요",
@@ -109,7 +128,7 @@ export const del = (table: Mutation["table"], id: string, at = T0 + 1): Mutation
   mutationId: `m${++counter}`,
   table,
   op: "delete",
-  id,
+  id: table === "places" || /^(kn|li|l|p)_/.test(id) ? id : uid(id),
   clientUpdatedAt: at,
 });
 

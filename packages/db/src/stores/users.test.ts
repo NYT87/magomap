@@ -1,7 +1,6 @@
 import { expect, it } from "vitest";
 import { forEachDialect } from "../testing/dbs";
-import { applyPush } from "./sync";
-import { note, ownList, searchedPlace } from "./testkit";
+import { note, ownList, push, searchedPlace, uid } from "./testkit";
 import {
   createSession,
   deleteAccount,
@@ -78,7 +77,7 @@ forEachDialect("users store", (makeDb) => {
     const other = await findOrCreateUserByIdentity(db, "kakao", "2", null, now);
     for (const u of [me.userId, other.userId]) {
       await createSession(db, u, now);
-      await applyPush(
+      await push(
         db,
         u,
         [
@@ -94,7 +93,7 @@ forEachDialect("users store", (makeDb) => {
             mutationId: `l${u}`,
             table: "lists",
             op: "upsert",
-            id: `own-${u}`,
+            id: uid(`own-${u}`),
             clientUpdatedAt: now + 1,
             row: ownList(`own-${u}`),
           },
@@ -102,7 +101,7 @@ forEachDialect("users store", (makeDb) => {
             mutationId: `n${u}`,
             table: "visit_notes",
             op: "upsert",
-            id: `n-${u}`,
+            id: uid(`n-${u}`),
             clientUpdatedAt: now + 1,
             row: note(`n-${u}`, "p_kakao_1"),
           },
@@ -138,14 +137,14 @@ forEachDialect("users store", (makeDb) => {
       await db.kysely
         .selectFrom("lists")
         .selectAll()
-        .where("id", "=", `own-${me.userId}`)
+        .where("id", "=", uid(`own-${me.userId}`))
         .execute(),
     ).toHaveLength(0);
     expect(
       await db.kysely
         .selectFrom("lists")
         .selectAll()
-        .where("id", "=", `own-${other.userId}`)
+        .where("id", "=", uid(`own-${other.userId}`))
         .execute(),
     ).toHaveLength(1);
     expect(await db.kysely.selectFrom("places").selectAll().execute()).toHaveLength(1);

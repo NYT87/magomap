@@ -1,8 +1,7 @@
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
-import { applyPush } from "./sync";
-import { addUser, del, note, ownItem, ownList, searchedPlace, T0, up } from "./testkit";
+import { addUser, del, note, ownItem, ownList, push, searchedPlace, T0, uid, up } from "./testkit";
 
 const A = "user-a";
 const B = "user-b";
@@ -72,7 +71,7 @@ forEachDialect("push", (makeDb) => {
       updatedAt: T0,
       deletedAt: null,
     } as never);
-    const res = await applyPush(
+    const res = await push(
       db,
       A,
       [up("places", searchedPlace("1")), bad, up("visit_notes", note("n1", P1))],
@@ -83,8 +82,8 @@ forEachDialect("push", (makeDb) => {
 
   it("coalesces create, edit and delete of one note into a deleted state", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(
       db,
       A,
       [
@@ -94,22 +93,22 @@ forEachDialect("push", (makeDb) => {
       ],
       T0,
     );
-    const late = await applyPush(db, A, [up("visit_notes", note("n1", P1), T0 + 2)], T0);
+    const late = await push(db, A, [up("visit_notes", note("n1", P1), T0 + 2)], T0);
     expect(late.results[0]?.status).toBe("ignored_stale");
-    expect(await mine(db, "visit_notes", A, "n1")).toHaveLength(0);
+    expect(await mine(db, "visit_notes", A, uid("n1"))).toHaveLength(0);
   });
 
   it("gives every row of one push the same new seq", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(
       db,
       A,
       [up("places", searchedPlace("2")), up("visit_notes", note("n1", "p_kakao_2"))],
       T0,
     );
     const [p2] = await shared(db, "places", "p_kakao_2");
-    const [n1] = await mine(db, "visit_notes", A, "n1");
+    const [n1] = await mine(db, "visit_notes", A, uid("n1"));
     const [p1] = await shared(db, "places", P1);
     expect(p2?.seq).toBe(n1?.seq);
     expect(Number(p2?.seq)).toBeGreaterThan(Number(p1?.seq));
@@ -118,8 +117,8 @@ forEachDialect("push", (makeDb) => {
   it("gives the same result when a push is retried", async () => {
     const db = await setup(makeDb);
     const batch = [up("places", searchedPlace("1")), up("visit_notes", note("n1", P1))];
-    await applyPush(db, A, batch, T0);
-    const again = await applyPush(db, A, batch, T0);
+    await push(db, A, batch, T0);
+    const again = await push(db, A, batch, T0);
     expect(again.results.every((r) => r.status === "applied" || r.status === "ignored_stale")).toBe(
       true,
     );
@@ -128,7 +127,7 @@ forEachDialect("push", (makeDb) => {
 
   it("creates a searched place once, with its source and the user's place", async () => {
     const db = await setup(makeDb);
-    const res = await applyPush(
+    const res = await push(
       db,
       A,
       [up("visit_notes", note("n1", P1)), up("places", searchedPlace("1"))],
@@ -144,8 +143,8 @@ forEachDialect("push", (makeDb) => {
 
   it("only adds the second user's place when they save a place someone already has", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(db, B, [up("places", searchedPlace("1", { title: "renamed" }), T0 + 5)], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(db, B, [up("places", searchedPlace("1", { title: "renamed" }), T0 + 5)], T0);
     expect(await shared(db, "places")).toHaveLength(1);
     expect((await shared(db, "places", P1))[0]?.title).toBe("카페 1");
     expect(await mine(db, "user_places", B)).toHaveLength(1);
@@ -153,8 +152,8 @@ forEachDialect("push", (makeDb) => {
 
   it("refuses places with a mismatched id, without coordinates, or a delete", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const res = await applyPush(
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    const res = await push(
       db,
       A,
       [
@@ -170,21 +169,16 @@ forEachDialect("push", (makeDb) => {
 
   it("records a move from search, and none for 10 m or an address alone", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"), T0 + 1)], T0);
-    await applyPush(
+    await push(db, A, [up("places", searchedPlace("1"), T0 + 1)], T0);
+    await push(
       db,
       A,
       [up("places", searchedPlace("1", { lat: 33.46 + 10 / 111_320 }), T0 + 2)],
       T0,
     );
-    await applyPush(
-      db,
-      A,
-      [up("places", searchedPlace("1", { address: "다른 표기" }), T0 + 3)],
-      T0,
-    );
+    await push(db, A, [up("places", searchedPlace("1", { address: "다른 표기" }), T0 + 3)], T0);
     expect(await shared(db, "place_locations")).toHaveLength(0);
-    await applyPush(
+    await push(
       db,
       A,
       [up("places", searchedPlace("1", { lat: 33.46 + 100 / 111_320 }), T0 + 4)],
@@ -198,16 +192,16 @@ forEachDialect("push", (makeDb) => {
   it("refuses writes to provider lists and their items", async () => {
     const db = await setup(makeDb);
     await insertProviderList(db);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const res = await applyPush(db, A, [up("list_items", ownItem("l_kakao_9", P1))], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    const res = await push(db, A, [up("list_items", ownItem("l_kakao_9", P1))], T0);
     expect(res.results[0]?.reason).toBe("provider_owned");
-    const removal = await applyPush(db, A, [del("lists", "l_kakao_9")], T0);
+    const removal = await push(db, A, [del("lists", "l_kakao_9")], T0);
     expect(removal.results[0]?.reason).toBe("provider_owned");
   });
 
   it("creates an own list with its owner, and requires the item id and parents", async () => {
     const db = await setup(makeDb);
-    const res = await applyPush(
+    const res = await push(
       db,
       A,
       [
@@ -226,13 +220,15 @@ forEachDialect("push", (makeDb) => {
       "missing_parent",
       "applied",
     ]);
-    expect(await mine(db, "user_lists", A)).toMatchObject([{ list_id: "own-1", role: "owner" }]);
+    expect(await mine(db, "user_lists", A)).toMatchObject([
+      { list_id: uid("own-1"), role: "owner" },
+    ]);
   });
 
   it("refuses to touch another user's own list, even with its id", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("lists", ownList("own-1")), up("places", searchedPlace("1"))], T0);
-    const res = await applyPush(
+    await push(db, A, [up("lists", ownList("own-1")), up("places", searchedPlace("1"))], T0);
+    const res = await push(
       db,
       B,
       [
@@ -243,7 +239,7 @@ forEachDialect("push", (makeDb) => {
       T0,
     );
     expect(res.results.map((r) => r.reason)).toEqual(["not_allowed", "not_allowed", "not_allowed"]);
-    expect((await shared(db, "lists", "own-1"))[0]).toMatchObject({
+    expect((await shared(db, "lists", uid("own-1")))[0]).toMatchObject({
       name: "바다 뷰",
       deleted_at: null,
     });
@@ -251,7 +247,7 @@ forEachDialect("push", (makeDb) => {
 
   it("collapses the same own-list item added from two devices", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [
@@ -261,13 +257,13 @@ forEachDialect("push", (makeDb) => {
       ],
       T0,
     );
-    await applyPush(db, A, [up("list_items", ownItem("own-1", P1), T0 + 2)], T0);
+    await push(db, A, [up("list_items", ownItem("own-1", P1), T0 + 2)], T0);
     expect(await shared(db, "list_items")).toHaveLength(1);
   });
 
   it("ignores a stale edit and returns the server row", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [
@@ -276,30 +272,30 @@ forEachDialect("push", (makeDb) => {
       ],
       T0,
     );
-    const res = await applyPush(
-      db,
-      A,
-      [up("visit_notes", note("n1", P1, { body: "old" }), T0 + 5)],
-      T0,
-    );
+    const res = await push(db, A, [up("visit_notes", note("n1", P1, { body: "old" }), T0 + 5)], T0);
     expect(res.results[0]).toMatchObject({
       status: "ignored_stale",
-      row: { id: "n1", body: "new" },
+      row: { id: uid("n1"), body: "new" },
     });
   });
 
   it("keeps a note private to its author and gives the author the place", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(db, B, [up("visit_notes", note("n1", P1))], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(
+      db,
+      B,
+      [up("places", searchedPlace("1"), T0 + 2), up("visit_notes", note("n1", P1))],
+      T0,
+    );
     expect(await mine(db, "visit_notes", A)).toHaveLength(0);
     expect(await mine(db, "user_places", B)).toHaveLength(1);
   });
 
   it("refuses creating an imported note, and marks an edited one", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const create = await applyPush(
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    const create = await push(
       db,
       A,
       [up("visit_notes", note("n9", P1, { origin: "import", originKey: "x" }))],
@@ -324,7 +320,7 @@ forEachDialect("push", (makeDb) => {
         seq: 0,
       })
       .execute();
-    await applyPush(
+    await push(
       db,
       A,
       [

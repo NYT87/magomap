@@ -2,8 +2,8 @@ import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
 import { completeImportRun, finishImportList, importListChunk, startImportRun } from "./importRuns";
-import { applyPush, pull } from "./sync";
-import { addUser, del, note, ownItem, ownList, searchedPlace, T0, up } from "./testkit";
+import { pull } from "./sync";
+import { addUser, del, note, ownItem, ownList, push, searchedPlace, T0, uid, up } from "./testkit";
 
 const A = "user-a";
 const B = "user-b";
@@ -51,7 +51,7 @@ async function importList(db: Db, user: string, followed: boolean, items: string
 forEachDialect("pull scope", (makeDb) => {
   it("returns a user's own rows from a null cursor, in wire format", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [up("places", searchedPlace("1")), up("visit_notes", note("n1", "p_kakao_1"))],
@@ -61,7 +61,7 @@ forEachDialect("pull scope", (makeDb) => {
       "place_sources:s_kakao_1",
       "places:p_kakao_1",
       "user_places:up_p_kakao_1",
-      "visit_notes:n1",
+      `visit_notes:${uid("n1")}`,
     ]);
     const res = await pull(db, A, null);
     expect(res.rows.find((r) => r.table === "visit_notes")?.row).toMatchObject({
@@ -72,7 +72,7 @@ forEachDialect("pull scope", (makeDb) => {
 
   it("never gives a user another user's own lists, items, notes or links", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [
@@ -92,20 +92,30 @@ forEachDialect("pull scope", (makeDb) => {
       ],
       T0,
     );
-    await applyPush(db, B, [up("places", searchedPlace("1"))], T0);
+    await push(db, B, [up("places", searchedPlace("1"))], T0);
     const seen = await ids(db, B);
-    for (const forbidden of ["lists:own-a", "visit_notes:na", "links:la", "user_lists:ul_own-a"])
+    for (const forbidden of [
+      `lists:${uid("own-a")}`,
+      `visit_notes:${uid("na")}`,
+      `links:${uid("la")}`,
+      `user_lists:ul_${uid("own-a")}`,
+    ])
       expect(seen).not.toContain(forbidden);
     expect(seen.some((s) => s.startsWith("list_items:"))).toBe(false);
     expect(seen).toContain("places:p_kakao_1");
   });
 
-  it("gives a user the place they wrote a note on, even if someone else saved it long ago", async () => {
+  it("gives a user a place someone else saved long ago, once they save it too", async () => {
     const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(db, B, [up("places", searchedPlace("2"))], T0);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    await push(db, B, [up("places", searchedPlace("2"))], T0);
     const cursor = (await pull(db, B, null)).cursor;
-    await applyPush(db, B, [up("visit_notes", note("nb", "p_kakao_1"))], T0);
+    await push(
+      db,
+      B,
+      [up("places", searchedPlace("1"), T0 + 2), up("visit_notes", note("nb", "p_kakao_1"))],
+      T0,
+    );
     const got = await ids(db, B, cursor);
     expect(got).toContain("places:p_kakao_1");
     expect(got).toContain("place_sources:s_kakao_1");
@@ -148,13 +158,13 @@ forEachDialect("pull scope", (makeDb) => {
 
   it("pages every row exactly once", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [1, 2, 3, 4, 5].map((n) => up("places", searchedPlace(String(n)))),
       T0,
     );
-    await applyPush(
+    await push(
       db,
       A,
       ["a", "b", "c"].map((n) => up("visit_notes", note(n, "p_kakao_1"))),
@@ -175,17 +185,17 @@ forEachDialect("pull scope", (makeDb) => {
 
   it("returns only changed rows after a cursor, including deletions", async () => {
     const db = await setup(makeDb);
-    await applyPush(
+    await push(
       db,
       A,
       [up("places", searchedPlace("1")), up("visit_notes", note("n1", "p_kakao_1"))],
       T0,
     );
     const first = await pull(db, A, null);
-    await applyPush(db, A, [del("visit_notes", "n1", T0 + 5)], T0);
+    await push(db, A, [del("visit_notes", "n1", T0 + 5)], T0);
     const next = await pull(db, A, first.cursor);
     expect(next.rows).toHaveLength(1);
-    expect(next.rows[0]).toMatchObject({ table: "visit_notes", row: { id: "n1" } });
+    expect(next.rows[0]).toMatchObject({ table: "visit_notes", row: { id: uid("n1") } });
     expect(next.rows[0]?.row.deletedAt).not.toBeNull();
   });
 

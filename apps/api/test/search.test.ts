@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { verifySearchSignature } from "../src/search/signing";
 import { call, devLogin } from "./helpers";
 import { network } from "./msw";
 
@@ -39,7 +40,13 @@ describe("place search", () => {
       headers: { cookie },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    const body = (await res.json()) as { results: { signature: string; signedAt: number }[] };
+    expect(typeof body.results[0]?.signature).toBe("string");
+    expect(verifySearchSignature("s".repeat(48), body.results[0] as never)).toBe(true);
+    expect(
+      verifySearchSignature("s".repeat(48), { ...(body.results[0] as object), lat: 0 } as never),
+    ).toBe(false);
+    expect(body).toMatchObject({
       isEnd: true,
       results: [
         {
