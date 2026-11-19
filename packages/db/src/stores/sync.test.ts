@@ -169,19 +169,24 @@ forEachDialect("push", (makeDb) => {
 
   it("records a move from search, and none for 10 m or an address alone", async () => {
     const db = await setup(makeDb);
-    await push(db, A, [up("places", searchedPlace("1"), T0 + 1)], T0);
+    await push(db, A, [up("places", searchedPlace("1", { signedAt: T0 + 1 }), T0 + 1)], T0);
     await push(
       db,
       A,
-      [up("places", searchedPlace("1", { lat: 33.46 + 10 / 111_320 }), T0 + 2)],
+      [up("places", searchedPlace("1", { lat: 33.46 + 10 / 111_320, signedAt: T0 + 2 }), T0 + 2)],
       T0,
     );
-    await push(db, A, [up("places", searchedPlace("1", { address: "다른 표기" }), T0 + 3)], T0);
+    await push(
+      db,
+      A,
+      [up("places", searchedPlace("1", { address: "다른 표기", signedAt: T0 + 3 }), T0 + 3)],
+      T0,
+    );
     expect(await shared(db, "place_locations")).toHaveLength(0);
     await push(
       db,
       A,
-      [up("places", searchedPlace("1", { lat: 33.46 + 100 / 111_320 }), T0 + 4)],
+      [up("places", searchedPlace("1", { lat: 33.46 + 100 / 111_320, signedAt: T0 + 4 }), T0 + 4)],
       T0 + 50,
     );
     expect(await shared(db, "place_locations")).toMatchObject([

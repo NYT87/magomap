@@ -1,9 +1,17 @@
 // Test helpers shared by the store tests (not imported by production code).
 
 import { createHash } from "node:crypto";
-import type { ListItemRow, ListRow, Mutation, PlaceRow, VisitNoteRow } from "@magomap/domain";
+import type {
+  ImportList,
+  ListItemRow,
+  ListRow,
+  Mutation,
+  PlaceRow,
+  VisitNoteRow,
+} from "@magomap/domain";
 import { ownItemRowId, placeRowId } from "@magomap/domain/ids";
 import type { Db } from "../core";
+import { completeImportRun, finishImportList, importListChunk, startImportRun } from "./importRuns";
 import { applyPush } from "./sync";
 
 /** A deterministic UUID for a readable test name ("n1" → the same UUID every time). */
@@ -31,9 +39,9 @@ export async function addUser(db: Db, id: string) {
 /** A place as the app pushes it after a provider search. */
 export function searchedPlace(
   externalId: string,
-  extra: Partial<PlaceRow> & { provider?: string } = {},
+  extra: Partial<PlaceRow> & { provider?: string; signedAt?: number } = {},
 ) {
-  const { provider = "kakao", ...rest } = extra;
+  const { provider = "kakao", signedAt = T0, ...rest } = extra;
   return {
     id: placeRowId(provider, externalId),
     title: `카페 ${externalId}`,
@@ -48,7 +56,7 @@ export function searchedPlace(
     createdAt: T0,
     updatedAt: T0,
     deletedAt: null,
-    source: { provider, externalId, signature: "test", signedAt: T0 },
+    source: { provider, externalId, signature: "test", signedAt },
     ...rest,
   };
 }
@@ -145,4 +153,53 @@ export function interleaved(db: Db, before: () => Promise<unknown>): Db {
       return db.atomic(qs);
     },
   };
+}
+
+export interface ImportOpts {
+  /** Server time of every call (default T0). */
+  at?: number;
+  /** Snapshot time (default: `at`). */
+  snapshot?: number;
+  complete?: boolean;
+  subscriptionKnown?: boolean;
+  /** Items per page (default 500). */
+  chunk?: number;
+}
+
+/** A whole import as the server runs it: start with the summaries, every page, finish each list, complete. */
+export async function importSnapshot(
+  db: Db,
+  user: string,
+  lists: ImportList[],
+  o: ImportOpts = {},
+) {
+  const now = o.at ?? T0;
+  const { runId } = await startImportRun(
+    db,
+    user,
+    {
+      provider: "kakao",
+      complete: o.complete ?? true,
+      subscriptionKnown: o.subscriptionKnown ?? true,
+      importedAt: new Date(o.snapshot ?? now).toISOString(),
+      lists: lists.map(({ items, ...meta }) => ({ ...meta, itemCount: items.length })),
+    },
+    now,
+  );
+  for (const l of lists) {
+    const size = o.chunk ?? 500;
+    for (let i = 0; i < Math.max(1, Math.ceil(l.items.length / size)); i++) {
+      await importListChunk(
+        db,
+        user,
+        runId,
+        l.externalId,
+        i,
+        l.items.slice(i * size, (i + 1) * size),
+        now,
+      );
+    }
+    await finishImportList(db, user, runId, l.externalId, now);
+  }
+  return { runId, summary: await completeImportRun(db, user, runId, now) };
 }

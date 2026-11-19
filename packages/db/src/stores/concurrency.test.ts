@@ -91,11 +91,21 @@ forEachDialect("push concurrency", (makeDb) => {
 
   it("adds no location history for a move another device's newer move beat", async () => {
     const db = await setup(makeDb);
-    await push(db, A, [up("places", searchedPlace("1", { lat: 33 }), T0 + 1)], T0);
-    const racing = interleaved(db, () =>
-      push(db, B, [up("places", searchedPlace("1", { lat: 34 }), T0 + 9)], T0),
+    await push(
+      db,
+      A,
+      [up("places", searchedPlace("1", { lat: 33, signedAt: T0 + 1 }), T0 + 1)],
+      T0,
     );
-    await push(racing, A, [up("places", searchedPlace("1", { lat: 35 }), T0 + 5)], T0);
+    const racing = interleaved(db, () =>
+      push(db, B, [up("places", searchedPlace("1", { lat: 34, signedAt: T0 + 9 }), T0 + 9)], T0),
+    );
+    await push(
+      racing,
+      A,
+      [up("places", searchedPlace("1", { lat: 35, signedAt: T0 + 5 }), T0 + 5)],
+      T0,
+    );
     expect((await shared(db, "places", P1))[0]?.lat).toBe(34);
     expect(await shared(db, "place_locations")).toMatchObject([{ lat: 33 }]);
   });

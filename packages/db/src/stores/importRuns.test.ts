@@ -6,13 +6,24 @@ import { forEachDialect } from "../testing/dbs";
 import {
   completeImportRun,
   finishImportList,
+  ImportIncompleteError,
   importListChunk,
   latestImportRun,
   RunClosedError,
   startImportRun,
 } from "./importRuns";
 import { pull } from "./sync";
-import { addUser, del, interleaved, note, push, searchedPlace, T0, up } from "./testkit";
+import {
+  addUser,
+  del,
+  importSnapshot,
+  interleaved,
+  note,
+  push,
+  searchedPlace,
+  T0,
+  up,
+} from "./testkit";
 
 const WIFE = "wife";
 const ME = "me";
@@ -48,39 +59,35 @@ interface Opts {
   chunk?: number;
 }
 
-/** A whole import as the client runs it: start, chunks of 500, finish each list, complete. */
-async function runImport(db: Db, user: string, lists: ImportList[], o: Opts = {}) {
-  const now = o.at ?? T0;
-  const { runId } = await startImportRun(
+/** A whole import as the server runs it. */
+/** Starts a run over the given lists (id → item count), without importing anything yet. */
+const startRun = (db: Db, user: string, ms: number, lists: Record<string, number> = { "1": 1 }) =>
+  startImportRun(
     db,
     user,
     {
       provider: "kakao",
-      complete: o.complete ?? true,
-      subscriptionKnown: o.subscriptionKnown ?? true,
-      importedAt: SNAP(o.snapshotMs ?? now - T0),
+      complete: true,
+      subscriptionKnown: true,
+      importedAt: SNAP(ms),
+      lists: Object.entries(lists).map(([externalId, itemCount]) => ({
+        externalId,
+        name: `리스트 ${externalId}`,
+        followed: false,
+        itemCount,
+      })),
     },
-    now,
+    T0 + ms,
   );
-  for (const l of lists) {
-    const { items, ...meta } = l;
-    const size = o.chunk ?? 500;
-    for (let i = 0; i < Math.max(1, Math.ceil(items.length / size)); i++) {
-      await importListChunk(db, user, runId, meta, items.slice(i * size, (i + 1) * size), now);
-    }
-    await finishImportList(db, user, runId, l.externalId, now);
-  }
-  return {
-    runId,
-    summary: await completeImportRun(
-      db,
-      user,
-      runId,
-      lists.map((l) => l.externalId),
-      now,
-    ),
-  };
-}
+
+const runImport = (db: Db, user: string, lists: ImportList[], o: Opts = {}) =>
+  importSnapshot(db, user, lists, {
+    at: o.at,
+    snapshot: o.snapshotMs === undefined ? undefined : T0 + o.snapshotMs,
+    complete: o.complete,
+    subscriptionKnown: o.subscriptionKnown,
+    chunk: o.chunk,
+  });
 
 const all = (db: Db, t: "places" | "list_items" | "lists" | "place_sources" | "place_locations") =>
   db.kysely.selectFrom(t).selectAll().execute();
@@ -139,14 +146,8 @@ forEachDialect("import (shared)", (makeDb) => {
   it("marks nothing removed until a list is finished", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A"), item("11", "B")])]);
-    const { runId } = await startImportRun(
-      db,
-      WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(1) },
-      T0 + 1,
-    );
-    const { items: _i, ...meta } = list("1", []);
-    await importListChunk(db, WIFE, runId, meta, [item("10", "A")], T0 + 1);
+    const { runId } = await startRun(db, WIFE, 1);
+    await importListChunk(db, WIFE, runId, "1", 0, [item("10", "A")], T0 + 1);
     const before = await db.kysely
       .selectFrom("list_items")
       .select("removed_at_provider")
@@ -188,16 +189,13 @@ forEachDialect("import (shared)", (makeDb) => {
     expect((await mine(db, "user_lists", WIFE)).every((u) => u.removed_at === null)).toBe(true);
   });
 
-  it("marks nothing removed when a complete run finished no list", async () => {
+  it("marks nothing removed when a complete run's lists weren't finished", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A")])]);
-    const { runId } = await startImportRun(
-      db,
-      WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(5) },
-      T0 + 5,
+    const { runId } = await startRun(db, WIFE, 5, { "2": 1 });
+    await expect(completeImportRun(db, WIFE, runId, T0 + 5)).rejects.toBeInstanceOf(
+      ImportIncompleteError,
     );
-    await completeImportRun(db, WIFE, runId, [], T0 + 5);
     expect((await all(db, "lists"))[0]?.removed_at_provider).toBeNull();
     expect((await mine(db, "user_lists", WIFE))[0]?.removed_at).toBeNull();
   });
@@ -314,12 +312,7 @@ forEachDialect("import (shared)", (makeDb) => {
   it("does not overwrite an imported note the user edits during the import", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A", { localNote: "v1" })])]);
-    const { runId } = await startImportRun(
-      db,
-      WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(1) },
-      T0 + 1,
-    );
+    const { runId } = await startRun(db, WIFE, 1);
     const racing = interleaved(db, () =>
       push(
         db,
@@ -339,12 +332,12 @@ forEachDialect("import (shared)", (makeDb) => {
         T0 + 2,
       ),
     );
-    const { items: _i, ...meta } = list("1", []);
     await importListChunk(
       racing,
       WIFE,
       runId,
-      meta,
+      "1",
+      0,
       [item("10", "A", { localNote: "v2" })],
       T0 + 3,
     );
@@ -436,13 +429,7 @@ forEachDialect("import (shared)", (makeDb) => {
     const items = Array.from({ length: 5000 }, (_, i) =>
       item(`${"9".repeat(150)}${i}`, `P${i}`, { position: i, providerNote: "가".repeat(5000) }),
     );
-    let run = await startImportRun(
-      db,
-      WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(0) },
-      T0,
-    );
-    const { items: _i, ...meta } = list("1", []);
+    let run = await startRun(db, WIFE, 0, { "1": 5000 });
     const statements: Statement[] = [];
     const counting: Db = {
       ...db,
@@ -457,18 +444,15 @@ forEachDialect("import (shared)", (makeDb) => {
         counting,
         WIFE,
         run.runId,
-        meta,
+        "1",
+        i,
         items.slice(i * 500, (i + 1) * 500),
         T0,
       );
       expect(statements.length - before).toBeLessThanOrEqual(50);
     }
-    run = await startImportRun(
-      db,
-      WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(1) },
-      T0 + 1,
-    );
+    run = await startRun(db, WIFE, 1, { "1": 0 });
+    await importListChunk(db, WIFE, run.runId, "1", 0, [], T0 + 1);
     const before = statements.length;
     const summary = await finishImportList(counting, WIFE, run.runId, "1", T0 + 1);
     expect(summary.membershipsRemoved).toBe(5000);
@@ -484,23 +468,10 @@ forEachDialect("import (shared)", (makeDb) => {
 
   it("refuses a chunk for a run superseded mid-flight, and allows one running import", async () => {
     const db = await setup(makeDb);
-    const run = await startImportRun(
-      db,
-      WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(0) },
-      T0,
-    );
-    const racing = interleaved(db, () =>
-      startImportRun(
-        db,
-        WIFE,
-        { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: SNAP(1) },
-        T0 + 1,
-      ),
-    );
-    const { items: _i, ...meta } = list("1", []);
+    const run = await startRun(db, WIFE, 0);
+    const racing = interleaved(db, () => startRun(db, WIFE, 1));
     await expect(
-      importListChunk(racing, WIFE, run.runId, meta, [item("10", "A")], T0 + 2),
+      importListChunk(racing, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 2),
     ).rejects.toBeInstanceOf(RunClosedError);
     expect(await all(db, "places")).toHaveLength(0);
     const running = await db.kysely

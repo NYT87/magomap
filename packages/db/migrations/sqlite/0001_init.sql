@@ -45,6 +45,21 @@ CREATE TABLE import_runs (
   PRIMARY KEY (user_id, id)
 );
 -- statement
+CREATE TABLE import_run_lists (
+  user_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  owner_name TEXT,
+  followed INTEGER NOT NULL,
+  item_count INTEGER NOT NULL,
+  pages_done INTEGER NOT NULL,
+  finished INTEGER NOT NULL,
+  PRIMARY KEY (user_id, run_id, external_id)
+);
+-- statement
 CREATE TABLE import_seen (
   user_id TEXT NOT NULL,
   run_id TEXT NOT NULL,

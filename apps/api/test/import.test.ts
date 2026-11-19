@@ -69,7 +69,11 @@ describe("server-driven import", () => {
 
   it("imports a list page by page, then finishes and completes it", async () => {
     const cookie = await devLogin("111");
-    const seen = serveKakaoList();
+    const contract = baseContract("111");
+    const seen = serveKakaoList({
+      ...contract,
+      lists: contract.lists.filter((l) => l.kakaoFolderId === 101),
+    });
     const { body } = await start(cookie);
     const page = await call(`/api/import/runs/${body.runId}/lists/101/pages/0`, post(cookie));
     expect(page.status).toBe(200);
@@ -150,6 +154,43 @@ describe("server-driven import", () => {
     );
     expect(closed.status).toBe(409);
     expect(await closed.json()).toEqual({ error: "run_closed" });
+  });
+
+  it("refuses to finish a list that isn't in the run, or before its pages arrived", async () => {
+    const cookie = await devLogin("111");
+    serveKakaoList();
+    const { body } = await start(cookie);
+    const runUrl = `/api/import/runs/${body.runId}`;
+    expect((await call(`${runUrl}/lists/999/finish`, post(cookie))).status).toBe(404);
+    const early = await call(`${runUrl}/lists/101/finish`, post(cookie));
+    expect(early.status).toBe(409);
+    expect(await early.json()).toEqual({ error: "incomplete" });
+    const complete = await call(`${runUrl}/complete`, post(cookie));
+    expect(complete.status).toBe(409);
+    expect(await complete.json()).toEqual({ error: "incomplete" });
+  });
+
+  it("refuses a page that skips ahead, or doesn't match the list's summary", async () => {
+    const cookie = await devLogin("111");
+    serveKakaoList();
+    const { body } = await start(cookie);
+    const runUrl = `/api/import/runs/${body.runId}`;
+    expect((await call(`${runUrl}/lists/101/pages/1`, post(cookie))).status).toBe(404);
+    const page = itemsBody(baseContract("111"), 101, 0);
+    network.use(
+      http.get(`${BASE}/lists/:folderId/items`, () =>
+        HttpResponse.json({ ...page, total: (page?.total ?? 0) + 1 }),
+      ),
+    );
+    const grown = await call(`${runUrl}/lists/101/pages/0`, post(cookie));
+    expect(grown.status).toBe(409);
+    expect(await grown.json()).toEqual({ error: "snapshot_changed" });
+    network.use(
+      http.get(`${BASE}/lists/:folderId/items`, () =>
+        HttpResponse.json({ ...page, items: page?.items.slice(1) }),
+      ),
+    );
+    expect((await call(`${runUrl}/lists/101/pages/0`, post(cookie))).status).toBe(502);
   });
 
   it("no longer accepts import data from the app", async () => {

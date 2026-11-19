@@ -42,6 +42,20 @@ export interface ImportRunsTable {
   error: string | null;
 }
 
+export interface ImportRunListsTable {
+  user_id: string;
+  run_id: string;
+  external_id: string;
+  position: number;
+  name: string;
+  description: string | null;
+  owner_name: string | null;
+  followed: number;
+  item_count: number;
+  pages_done: number;
+  finished: number;
+}
+
 export interface ImportSeenTable {
   user_id: string;
   run_id: string;
@@ -196,6 +210,7 @@ export interface Database {
   sessions: SessionsTable;
   tombstones: TombstonesTable;
   import_runs: ImportRunsTable;
+  import_run_lists: ImportRunListsTable;
   import_seen: ImportSeenTable;
   sync_state: SyncStateTable;
   places: PlacesTable;

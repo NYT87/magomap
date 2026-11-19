@@ -1,9 +1,20 @@
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
-import { completeImportRun, finishImportList, importListChunk, startImportRun } from "./importRuns";
 import { pull } from "./sync";
-import { addUser, del, note, ownItem, ownList, push, searchedPlace, T0, uid, up } from "./testkit";
+import {
+  addUser,
+  del,
+  importSnapshot,
+  note,
+  ownItem,
+  ownList,
+  push,
+  searchedPlace,
+  T0,
+  uid,
+  up,
+} from "./testkit";
 
 const A = "user-a";
 const B = "user-b";
@@ -17,36 +28,27 @@ async function setup(makeDb: () => Promise<Db>) {
   return db;
 }
 
-async function importList(db: Db, user: string, followed: boolean, items: string[], at: number) {
-  const { runId } = await startImportRun(
+const importList = (db: Db, user: string, followed: boolean, items: string[], at: number) =>
+  importSnapshot(
     db,
     user,
-    {
-      provider: "kakao",
-      complete: true,
-      subscriptionKnown: true,
-      importedAt: new Date(at).toISOString(),
-    },
-    at,
+    [
+      {
+        externalId: "1",
+        name: "제주",
+        followed,
+        items: items.map((p, i) => ({
+          externalId: String(10 + i),
+          placeExternalId: p,
+          title: p,
+          lat: 33.4,
+          lng: 126.3,
+          position: i,
+        })),
+      },
+    ],
+    { at },
   );
-  await importListChunk(
-    db,
-    user,
-    runId,
-    { externalId: "1", name: "제주", followed },
-    items.map((p, i) => ({
-      externalId: String(10 + i),
-      placeExternalId: p,
-      title: p,
-      lat: 33.4,
-      lng: 126.3,
-      position: i,
-    })),
-    at,
-  );
-  await finishImportList(db, user, runId, "1", at);
-  await completeImportRun(db, user, runId, ["1"], at);
-}
 
 forEachDialect("pull scope", (makeDb) => {
   it("returns a user's own rows from a null cursor, in wire format", async () => {
@@ -127,27 +129,9 @@ forEachDialect("pull scope", (makeDb) => {
     await importList(db, B, true, ["X", "Y"], T0 + 1);
     expect(await ids(db, B)).toContain("lists:l_kakao_1");
     // B unfollows: a complete import without the list
-    const { runId } = await startImportRun(
-      db,
-      B,
-      {
-        provider: "kakao",
-        complete: true,
-        subscriptionKnown: true,
-        importedAt: new Date(T0 + 2).toISOString(),
-      },
-      T0 + 2,
-    );
-    await importListChunk(
-      db,
-      B,
-      runId,
-      { externalId: "9", name: "다른", followed: false },
-      [],
-      T0 + 2,
-    );
-    await finishImportList(db, B, runId, "9", T0 + 2);
-    await completeImportRun(db, B, runId, ["9"], T0 + 2);
+    await importSnapshot(db, B, [{ externalId: "9", name: "다른", followed: false, items: [] }], {
+      at: T0 + 2,
+    });
     const bNow = await ids(db, B);
     expect(bNow).not.toContain("lists:l_kakao_1");
     expect(bNow.some((s) => s.startsWith("list_items:i_kakao_1_"))).toBe(false);

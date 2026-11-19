@@ -115,6 +115,7 @@ const USER_TABLES = [
   "tombstones",
   "import_runs",
   "import_seen",
+  "import_run_lists",
 ] as const satisfies readonly (keyof Database)[];
 
 /**

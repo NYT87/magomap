@@ -322,7 +322,7 @@ async function decidePush(
 
     if (table === "places") {
       // Create from a search result, or refresh an existing shared place's location.
-      const source = r.source as { provider: string; externalId: string };
+      const source = r.source as { provider: string; externalId: string; signedAt: number };
       if (
         source.externalId.startsWith("pin:") ||
         m.id !== placeRowId(source.provider, source.externalId)
@@ -337,7 +337,12 @@ async function decidePush(
         }
         write(
           "places",
-          dbRow("places", { ...r, deletedAt: null, updatedAt: now, providerSnapshotAt: null }, m),
+          // The result's signing time is when the provider was observed: newer observations win.
+          dbRow(
+            "places",
+            { ...r, deletedAt: null, updatedAt: now, providerSnapshotAt: source.signedAt },
+            m,
+          ),
         );
         write("place_sources", {
           id: placeSourceRowId(source.provider, source.externalId),
@@ -355,7 +360,12 @@ async function decidePush(
         continue;
       }
       ensureMyPlace(m.id);
-      if (m.clientUpdatedAt > Number(existing.client_updated_at)) {
+      // Ordered by when the provider was observed (the signed time), never by the client clock:
+      // an older result, however recently pushed, can't undo a newer import or search.
+      if (
+        existing.provider_snapshot_at == null ||
+        source.signedAt > Number(existing.provider_snapshot_at)
+      ) {
         // Only the location follows a search result; Kakao-sourced titles are never renamed here.
         const update = applyLocationUpdate(
           toAnyRow("places", existing) as PlaceRow,
@@ -377,8 +387,7 @@ async function decidePush(
               clientUpdatedAt: m.clientUpdatedAt,
             }),
             updated_at: now,
-            // A fresh search result outranks any import snapshot taken before now.
-            provider_snapshot_at: now,
+            provider_snapshot_at: source.signedAt,
           } as Row);
         }
         if (update.history) {

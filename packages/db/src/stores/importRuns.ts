@@ -18,7 +18,7 @@ import {
   userListRowId,
   userPlaceRowId,
 } from "@magomap/domain/ids";
-import { CLOCK_ALLOWANCE_MS } from "@magomap/domain/limits";
+import { CLOCK_ALLOWANCE_MS, LIMITS } from "@magomap/domain/limits";
 import { type RawBuilder, sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
 import { inJson, toAnyRow, toDbRow } from "../mapping";
@@ -49,6 +49,13 @@ export class RunNotFoundError extends Error {
   }
 }
 
+/** A page arrived out of order, or a list or run was closed before all of its parts arrived. */
+export class ImportIncompleteError extends Error {
+  constructor(what: string) {
+    super(`Import incomplete: ${what}`);
+  }
+}
+
 const EMPTY: ImportSummary = {
   listsAdded: 0,
   listsUpdated: 0,
@@ -62,10 +69,11 @@ const EMPTY: ImportSummary = {
 
 interface RunState {
   summary: ImportSummary;
-  finishedLists: number;
-  /** The provider's list summaries the server fetched when the run started. */
-  lists?: ImportListSummary[];
 }
+
+/** Pages a list needs: its summary's item count in pages, and always page 0 (the list's details). */
+const pagesNeeded = (itemCount: number) =>
+  Math.max(1, Math.ceil(itemCount / LIMITS.importChunkItems));
 
 function add(a: ImportSummary, b: Partial<ImportSummary>): ImportSummary {
   const out = { ...a };
@@ -97,9 +105,31 @@ async function runningRun(db: Db, userId: string, runId: string) {
   if (run.status !== "running") throw new RunClosedError();
   const state: RunState = run.summary_json
     ? (JSON.parse(run.summary_json) as RunState)
-    : { summary: { ...EMPTY }, finishedLists: 0 };
+    : { summary: { ...EMPTY } };
   return { run, state };
 }
+
+/** This run's progress row for one of the lists the server fetched at the start. */
+async function runList(db: Db, userId: string, runId: string, externalId: string) {
+  const row = await db.kysely
+    .selectFrom("import_run_lists")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .where("run_id", "=", runId)
+    .where("external_id", "=", externalId)
+    .executeTakeFirst();
+  if (!row) throw new RunNotFoundError();
+  return row;
+}
+
+const runLists = (db: Db, userId: string, runId: string) =>
+  db.kysely
+    .selectFrom("import_run_lists")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .where("run_id", "=", runId)
+    .orderBy("position")
+    .execute();
 
 /** True while the run is the user's running import; checked at write time. */
 function runIsRunning(userId: string, runId: string): RawBuilder<boolean> {
@@ -135,7 +165,8 @@ export async function startImportRun(
     complete: boolean;
     subscriptionKnown: boolean;
     importedAt: string;
-    lists?: ImportListSummary[];
+    /** The provider's list summaries the server fetched; the run imports exactly these. */
+    lists: ImportListSummary[];
   },
   now: number,
 ): Promise<{ runId: string }> {
@@ -146,15 +177,38 @@ export async function startImportRun(
     throw new Error("Invalid importedAt");
   }
   await assertUserExists(db, userId);
-  const summary = JSON.stringify({
-    summary: EMPTY,
-    finishedLists: 0,
-    lists: opts.lists ?? [],
-  } satisfies RunState);
+  const summary = JSON.stringify({ summary: EMPTY } satisfies RunState);
+  // One row per list (never one large value): progress is tracked per list.
+  const listRows = opts.lists.map((l, position) => ({
+    user_id: userId,
+    run_id: runId,
+    external_id: l.externalId,
+    position,
+    name: l.name,
+    description: l.description ?? null,
+    owner_name: l.ownerName ?? null,
+    followed: l.followed ? 1 : 0,
+    item_count: l.itemCount,
+    pages_done: 0,
+    finished: 0,
+  }));
   return withWrite(
     db,
     async (ctx) => ({
       statements: [
+        db.kysely
+          .deleteFrom("import_run_lists")
+          .where("user_id", "=", userId)
+          .where(
+            "run_id",
+            "in",
+            db.kysely
+              .selectFrom("import_runs")
+              .select("id")
+              .where("user_id", "=", userId)
+              .where("status", "=", "running"),
+          )
+          .where(ctx.guard),
         db.kysely
           .updateTable("import_runs")
           .set({ status: "superseded", finished_at: now })
@@ -168,6 +222,11 @@ export async function startImportRun(
               ${opts.subscriptionKnown ? 1 : 0}, ${Number.isFinite(snapshotAt) ? snapshotAt : now}, ${summary}, NULL
             WHERE ${ctx.guard}`.compile(db.kysely),
         },
+        ...bulkUpsertQuery(db, "import_run_lists", listRows, {
+          conflict: ["user_id", "run_id", "external_id"],
+          update: [],
+          guard: ctx.guard,
+        }),
       ],
       result: { runId },
     }),
@@ -175,18 +234,47 @@ export async function startImportRun(
   );
 }
 
-/** Imports one chunk (≤ 500 items) of one provider list. */
+/**
+ * Imports page `pageIndex` (≤ 500 items) of one of the run's lists. Pages arrive in order;
+ * a retried page is applied again (the writes are idempotent).
+ */
 export async function importListChunk(
   db: Db,
   userId: string,
   runId: string,
-  meta: Omit<ImportList, "items">,
+  externalId: string,
+  pageIndex: number,
   items: ImportItem[],
   now: number,
 ): Promise<ImportSummary> {
   return withWrite(
     db,
-    (ctx) => decideChunk(db, userId, runId, meta, items, now, ctx),
+    async (ctx) => {
+      await runningRun(db, userId, runId);
+      const progress = await runList(db, userId, runId, externalId);
+      if (progress.finished === 1) throw new RunClosedError();
+      if (!Number.isSafeInteger(pageIndex) || pageIndex < 0 || pageIndex > progress.pages_done) {
+        throw new ImportIncompleteError(`page ${pageIndex} before page ${progress.pages_done}`);
+      }
+      const meta: Omit<ImportList, "items"> = {
+        externalId,
+        name: progress.name,
+        description: progress.description ?? undefined,
+        ownerName: progress.owner_name ?? undefined,
+        followed: progress.followed === 1,
+      };
+      const decided = await decideChunk(db, userId, runId, meta, items, now, ctx);
+      decided.statements.push(
+        db.kysely
+          .updateTable("import_run_lists")
+          .set({ pages_done: Math.max(progress.pages_done, pageIndex + 1) })
+          .where("user_id", "=", userId)
+          .where("run_id", "=", runId)
+          .where("external_id", "=", externalId)
+          .where(ctx.guard),
+      );
+      return decided;
+    },
     runIsRunning(userId, runId),
   );
 }
@@ -306,9 +394,10 @@ async function decideChunk(
     if (!access || access.removed_at != null || access.deleted_at != null) grantLists.push(listId);
   }
 
-  // Places, sources, memberships and imported notes
+  // Places, sources, memberships and imported notes. From a list older than the shared one,
+  // only this user's own notes (and the places they're about) are imported, never memberships.
   const seenPlaces = new Map<string, Row>();
-  for (const item of listIsCurrent ? items : []) {
+  for (const item of listIsCurrent ? items : items.filter((i) => i.localNote?.trim())) {
     const placeId = placeIdOf(item);
     const existing = seenPlaces.get(placeId) ?? places.get(placeId);
     if (!existing) {
@@ -414,8 +503,9 @@ async function decideChunk(
     const memberId = providerItemRowId(provider, meta.externalId, item.externalId);
     const member = members.get(memberId);
     // Everyone who has this list now sees this place: re-stamp an existing one so they receive it.
-    if (!member && places.has(placeId)) grantPlaces.push(placeId);
-    if (isNewer(snapshotAt, member)) {
+    if (listIsCurrent && places.has(placeId) && (!member || member.place_id !== placeId))
+      grantPlaces.push(placeId);
+    if (listIsCurrent && isNewer(snapshotAt, member)) {
       const memberRow: Row = {
         id: memberId,
         list_id: listId,
@@ -520,6 +610,12 @@ export async function finishImportList(
     db,
     async (ctx) => {
       const { run, state } = await runningRun(db, userId, runId);
+      const progress = await runList(db, userId, runId, externalId);
+      // Retried: already finished, nothing more to do.
+      if (progress.finished === 1) return { statements: [], result: { ...EMPTY } };
+      if (progress.pages_done < pagesNeeded(progress.item_count)) {
+        throw new ImportIncompleteError(`list ${externalId} has pages still to import`);
+      }
       const listId = providerListRowId(run.provider, externalId);
       const list = (await readByIds(db, userId, "lists", [listId])).get(listId);
       const snapshotAt = Number(run.snapshot_at);
@@ -541,13 +637,14 @@ export async function finishImportList(
           : 0;
       const counts = { membershipsRemoved: removing };
       const statements: Statement[] = [
-        saveState(
-          db,
-          userId,
-          runId,
-          { ...state, summary: add(state.summary, counts), finishedLists: state.finishedLists + 1 },
-          ctx,
-        ),
+        saveState(db, userId, runId, { ...state, summary: add(state.summary, counts) }, ctx),
+        db.kysely
+          .updateTable("import_run_lists")
+          .set({ finished: 1 })
+          .where("user_id", "=", userId)
+          .where("run_id", "=", runId)
+          .where("external_id", "=", externalId)
+          .where(ctx.guard),
       ];
       if (run.complete === 1 && isNewer(snapshotAt, list)) {
         statements.unshift(
@@ -570,25 +667,30 @@ export async function finishImportList(
 }
 
 /**
- * Ends the run. In a complete snapshot that finished at least one list, lists this user has at
- * this provider but missing from the snapshot are removed: for everyone if the user owns them
- * (and the snapshot knows ownership), otherwise only for this user (they unfollowed).
+ * Ends the run once every list in it finished. In a complete snapshot (even one with no lists),
+ * lists this user has at this provider but missing from the snapshot are removed: for everyone
+ * if the user owns them (and the snapshot knows ownership), otherwise only for this user.
  */
 export async function completeImportRun(
   db: Db,
   userId: string,
   runId: string,
-  externalIds: string[],
   now: number,
 ): Promise<ImportSummary> {
   return withWrite(
     db,
     async (ctx) => {
       const { run, state } = await runningRun(db, userId, runId);
+      const progress = await runLists(db, userId, runId);
+      const open = progress.filter((p) => p.finished !== 1);
+      if (open.length > 0) {
+        throw new ImportIncompleteError(`${open.length} list(s) not finished`);
+      }
+      const snapshotAt = Number(run.snapshot_at);
       const statements: Statement[] = [];
       let removed = 0;
-      if (run.complete === 1 && state.finishedLists > 0) {
-        const keep = new Set(externalIds.map((e) => providerListRowId(run.provider, e)));
+      if (run.complete === 1) {
+        const keep = new Set(progress.map((p) => providerListRowId(run.provider, p.external_id)));
         const mine = await db.kysely
           .selectFrom("user_lists")
           .innerJoin("lists", "lists.id", "user_lists.list_id")
@@ -597,21 +699,34 @@ export async function completeImportRun(
             "user_lists.list_id",
             "user_lists.role",
             "lists.provider_snapshot_at",
+            "lists.removed_at_provider",
           ])
           .where("user_lists.user_id", "=", userId)
           .where("user_lists.removed_at", "is", null)
           .where("lists.provider", "=", run.provider)
-          .where("lists.removed_at_provider", "is", null)
           .execute();
-        const missing = mine.filter((m) => !keep.has(m.list_id));
-        const everyone = missing
-          .filter((m) => m.role === "owner" && run.subscription_known === 1)
-          .filter(
-            (m) =>
-              m.provider_snapshot_at == null ||
-              Number(run.snapshot_at) >= Number(m.provider_snapshot_at),
-          )
+        const absent = mine.filter((m) => !keep.has(m.list_id));
+        const authoritative = (m: (typeof absent)[number]) =>
+          m.role === "owner" &&
+          run.subscription_known === 1 &&
+          (m.provider_snapshot_at == null || snapshotAt >= Number(m.provider_snapshot_at));
+        // Already removed at the provider: a newer owner snapshot confirms it (a later, older
+        // snapshot can't bring the list back). The removal time stays; nothing new to send.
+        const confirmed = absent
+          .filter((m) => m.removed_at_provider != null && authoritative(m))
+          .filter((m) => Number(m.provider_snapshot_at) !== snapshotAt)
           .map((m) => m.list_id);
+        if (confirmed.length > 0) {
+          statements.push(
+            db.kysely
+              .updateTable("lists")
+              .set({ provider_snapshot_at: snapshotAt })
+              .where(inJson(db, "id", confirmed))
+              .where(ctx.guard),
+          );
+        }
+        const missing = absent.filter((m) => m.removed_at_provider == null);
+        const everyone = missing.filter(authoritative).map((m) => m.list_id);
         const justMe = missing.filter((m) => !everyone.includes(m.list_id)).map((m) => m.access_id);
         removed = missing.length;
         if (everyone.length > 0) {
@@ -620,7 +735,7 @@ export async function completeImportRun(
               .updateTable("lists")
               .set({
                 removed_at_provider: now,
-                provider_snapshot_at: Number(run.snapshot_at),
+                provider_snapshot_at: snapshotAt,
                 updated_at: now,
                 seq: ctx.seq,
               })
@@ -643,6 +758,11 @@ export async function completeImportRun(
       statements.push(
         db.kysely
           .deleteFrom("import_seen")
+          .where("user_id", "=", userId)
+          .where("run_id", "=", runId)
+          .where(ctx.guard),
+        db.kysely
+          .deleteFrom("import_run_lists")
           .where("user_id", "=", userId)
           .where("run_id", "=", runId)
           .where(ctx.guard),
@@ -688,6 +808,14 @@ export async function runSnapshot(
   userId: string,
   runId: string,
 ): Promise<{ provider: string; snapshotAt: number; lists: ImportListSummary[] }> {
-  const { run, state } = await runningRun(db, userId, runId);
-  return { provider: run.provider, snapshotAt: Number(run.snapshot_at), lists: state.lists ?? [] };
+  const { run } = await runningRun(db, userId, runId);
+  const lists = (await runLists(db, userId, runId)).map((l) => ({
+    externalId: l.external_id,
+    name: l.name,
+    ...(l.description == null ? {} : { description: l.description }),
+    ...(l.owner_name == null ? {} : { ownerName: l.owner_name }),
+    followed: l.followed === 1,
+    itemCount: l.item_count,
+  }));
+  return { provider: run.provider, snapshotAt: Number(run.snapshot_at), lists };
 }

@@ -5,16 +5,11 @@ import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { inJson } from "../mapping";
 import { forEachDialect } from "../testing/dbs";
-import {
-  completeImportRun,
-  finishImportList,
-  ImportConflictError,
-  importListChunk,
-  startImportRun,
-} from "./importRuns";
+import { ImportConflictError, startImportRun } from "./importRuns";
 import { AccountGoneError, applyPush, pull } from "./sync";
 import {
   addUser,
+  importSnapshot,
   interleaved,
   note,
   ownItem,
@@ -51,33 +46,16 @@ async function importOne(
   db: Db,
   user: string,
   items: ImportItem[],
-  o: { snap: number; followed?: boolean; complete?: boolean; lists?: string[] },
+  o: { snap: number; followed?: boolean; complete?: boolean },
 ) {
-  const { runId } = await startImportRun(
-    db,
-    user,
-    {
-      provider: "kakao",
-      complete: o.complete ?? true,
-      subscriptionKnown: true,
-      importedAt: at(o.snap),
-    },
-    T0 + o.snap,
-  );
-  if (items.length > 0 || (o.lists ?? ["1"]).includes("1")) {
-    if ((o.lists ?? ["1"]).includes("1")) {
-      await importListChunk(
-        db,
-        user,
-        runId,
-        { externalId: "1", name: "제주", followed: o.followed ?? false },
-        items,
-        T0 + o.snap,
-      );
-      await finishImportList(db, user, runId, "1", T0 + o.snap);
-    }
-  }
-  return completeImportRun(db, user, runId, o.lists ?? ["1"], T0 + o.snap);
+  return (
+    await importSnapshot(
+      db,
+      user,
+      [{ externalId: "1", name: "제주", followed: o.followed ?? false, items }],
+      { at: T0 + o.snap, complete: o.complete },
+    )
+  ).summary;
 }
 
 const ids = async (db: Db, user: string, cursor: string | null = null) =>
@@ -149,22 +127,12 @@ forEachDialect("shared review fixes", (makeDb) => {
       .executeTakeFirstOrThrow();
     expect(removed.removed_at_provider).not.toBeNull();
     // the owner deletes list 1 at 300 (her import still has another list); a follower's 250 snapshot doesn't bring it back
-    const { runId } = await startImportRun(
+    await importSnapshot(
       db,
       WIFE,
-      { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: at(300) },
-      T0 + 300,
+      [{ externalId: "2", name: "다른", followed: false, items: [item("20", "C")] }],
+      { at: T0 + 300 },
     );
-    await importListChunk(
-      db,
-      WIFE,
-      runId,
-      { externalId: "2", name: "다른", followed: false },
-      [item("20", "C")],
-      T0 + 300,
-    );
-    await finishImportList(db, WIFE, runId, "2", T0 + 300);
-    await completeImportRun(db, WIFE, runId, ["2"], T0 + 300);
     expect(
       (
         await db.kysely
@@ -259,7 +227,13 @@ forEachDialect("shared review fixes", (makeDb) => {
     await push(
       db,
       WIFE,
-      [up("places", searchedPlace("A", { lat: 33.46 + 500 / 111_320 }), T0 + 50)],
+      [
+        up(
+          "places",
+          searchedPlace("A", { lat: 33.46 + 500 / 111_320, signedAt: T0 + 50 }),
+          T0 + 50,
+        ),
+      ],
       T0 + 50,
     );
     await importOne(db, ME, [item("10", "A", { lat: 33.46 })], { snap: 20, followed: true });
@@ -279,6 +253,7 @@ forEachDialect("shared review fixes", (makeDb) => {
           complete: true,
           subscriptionKnown: true,
           importedAt: at(10 * 86_400_000),
+          lists: [],
         },
         T0,
       ),
@@ -287,7 +262,13 @@ forEachDialect("shared review fixes", (makeDb) => {
       startImportRun(
         db,
         WIFE,
-        { provider: "kakao", complete: true, subscriptionKnown: true, importedAt: "not a date" },
+        {
+          provider: "kakao",
+          complete: true,
+          subscriptionKnown: true,
+          importedAt: "not a date",
+          lists: [],
+        },
         T0,
       ),
     ).rejects.toThrow(/importedAt/);

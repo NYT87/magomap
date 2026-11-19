@@ -5,6 +5,7 @@ import {
   completeImportRun,
   finishImportList,
   ImportConflictError,
+  ImportIncompleteError,
   importListChunk,
   latestImportRun,
   RunClosedError,
@@ -87,6 +88,7 @@ async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
     if (error instanceof RunClosedError) return c.json({ error: "run_closed" }, 409);
     if (error instanceof ImportConflictError) return c.json({ error: "list_conflict" }, 409);
     if (error instanceof SnapshotChangedError) return c.json({ error: "snapshot_changed" }, 409);
+    if (error instanceof ImportIncompleteError) return c.json({ error: "incomplete" }, 409);
     throw error;
   }
 }
@@ -132,7 +134,9 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/pages/:index", (c) =>
     const index = Number(c.req.param("index"));
     const run = await runSnapshot(c.var.db, c.var.userId, runId);
     const meta = run.lists.find((l) => l.externalId === externalId);
-    if (!meta || !Number.isSafeInteger(index) || index < 0) throw new RunNotFoundError();
+    const pages = Math.max(1, Math.ceil((meta?.itemCount ?? 0) / PAGE));
+    if (!meta || !Number.isSafeInteger(index) || index < 0 || index >= pages)
+      throw new RunNotFoundError();
     let page: ReturnType<typeof kakaoItemsToImport>;
     try {
       page = kakaoItemsToImport(
@@ -145,20 +149,29 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/pages/:index", (c) =>
       if (error instanceof UpstreamError) throw error;
       throw new UpstreamError("kakao_list_unavailable");
     }
-    if (Date.parse(page.importedAt) !== run.snapshotAt || page.externalId !== externalId) {
+    if (
+      Date.parse(page.importedAt) !== run.snapshotAt ||
+      page.externalId !== externalId ||
+      page.total !== meta.itemCount
+    ) {
       // kakao-list was re-imported since this run started: restart the import.
       throw new SnapshotChangedError();
     }
-    const { itemCount: _count, ...listMeta } = meta;
+    // Exactly the page asked for, so a finished list really had every item.
+    const offset = index * PAGE;
+    if (page.offset !== offset || page.items.length !== Math.min(PAGE, page.total - offset)) {
+      throw new UpstreamError("kakao_list_unavailable");
+    }
     const summary = await importListChunk(
       c.var.db,
       c.var.userId,
       runId,
-      listMeta,
+      externalId,
+      index,
       page.items,
       Date.now(),
     );
-    return { ...summary, done: page.offset + page.items.length >= page.total };
+    return { ...summary, done: index + 1 >= pages };
   }),
 );
 
@@ -175,16 +188,7 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/finish", (c) =>
 );
 
 importRoutes.post("/import/runs/:runId/complete", (c) =>
-  handled(c, async () => {
-    const run = await runSnapshot(c.var.db, c.var.userId, c.req.param("runId"));
-    return completeImportRun(
-      c.var.db,
-      c.var.userId,
-      c.req.param("runId"),
-      run.lists.map((l) => l.externalId),
-      Date.now(),
-    );
-  }),
+  handled(c, () => completeImportRun(c.var.db, c.var.userId, c.req.param("runId"), Date.now())),
 );
 
 importRoutes.get("/import/runs/latest", async (c) =>
