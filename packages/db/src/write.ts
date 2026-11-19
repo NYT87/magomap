@@ -2,6 +2,7 @@ import type { SyncTable } from "@magomap/domain";
 import { newId } from "@magomap/domain/ids";
 import { type RawBuilder, sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "./core";
+import { inJson } from "./mapping";
 
 export type Row = Record<string, unknown> & { id: string };
 
@@ -105,4 +106,54 @@ export function writeStatements(
     );
   }
   return statements;
+}
+
+/**
+ * A user just gained access to places or lists that may have been written long ago. Their
+ * shared rows are re-stamped with this write's seq, so the user's next pull includes them.
+ * (Other users who already have them receive them again: harmless.)
+ */
+export function grantStatements(
+  db: Db,
+  ctx: WriteContext,
+  grant: { placeIds?: readonly string[]; listIds?: readonly string[] },
+): Statement[] {
+  const out: Statement[] = [];
+  const stamp = { seq: ctx.seq } as never;
+  const places = [...new Set(grant.placeIds ?? [])];
+  const lists = [...new Set(grant.listIds ?? [])];
+  if (places.length > 0) {
+    out.push(
+      db.kysely
+        .updateTable("places")
+        .set(stamp)
+        .where(inJson(db, "id", places))
+        .where(ctx.guard),
+      db.kysely
+        .updateTable("place_sources")
+        .set(stamp)
+        .where(inJson(db, "place_id", places))
+        .where(ctx.guard),
+      db.kysely
+        .updateTable("place_locations")
+        .set(stamp)
+        .where(inJson(db, "place_id", places))
+        .where(ctx.guard),
+    );
+  }
+  if (lists.length > 0) {
+    out.push(
+      db.kysely
+        .updateTable("lists")
+        .set(stamp)
+        .where(inJson(db, "id", lists))
+        .where(ctx.guard),
+      db.kysely
+        .updateTable("list_items")
+        .set(stamp)
+        .where(inJson(db, "list_id", lists))
+        .where(ctx.guard),
+    );
+  }
+  return out;
 }

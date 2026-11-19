@@ -28,7 +28,7 @@ import { sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
 import { inJson, PER_USER_TABLES, toAnyRow, toDbRow } from "../mapping";
 import type { Database } from "../schema";
-import { type Row, type WriteContext, withWrite, writeStatements } from "../write";
+import { grantStatements, type Row, type WriteContext, withWrite, writeStatements } from "../write";
 
 export { WriteConflictError } from "../write";
 
@@ -203,9 +203,11 @@ async function decidePush(
     writes.get(table)?.set(row.id, row);
     state.get(table)?.set(row.id, row);
   };
+  const granted: string[] = [];
   const ensureMyPlace = (placeId: string) => {
     const id = userPlaceRowId(placeId);
     if (myPlaces.has(id)) return;
+    granted.push(placeId);
     const row: Row = {
       user_id: userId,
       id,
@@ -461,6 +463,7 @@ async function decidePush(
     visit_notes: newer,
     links: newer,
   });
+  statements.push(...grantStatements(db, ctx, { placeIds: granted }));
   statements.push(
     ...bulkUpsertQuery(db, "tombstones", newTombstones, {
       conflict: ["user_id", "table_name", "id"],
