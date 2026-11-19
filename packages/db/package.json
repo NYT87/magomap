@@ -10,7 +10,8 @@
     "./sqlite": "./src/sqlite.ts",
     "./migrate": "./src/migrate.ts",
     "./testing": "./src/testing/dbs.ts",
-    "./stores/users": "./src/stores/users.ts"
+    "./stores/users": "./src/stores/users.ts",
+    "./stores/sync": "./src/stores/sync.ts"
   },
   "scripts": {
     "test": "vitest run",

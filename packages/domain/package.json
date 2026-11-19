@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./ids": "./src/ids.ts",
-    "./location": "./src/location.ts"
+    "./location": "./src/location.ts",
+    "./limits": "./src/limits.ts"
   },
   "scripts": {
     "test": "vitest run",
