@@ -1125,6 +1125,10 @@ a {
   border-radius: var(--radius-card);
 }
 
+.mm-editor__discard {
+  margin-right: auto;
+}
+
 .mm-input--date {
   max-width: 220px;
 }
@@ -1138,6 +1142,7 @@ a {
 
 .mm-editor__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-sm);
 }
@@ -1387,6 +1392,7 @@ a {
   color: var(--color-warning);
 }
 
+.mm-sync__pill--action,
 .mm-sync__pill[data-tone="error"] {
   min-height: 44px;
   color: var(--color-error);

@@ -51,4 +51,4 @@ createServer(async (req, res) => {
     return body ? send(res, 200, body) : send(res, 404, { error: "no_snapshot" });
   }
   send(res, 404, { error: "not_found" });
-}).listen(port, () => console.log(`fake kakao-list on http://localhost:${port}`));
+}).listen(port, "127.0.0.1", () => console.log(`fake kakao-list on http://localhost:${port}`));

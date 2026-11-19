@@ -16,18 +16,21 @@ export function ConfirmDialog({ title, children, actions, onCancel, role = "aler
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
   useInertBackground();
+  // The latest onCancel, without re-running the focus effect when a parent re-renders.
+  const cancel = useRef(onCancel);
+  cancel.current = onCancel;
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>("input, button")?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape") cancel.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
       before?.focus();
     };
-  }, [onCancel]);
+  }, []);
   const content = (
     <>
       <h2 id={titleId} className="mm-dialog__title">

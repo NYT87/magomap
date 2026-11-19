@@ -105,6 +105,11 @@ export function openUserDb(userId: string): MagomapDexie {
 /** The signed-in account's database. */
 export function currentDb(): MagomapDexie {
   if (!current) throw new Error("No account database is open");
-  if (!current.isOpen()) void current.open();
   return current;
+}
+
+/** Closes the account's database (before deleting it), so nothing reopens or recreates it. */
+export function closeUserDb() {
+  current?.close();
+  current = null;
 }

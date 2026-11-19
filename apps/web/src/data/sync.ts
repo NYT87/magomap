@@ -1,5 +1,6 @@
 // Push the outbox, then pull pages; resilient to offline, sign-out, refusals and clock skew.
 import type { AnyRow, Mutation, PullResponse, PushResponse, SyncTable } from "@magomap/domain";
+import { userPlaceRowId } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
 import { ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
 import { currentDb, type MagomapDexie, type OutboxEntry, ROW_TABLES } from "./db";
@@ -87,6 +88,8 @@ interface PushTally {
   pushed: number;
   rejected: number;
   clockAhead: boolean;
+  /** A refusal left local rows out of step: pull everything again. */
+  repull: boolean;
 }
 
 async function applyResults(
@@ -109,6 +112,13 @@ async function applyResults(
           continue;
         }
         await db.outbox.delete(e.seq);
+        if (r.status !== "rejected") {
+          // A later change to a row refused before went through: that refusal is history.
+          const old = (await db.rejected.toArray()).filter(
+            (x) => x.table === e.table && x.id === e.id,
+          );
+          await db.rejected.bulkDelete(old.map((x) => x.mutationId));
+        }
         if (r.status === "applied") t.pushed += 1;
         else if (r.status === "ignored_stale") {
           t.pushed += 1;
@@ -116,6 +126,12 @@ async function applyResults(
           if (r.row && pending === 0) await db.table(e.table).put(r.row);
         } else {
           t.rejected += 1;
+          t.repull = true;
+          const pending = await db.outbox.where("[table+id]").equals([e.table, e.id]).count();
+          // A refused save from search isn't saved: drop the local "saved" mark.
+          if (e.table === "places" && pending === 0) {
+            await db.user_places.delete(userPlaceRowId(e.id));
+          }
           await db.rejected.put({
             mutationId: e.mutationId,
             table: e.table,
@@ -143,11 +159,13 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
     if (error instanceof ApiError && (error.status === 400 || error.status === 413)) {
       if (entries.length === 1) {
         const e = entries[0] as OutboxEntry;
-        await db.transaction("rw", db.outbox, db.rejected, async () => {
+        await db.transaction("rw", db.outbox, db.rejected, db.user_places, async () => {
           if (e.seq !== undefined) await db.outbox.delete(e.seq);
           await db.rejected.put({ ...e, reason: "invalid", at: Date.now() });
+          if (e.table === "places") await db.user_places.delete(userPlaceRowId(e.id));
         });
         t.rejected += 1;
+        t.repull = true;
         return;
       }
       const half = Math.ceil(entries.length / 2);
@@ -204,10 +222,12 @@ async function run(): Promise<SyncResult> {
     return { pushed: 0, pulled: 0, rejected: 0 };
   }
   setState("syncing");
-  const t: PushTally = { pushed: 0, rejected: 0, clockAhead: false };
+  const t: PushTally = { pushed: 0, rejected: 0, clockAhead: false, repull: false };
   try {
     const entries = await db.outbox.orderBy("seq").toArray();
     for (const batch of batches(entries)) await pushBatch(db, batch, t);
+    // After a refusal, the server's copies come back in full, replacing refused local edits.
+    if (t.repull) await db.meta.delete("cursor");
     const pulled = await pullAll(db);
     const now = Date.now();
     await db.meta.put({ key: "lastSyncAt", value: now });

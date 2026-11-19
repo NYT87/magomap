@@ -44,6 +44,11 @@ function Entry({
 }) {
   const { t } = useTranslation();
   const imported = note.origin === "import";
+  const when = note.visitedOn
+    ? formatDate(visitMoment(note.visitedOn))
+    : imported
+      ? t("place.fromKakaoList")
+      : t("place.noDate");
   return (
     <article className="mm-entry">
       <header className="mm-entry__head">
@@ -72,13 +77,19 @@ function Entry({
           <span />
         )}
         <span className="mm-entry__actions">
-          <button type="button" className="mm-link-button" onClick={onEdit}>
+          <button
+            type="button"
+            className="mm-link-button"
+            onClick={onEdit}
+            aria-label={t("place.editNote", { date: when })}
+          >
             {t("place.edit")}
           </button>
           <button
             type="button"
             className="mm-link-button mm-link-button--danger"
             onClick={onDelete}
+            aria-label={t("place.deleteNote", { date: when })}
           >
             {t("place.delete")}
           </button>

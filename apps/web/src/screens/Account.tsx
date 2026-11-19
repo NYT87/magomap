@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import { apiFetch, NetworkError } from "../api/client";
 import { forgetMe } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { closeUserDb, dbName } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 
@@ -58,7 +59,9 @@ export function Account({ me }: { me: Me }) {
     setBusy(true);
     try {
       await apiFetch("/api/account", { method: "DELETE" });
-      await Dexie.delete(`magomap-${me.userId}`);
+      // Close first, so nothing (a sync, a live query) reopens or recreates it.
+      closeUserDb();
+      await Dexie.delete(dbName(me.userId));
       leave();
     } catch {
       setError(t("account.failed"));

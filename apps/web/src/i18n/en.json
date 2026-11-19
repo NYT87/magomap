@@ -147,7 +147,16 @@
     "removedFromKakao": "Removed from Kakao",
     "kakaoNote": "Kakao note",
     "noLists": "Not in any of your lists yet.",
-    "noOwnLists": "Make a list on the Lists screen to add places to it."
+    "noOwnLists": "Make a list on the Lists screen to add places to it.",
+    "close": "Close",
+    "discardDraft": "Discard draft",
+    "draftKept": "Closing keeps what you wrote as a draft.",
+    "saveFailed": "Couldn't save this note. Your text is still here; try again.",
+    "editNote": "Edit note from {{date}}",
+    "deleteNote": "Delete note from {{date}}",
+    "editLink": "Edit link {{name}}",
+    "deleteLink": "Delete link {{name}}",
+    "newTab": "(opens in a new tab)"
   },
   "import": {
     "title": "Import from Kakao",
@@ -222,7 +231,9 @@
     "membership": "List membership",
     "deleted": "A deletion",
     "copy": "Copy text",
-    "copied": "Copied"
+    "copied": "Copied",
+    "dismiss": "Done",
+    "dismissHint": "Removes it from this list. Copy the text first if you need it."
   },
   "crash": {
     "title": "Something went wrong on this screen",

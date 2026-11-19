@@ -134,6 +134,7 @@ export function Links({ placeId }: { placeId: string }) {
               >
                 <span className="mm-link-row__title">{link.title || host(link.url)}</span>
                 <span className="mm-muted">{host(link.url)}</span>
+                <span className="mm-visually-hidden">{t("place.newTab")}</span>
                 <ExternalLink
                   aria-hidden
                   size={16}
@@ -155,6 +156,7 @@ export function Links({ placeId }: { placeId: string }) {
                   type="button"
                   className="mm-link-button"
                   onClick={() => setEditing(link.id)}
+                  aria-label={t("place.editLink", { name: link.title || host(link.url) })}
                 >
                   {t("place.edit")}
                 </button>
@@ -162,6 +164,7 @@ export function Links({ placeId }: { placeId: string }) {
                   type="button"
                   className="mm-link-button mm-link-button--danger"
                   onClick={() => setDeleting(link)}
+                  aria-label={t("place.deleteLink", { name: link.title || host(link.url) })}
                 >
                   {t("place.delete")}
                 </button>

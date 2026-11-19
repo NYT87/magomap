@@ -224,8 +224,32 @@ export async function searchLocal(db: MagomapDexie, q: string): Promise<string[]
   return [...hits].filter((id) => visible.has(id) && lib.places.has(id));
 }
 
-export const useRejected = () =>
-  useLiveQuery(
-    async (): Promise<RejectedEntry[]> => currentDb().rejected.orderBy("at").toArray(),
-    [],
-  );
+/** Refused changes, oldest first (sorted here: the table is keyed by mutation id only). */
+export async function loadRejected(db: MagomapDexie): Promise<RejectedEntry[]> {
+  return (await db.rejected.toArray()).sort((a, b) => a.at - b.at);
+}
+
+export const useRejected = () => useLiveQuery(() => loadRejected(currentDb()), []);
+
+/** Tables whose refused rows exist only on this device until the server accepts them. */
+const OWN_ROW_TABLES = ["visit_notes", "links", "lists", "list_items"];
+
+/**
+ * Forgets a refused change after its text was copied. If the local row is still exactly the
+ * refused version (the server never replaced it), it goes too, so nothing stays out of step.
+ */
+export async function dismissRejected(db: MagomapDexie, mutationId: string): Promise<void> {
+  const tables = [db.rejected, db.outbox, ...OWN_ROW_TABLES.map((t) => db.table(t))];
+  await db.transaction("rw", tables, async () => {
+    const entry = await db.rejected.get(mutationId);
+    if (!entry) return;
+    await db.rejected.delete(mutationId);
+    if (entry.op !== "upsert" || !OWN_ROW_TABLES.includes(entry.table)) return;
+    const pending = await db.outbox.where("[table+id]").equals([entry.table, entry.id]).count();
+    const local = (await db.table(entry.table).get(entry.id)) as { updatedAt?: number } | undefined;
+    const refused = entry.row as { updatedAt?: number } | undefined;
+    if (pending === 0 && local && refused && local.updatedAt === refused.updatedAt) {
+      await db.table(entry.table).delete(entry.id);
+    }
+  });
+}

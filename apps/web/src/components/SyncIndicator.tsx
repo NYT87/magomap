@@ -2,7 +2,8 @@ import { AlertTriangle, Check, CloudOff, Loader, LogIn } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RejectedEntry } from "../data/db";
-import { useRejected } from "../data/queries";
+import { currentDb } from "../data/db";
+import { dismissRejected, useRejected } from "../data/queries";
 import { useSyncStatus } from "../data/useSyncStatus";
 import { useOnline } from "../import/useOnline";
 import { Sheet } from "./Sheet";
@@ -31,6 +32,7 @@ function RejectedSheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet title={t("sync.rejectedTitle")} onClose={onClose}>
       <p className="mm-muted">{t("sync.rejectedLead")}</p>
+      <p className="mm-muted">{t("sync.dismissHint")}</p>
       <ul className="mm-rejected">
         {rejected.map((e) => {
           const text = textOf(e);
@@ -40,17 +42,26 @@ function RejectedSheet({ onClose }: { onClose: () => void }) {
                 {e.op === "delete" ? t("sync.deleted") : t(KIND[e.table])}
               </span>
               {text && <p className="mm-entry__body">{text}</p>}
-              {text && (
+              <span className="mm-entry__actions">
+                {text && (
+                  <button
+                    type="button"
+                    className="mm-link-button"
+                    onClick={() =>
+                      void navigator.clipboard?.writeText(text).then(() => setCopied(e.mutationId))
+                    }
+                  >
+                    {copied === e.mutationId ? t("sync.copied") : t("sync.copy")}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="mm-link-button"
-                  onClick={() =>
-                    void navigator.clipboard?.writeText(text).then(() => setCopied(e.mutationId))
-                  }
+                  onClick={() => void dismissRejected(currentDb(), e.mutationId)}
                 >
-                  {copied === e.mutationId ? t("sync.copied") : t("sync.copy")}
+                  {t("sync.dismiss")}
                 </button>
-              )}
+              </span>
             </li>
           );
         })}
@@ -94,15 +105,23 @@ export function SyncIndicator() {
 
   return (
     <div className="mm-sync">
+      {/* One live region that stays mounted, so every change of state is announced. */}
+      <span className="mm-visually-hidden" role="status">
+        {text}
+      </span>
       {status.state === "needs_signin" ? (
-        <a href="/api/auth/kakao/start" className="mm-sync__pill" data-tone={tone}>
+        <a
+          href="/api/auth/kakao/start"
+          className="mm-sync__pill mm-sync__pill--action"
+          data-tone={tone}
+        >
           {icon}
-          <span role="status">{text}</span>
+          <span aria-hidden>{text}</span>
         </a>
       ) : (
-        <span className="mm-sync__pill" data-tone={tone}>
+        <span className="mm-sync__pill" data-tone={tone} aria-hidden>
           {icon}
-          <span role="status">{text}</span>
+          <span>{text}</span>
         </span>
       )}
       {status.rejected > 0 && (

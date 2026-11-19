@@ -71,12 +71,20 @@ export function useSearch(q: string, center: LatLng | null): SearchState {
           `/api/search/places?q=${encodeURIComponent(query)}${near}`,
         );
         const have = await known();
-        const results: SearchHit[] = res.results.map((result) => {
+        const kakao: SearchHit[] = res.results.map((result) => {
           const id = placeRowId(result.provider, result.externalId);
           return have.has(id)
             ? { kind: "kakao", result, savedPlaceId: id }
             : { kind: "kakao", result };
         });
+        // Her own places that match by name, address or what she wrote come first.
+        const inKakao = new Set(
+          kakao.flatMap((h) => (h.kind === "kakao" && h.savedPlaceId ? [h.savedPlaceId] : [])),
+        );
+        const mine = (await local(query)).filter(
+          (h) => h.kind === "saved" && !inKakao.has(h.placeId),
+        );
+        const results = [...mine, ...kakao];
         set(() => ({ mode: "kakao", results, loading: false }));
       } catch (error) {
         if (error instanceof NetworkError) return void goLocal();

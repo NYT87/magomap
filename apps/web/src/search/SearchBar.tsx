@@ -115,11 +115,21 @@ export function SearchBar() {
           </button>
         )}
       </div>
+      {/* Always mounted, so screen readers announce the count and why results are limited. */}
+      <p className="mm-visually-hidden" aria-live="polite">
+        {!showResults || search.loading
+          ? ""
+          : [
+              t("search.results", { count: search.results.length }),
+              search.mode === "local" ? t("search.offline") : "",
+              search.error === "rate_limited" ? t("search.rateLimited") : "",
+              search.error === "search_unavailable" ? t("search.unavailable") : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+      </p>
       {showResults && (
         <div className="mm-search__results" id={resultsId}>
-          <p className="mm-visually-hidden" aria-live="polite">
-            {search.loading ? "" : t("search.results", { count: search.results.length })}
-          </p>
           {search.mode === "local" && <p className="mm-note">{t("search.offline")}</p>}
           {search.error === "rate_limited" && <p className="mm-note">{t("search.rateLimited")}</p>}
           {search.error === "search_unavailable" && (
