@@ -47,5 +47,38 @@
     "deletePrompt": "Type “{{word}}” to confirm",
     "deleteConfirm": "Delete my account",
     "failed": "Couldn't reach the server. Try again when you're online."
+  },
+  "map": {
+    "providerKakao": "Kakao Map",
+    "providerOsm": "OpenStreetMap",
+    "mapBy": "Map: {{name}}",
+    "myLocation": "Show my location",
+    "locationDenied": "Location is off for this site. You can turn it on in your browser settings.",
+    "layers": "Lists on the map",
+    "listView": "Show as a list",
+    "mapView": "Show the map",
+    "noLocation_one": "{{count}} place has no location yet. Re-import it from the kakao-list extension.",
+    "noLocation_other": "{{count}} places have no location yet. Re-import them from the kakao-list extension.",
+    "previousUntil": "Previously here until {{date}}",
+    "nowAt": "Now at {{address}}",
+    "nowUnknown": "Its current address isn't known",
+    "openPlace": "Open place",
+    "close": "Close",
+    "placesTitle": "Places on the map",
+    "empty": "No places on the map yet. Search for one, or import your Kakao lists."
+  },
+  "picker": {
+    "title": "Lists on the map",
+    "mine": "My lists",
+    "kakao": "Kakao lists",
+    "kakaoSubscribed": "Subscribed in Kakao",
+    "saved": "Saved, not in a list",
+    "showAll": "Show all",
+    "hideAll": "Hide all",
+    "showPrevious": "Show previous locations",
+    "count_one": "{{count}} place",
+    "count_other": "{{count}} places",
+    "by": "by {{name}}",
+    "none": "None yet"
   }
 }

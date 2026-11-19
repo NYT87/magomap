@@ -180,3 +180,14 @@ export function kakaoItemsToImport(raw: unknown): ImportItemsPage {
     ),
   };
 }
+
+/** Kakao Map's favourite colours, keyed by the item's colour code (from kakao-list). */
+export const KAKAO_PLACE_COLORS: Record<string, { name: string; value: string }> = {
+  "01": { name: "red", value: "#c8373e" },
+  "02": { name: "orange", value: "#bd5b00" },
+  "03": { name: "yellow", value: "#927000" },
+  "04": { name: "green", value: "#2f7547" },
+  "05": { name: "blue", value: "#2464ad" },
+  "06": { name: "purple", value: "#7150a4" },
+  "07": { name: "pink", value: "#b82d6d" },
+};

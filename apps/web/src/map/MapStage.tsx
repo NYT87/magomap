@@ -1,0 +1,51 @@
+import {
+  createContext,
+  type MutableRefObject,
+  type ReactNode,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { LatLng, MapAdapter, MapMarker } from "./MapAdapter";
+
+/** Shared between the map and the panels: search markers, and where to look. */
+interface Stage {
+  searchMarkers: MapMarker[];
+  setSearchMarkers: (m: MapMarker[]) => void;
+  focus: LatLng | null;
+  setFocus: (p: LatLng | null) => void;
+  /** The mounted map, for search near what's on screen. */
+  map: MutableRefObject<MapAdapter | null>;
+  /** Called when a search marker is tapped. */
+  onSearchSelect: ((id: string) => void) | null;
+  setOnSearchSelect: (fn: ((id: string) => void) | null) => void;
+}
+
+const Ctx = createContext<Stage | null>(null);
+
+export function MapStageProvider({ children }: { children: ReactNode }) {
+  const [searchMarkers, setSearchMarkers] = useState<MapMarker[]>([]);
+  const [focus, setFocus] = useState<LatLng | null>(null);
+  const map = useRef<MapAdapter | null>(null);
+  const [onSearchSelect, setSelect] = useState<((id: string) => void) | null>(null);
+  const value = useMemo<Stage>(
+    () => ({
+      searchMarkers,
+      setSearchMarkers,
+      focus,
+      setFocus,
+      map,
+      onSearchSelect,
+      setOnSearchSelect: (fn) => setSelect(() => fn),
+    }),
+    [searchMarkers, focus, onSearchSelect],
+  );
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useMapStage(): Stage {
+  const v = useContext(Ctx);
+  if (!v) throw new Error("MapStageProvider missing");
+  return v;
+}

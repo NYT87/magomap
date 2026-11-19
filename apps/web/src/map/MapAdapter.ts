@@ -1,0 +1,30 @@
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+export interface MapMarker {
+  id: string;
+  position: LatLng;
+  color: string;
+  label: string;
+  kind: "saved" | "search" | "previous";
+  placeId?: string;
+}
+
+/** What the app needs from a map; Kakao Maps and Leaflet both implement it. */
+export interface MapAdapter {
+  readonly provider: "kakao" | "leaflet";
+  mount(el: HTMLElement, view: { center: LatLng; zoom: number }): void;
+  /** Saved and previous markers cluster; previous ones are faded and smaller. */
+  setMarkers(markers: MapMarker[]): void;
+  fitTo(points: LatLng[]): void;
+  panTo(point: LatLng): void;
+  getCenter(): LatLng;
+  onSelect(cb: (markerId: string) => void): void;
+  showMyLocation(p: LatLng): void;
+  destroy(): void;
+}
+
+/** Jeju, where most of the first places are; replaced by fitting to saved places. */
+export const DEFAULT_VIEW = { center: { lat: 33.4, lng: 126.55 }, zoom: 10 };

@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   title: string;
@@ -23,7 +24,7 @@ export function ConfirmDialog({ title, children, actions, onCancel }: Props) {
       before?.focus();
     };
   }, [onCancel]);
-  return (
+  return createPortal(
     <div className="mm-scrim">
       <div
         ref={ref}
@@ -38,6 +39,7 @@ export function ConfirmDialog({ title, children, actions, onCancel }: Props) {
         <div className="mm-dialog__body">{children}</div>
         <div className="mm-dialog__actions">{actions}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

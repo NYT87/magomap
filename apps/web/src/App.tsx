@@ -5,7 +5,10 @@ import { useMe } from "./auth/useMe";
 import { openUserDb } from "./data/db";
 import { SyncProvider } from "./data/SyncProvider";
 import { AppLayout } from "./layout/AppLayout";
+import { MapStageProvider } from "./map/MapStage";
+import { MapPrefsProvider } from "./map/mapPrefs";
 import { PageRoutes } from "./routes";
+import { MapScreen } from "./screens/MapScreen";
 import { NotInvited } from "./screens/NotInvited";
 import { SignIn } from "./screens/SignIn";
 
@@ -37,9 +40,13 @@ function Shell() {
   openUserDb(me.userId);
   return (
     <SyncProvider key={me.userId}>
-      <AppLayout map={<div className="mm-map__placeholder" />}>
-        <PageRoutes me={me} />
-      </AppLayout>
+      <MapPrefsProvider userId={me.userId}>
+        <MapStageProvider>
+          <AppLayout map={<MapScreen />}>
+            <PageRoutes me={me} />
+          </AppLayout>
+        </MapStageProvider>
+      </MapPrefsProvider>
     </SyncProvider>
   );
 }
