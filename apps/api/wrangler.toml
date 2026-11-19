@@ -18,15 +18,15 @@ simple = { limit = 60, period = 60 }
 
 [env.d1.vars]
 DB_DRIVER = "d1"
-KAKAO_REDIRECT_URI = "http://localhost:8787/api/auth/kakao/callback"
-KAKAO_JAVASCRIPT_KEY = ""
-ALLOWED_KAKAO_USER_IDS = ""
-KAKAO_LIST_URL = "http://localhost:8788"
+KAKAO_REDIRECT_URI = "https://magomap.jmn8718.workers.dev/api/auth/kakao/callback"
+KAKAO_JAVASCRIPT_KEY = "8b9138ecff36eeb1966216f7b8b1bd1a"
+ALLOWED_KAKAO_USER_IDS = "4897793509,4891281929"
+KAKAO_LIST_URL = "https://kakao-list-api.vercel.app"
 ALLOW_DEV_LOGIN = "false"
 [[env.d1.d1_databases]]
 binding = "DB"
 database_name = "magomap"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "a4acc205-5c27-473e-844e-6dcf67aa70d4"
 migrations_dir = "../../packages/db/migrations/sqlite"
 
 [env.postgres]

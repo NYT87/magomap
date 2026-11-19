@@ -82,7 +82,7 @@ Set **the same** `MAGOMAP_IMPORT_SECRET` on the kakao-list server. Generate real
 ## 5. Deploy
 
 ```bash
-pnpm deploy:d1        # or: pnpm deploy:postgres
+pnpm deploy:d1        # builds the app, then deploys; or: pnpm deploy:postgres
 curl https://<your-domain>/api/health   # → {"ok":true,"db":"d1"}
 ```
 

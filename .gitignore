@@ -8,3 +8,7 @@ tmp/
 gate.log
 /.superpowers/
 graft/
+
+# Local env files (secrets) and editor swap files
+.env*.local
+*.swp
