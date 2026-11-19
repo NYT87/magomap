@@ -131,8 +131,8 @@ Rules:
 - **Diary and links belong to the place** (`visit_notes.place_id`, `links.place_id`), never to a list.
 - **Kakao notes belong to the membership** (`list_items.kakao_note`), because Kakao keeps one per list. They are read-only in `magomap`.
 - **Place fields are not editable by the user** in this phase. They come from Kakao (search or import), and imports refresh them. There are no manual places: `source` is `kakao_import` or `search`. *(Designer's call.)*
-- **A diary entry or link arriving for a deleted place restores the place.** The server clears `deleted_at` instead of rejecting the write, so an entry written offline is never lost. *(Designer's call, from the anti-goal.)*
-- **Soft delete everywhere**; places are never deleted by import. A user may delete a place themselves (it then disappears from all lists; its diary and links go with it, after a confirmation).
+- *(Superseded by the shared-places addendum: places can no longer be deleted, so there is nothing to restore.)*
+- **Soft delete everywhere.** Places are never deleted, by import or by the user. Removing a place means taking it out of a list (see the shared-places addendum).
 
 ### Sync (offline)
 
@@ -177,7 +177,7 @@ Each account is one person on a few devices, so a simple design is enough:
 - **`kakao-list` local notes come in as diary entries** (owner's decision). Each non-empty `localNote` becomes one diary entry with no visit date, marked "from kakao-list" (`visit_notes.origin = 'kakao_list'`, `visited_on` null). That entry is keyed to the place, and later imports update it rather than adding another. If the same place has different local notes in several lists, each becomes its own entry, labelled with the list name. If she edits the imported entry in `magomap`, later imports no longer change it.
 - **Whose data it is.** The snapshot is the one stored under the same Kakao Login id in `kakao-list`. `kakao-list` already makes the user confirm the Kakao Maps account on each import, and `magomap` accepts that as enough. *(Designer's call: these are two personal accounts.)*
 
-**Removed places.** These stay in their Kakao list, at the end, marked "Removed from Kakao", with their diary intact. They are shown read-only as a membership. The user can remove the place themselves.
+**Removed places.** A place whose favourite was removed in Kakao stays in that list, at the end, marked "Removed from Kakao", with its diary intact. It's shown read-only as a membership. Places are never deleted.
 
 **Changes needed in `kakao-list`.** They are made in that repo, as the **last phase of the implementation plan, before go-live** (owner's decision, 2026-11-19) (`magomap`'s import is built against a fake server serving the contract until they land). *(Designer's call.)*
 1. **Keep coordinates.** The extension importer stores Kakao's raw `x`/`y` (WCONGNAMUL, which is EPSG:5181 × 2.5) and the favourite `type` on each item. The `kakao-list` server converts them to latitude/longitude when it builds the contract, so a conversion fix never needs a re-import. `magomap` stores lat/lng.
@@ -272,7 +272,7 @@ Each account is one person on a few devices, so a simple design is enough:
 - `kakao-list`'s own Kakao Maps account confirmation counts as proof of whose data it is.
 - Sign-up is limited by an allowlist of Kakao ids.
 - Place fields can't be edited, and there are no manual places.
-- A diary entry written for a deleted place brings the place back.
+- ~~A diary entry written for a deleted place brings the place back.~~ No longer applies: places are never deleted.
 
 ## Addendum (2026-11-19): location history
 
@@ -291,7 +291,7 @@ Each account is one person on a few devices, so a simple design is enough:
   - filling in coordinates for the first time is a silent update;
   - smaller coordinate changes update the place silently, so Kakao's jitter doesn't fill the history.
 - **Server-side only.** History is written by the server, in the same atomic batch as the place update. The client never creates history rows. For a search-detected move, the client sends the new location with a place upsert, and the server applies the move rule.
-- **Never deleted** except with the place itself or the account.
+- **Never deleted.** Location history is shared, so it stays as long as the place does, even after an account is deleted.
 
 **Data.**
 
@@ -340,11 +340,92 @@ It syncs to the PWA like the other tables (read-only on the client), so history 
   - **Privacy:** what is stored and how to delete it. There is no tracking.
 - **Built** as a static site (`apps/homepage`, Vite multi-page, no framework). It is deployed by a GitHub Actions Pages workflow. Actions are pinned to release SHAs at least 14 days old.
 
+## Addendum (2026-11-19): shared places and shared Kakao lists
+
+**Why.** The owner follows his wife's Kakao lists in Kakao Map, so both of them import the same lists, with the same Kakao list ids and the same Kakao place ids. magomap must not hold two copies. **A place and a provider list exist once in the database**, and every user and list that has them points to that one row. This is the first piece of sharing. Letting a collaborator see someone's notes comes later and builds on it (see "Later" below).
+
+**Decided by the owner**
+- The same Kakao place (same Kakao place id) is **one place row**, whoever imported or saved it, and whichever lists it is in.
+- The same Kakao list (same Kakao list id) is **one list**. Any import of it updates it for everyone who has it.
+- **Places are never deleted.** Removing a place means taking it out of a list. The place, its notes and its links stay.
+- **Notes and links stay private**: each person sees only their own, even on shared places and in shared lists.
+
+**Provider-neutral (owner's decision).** The core code and database never name Kakao. Lists, places and memberships have an **external provider** (`kakao` today, maybe `google` or others later) and an **external id** at that provider. Kakao appears only in **provider adapters** at the edges:
+- the import source (kakao-list's contract, mapped into the neutral import format);
+- place search (Kakao Local);
+- sign-in (Kakao Login, already stored as a generic identity provider);
+- the map (Kakao Maps SDK);
+- display details such as Kakao's favourite colours.
+
+Adding a provider means adding an adapter. The schema stays the same.
+
+**Data model.** This replaces the per-user places, lists and memberships of the original data model.
+
+| Table | One row per | Shared? | Notes |
+|---|---|---|---|
+| `places` | real place | shared | Id derived from its first external id: `p_<provider>_<externalId>`. Title, address, category, phone, coordinates. Never deleted. |
+| `place_sources` | external id of a place | shared | `(provider, external_id)` is unique and points to one place. Today every place has one source; later, the same café found in Kakao and in Google can point to one place. |
+| `place_locations` | previous location of a place | shared | A move found by anyone's import shows for everyone. |
+| `lists` | list | see right | `provider` is null for an own list, which is private to its owner. Otherwise it's the provider name, with `external_id`, owner name and `removed_at_provider`; those rows are shared, one per external list, with id `l_<provider>_<externalId>`. Own lists keep client-generated UUIDv7 ids. |
+| `list_items` | place in a list | as its list | `external_id`, `provider_note`, `provider_color` and `removed_at_provider` are null for own lists. Provider-list items are shared, with id `i_<provider>_<listExternalId>_<itemExternalId>`. Own-list items are `li_<listId>_<placeId>`, as before. |
+| `user_lists` | list a user has | per user | `role`: `owner` for an own list, or for a provider list the user owns at the provider; `follower` for one they follow there; `collaborator` later. `removed_at` is personal. |
+| `user_places` | place a user has | per user | Created when the user saves it from search, imports a list with it, or writes a note or link on it. Never deleted. It decides which shared places sync to the user. |
+| `visit_notes`, `links` | diary entry, link | per user | As before, referencing a shared place. |
+
+**Removal rules**
+- `removed_at_provider` on a **list** is set only from the import of a user whose `user_lists.role` is `owner` for it: the list is gone at the provider.
+- `removed_at_provider` on a **membership** comes from any complete import of that list, because everyone who has the list sees the same content.
+- A follower whose complete import no longer has a list gets `user_lists.removed_at`, which is personal.
+- Removing a place from an own list soft-deletes that membership. **Places are never deleted.**
+
+**Who can write what**
+- **Imports** write shared rows (places, sources, locations, provider lists and their items) and the importer's `user_lists` and `user_places`.
+- **The app** can:
+  - create a shared place from a provider search result, when that `(provider, external_id)` doesn't exist yet, together with the user's `user_places` row;
+  - update the shared place's location from a search result, through the location rule and its history;
+  - create, rename, recolour and remove its own lists and their memberships.
+
+  It can never change provider lists or their memberships.
+- **There is no "delete place".** A place a user has stays in "my places", including places that are in no list. Those show in a "Saved, not in a list" group.
+
+**Sync**
+- **Pull** returns the user's own changes, plus changes to shared rows **within the user's scope**:
+  - places in their `user_places`, with their sources and location history;
+  - lists in their `user_lists`, and those lists' items.
+- **Access gained later.** When a user gains a place or list, for example by importing a list someone else imported first, the shared rows they now have are sent to them, even if those rows were last changed long ago.
+- **Shared rows** carry a global change number. The per-user write check is extended with a shared one, so two people importing the same list at the same moment can't overwrite each other's decisions.
+
+**Settled after the builder check**
+- **No removal or hiding of places, at all** (owner's decision). A place stays in a user's places. If it's in none of their lists, it shows under "Saved, not in a list". Push refuses `delete` on places (`not_allowed`). The place tombstones and the "a note brings its deleted place back" restore go away.
+- **Newer snapshot wins** *(designer's call)*.
+  - Shared provider lists, list items and provider-sourced place fields record `provider_snapshot_at`: the `importedAt` of the snapshot that last wrote them.
+  - An import whose snapshot is older than a row's `provider_snapshot_at` leaves that row unchanged. It still adds the importer's `user_lists` and `user_places`.
+  - So an old snapshot from one person can never roll back newer list content, Kakao notes, coordinates or removals, or add a false location-history row.
+- **Membership identity** *(designer's call, verified at plan 03's browser check)*.
+  - Provider-list items are keyed by the list's external id plus the favourite's external id (Kakao's `seq`), assuming Kakao gives owner and follower the same `seq`.
+  - If the browser check shows otherwise, the key becomes the list's external id plus the place's external id.
+  - Custom pins (no place id) are keyed by the list's external id plus their favourite id. They are never merged across lists.
+- **Who is the owner** *(designer's call)*.
+  - A user is a list's `owner` only when their import says the list isn't followed **and** the snapshot carries following information.
+  - The contract gets a `subscriptionKnown: true` field; old-format snapshots lack it.
+  - Shared "removed from Kakao" on a list is set only from a complete import by the owner. When in doubt, nothing is marked removed.
+- **A list someone unfollowed** *(designer's call)*.
+  - Their `user_lists.removed_at` syncs to them. The app then hides that list and its memberships, and the list leaves their pull scope.
+  - Their places, notes and links stay.
+  - If they follow it again and re-import, it comes back with current content, through the "access gained later" rule.
+- **No migration needed.** Nothing is deployed yet, so the schema is reshaped directly. The development databases are recreated.
+
+**Naming in code.** Domain, database and API names are neutral: `provider`, `externalId`, `providerNote`, `removedAtProvider`, `importContract`. The wire contract kakao-list serves keeps its own Kakao field names. An adapter (`apps/api/src/providers/kakao/`) maps it into the neutral import format.
+
+**Deleting an account** removes that person's own data: their own lists and those lists' items, notes, links, `user_lists`, `user_places`, sessions and import runs. Shared places and provider lists stay, because they belong to the provider's lists, not to one user.
+
+**Later (not built now): sharing notes.** A list owner gives someone the `collaborator` role in `user_lists`, on an own list or a provider list. A collaborator can then read the owner's notes on that list's places, read-only. Whether an "editor" can do more is to be decided then.
+
 ## Implementation notes (from planning)
 
 - **The import runs list by list, driven by the app.** It fetches the contract through the Worker, then starts a run, uploads each list, and completes the run. The reason is that D1 has no interactive transactions and Workers Free allows about 10 ms of CPU per request. The rules are unchanged: removals only after a complete run, nothing deleted, and diaries untouched.
 - **Places have deterministic ids**: `kp_<kakaoPlaceId>`, or `kf_<favoriteSeq>` for custom pins. A place saved from search and the same place imported later are therefore one row, with no merge step. Other ids are UUIDv7 generated on the client.
-- **A place the user deleted stays deleted** even while it is still in a Kakao list.
+- *(Superseded by the shared-places addendum: places are never deleted.)*
 - **Every write is an optimistic per-user write** (from the Codex review of plan 01). The server reads, decides, then writes in one batch that first claims the user's next change number with a fresh token. Every statement only applies if that claim held. If another device or an import wrote in between, nothing is written and the server decides again on fresh data. "Applied" therefore means stored.
 - **A change stamped more than a minute ahead of the server's clock is refused**, never clamped, so a retry can't overwrite a newer edit. The app shows it as "couldn't be saved", with a hint to check the phone's clock.
 - **Deletes of rows the server has never seen leave a tombstone**, so an older create arriving later stays deleted.
