@@ -9,6 +9,12 @@ compatibility_flags = ["nodejs_compat"]
 
 [env.d1]
 name = "magomap"
+# 60 searches per minute per user (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+[[env.d1.ratelimits]]
+name = "SEARCH_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
 [env.d1.vars]
 DB_DRIVER = "d1"
 KAKAO_REDIRECT_URI = "http://localhost:8787/api/auth/kakao/callback"
@@ -24,6 +30,12 @@ migrations_dir = "../../packages/db/migrations/sqlite"
 
 [env.postgres]
 name = "magomap"
+# 60 searches per minute per user (https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+[[env.postgres.ratelimits]]
+name = "SEARCH_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
 [env.postgres.vars]
 DB_DRIVER = "postgres"
 KAKAO_REDIRECT_URI = "http://localhost:8787/api/auth/kakao/callback"

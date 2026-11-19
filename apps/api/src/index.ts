@@ -5,6 +5,7 @@ import { authRoutes } from "./auth/routes";
 import { withDb } from "./db";
 import type { AppEnv } from "./env";
 import { importRoutes } from "./import/routes";
+import { searchRoutes } from "./search/routes";
 import { syncRoutes } from "./sync/routes";
 
 const app = new Hono<AppEnv>().basePath("/api");
@@ -27,6 +28,7 @@ app.get("/config", (c) => {
 app.route("/", authRoutes);
 app.route("/", syncRoutes);
 app.route("/", importRoutes);
+app.route("/", searchRoutes);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
