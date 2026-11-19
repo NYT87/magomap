@@ -10,6 +10,12 @@ export interface FakeServer {
   failPush: ((ms: Mutation[]) => number | "network" | null) | null;
   pullPages: PullResponse[];
   pullStatus: number | null;
+  /** Error code in the body of a failed push (default "x"). */
+  failCode: string;
+  /** When set, each push waits for it before answering (a slow network). */
+  pushGate: Promise<void> | null;
+  /** Headers of every request, in order. */
+  headers: Headers[];
   fetch: <T>(path: string, init?: RequestInit) => Promise<T>;
 }
 
@@ -20,13 +26,18 @@ export function fakeServer(): FakeServer {
     failPush: null,
     pullPages: [],
     pullStatus: null,
+    failCode: "x",
+    pushGate: null,
+    headers: [],
     fetch: async <T>(path: string, init?: RequestInit): Promise<T> => {
+      server.headers.push(new Headers(init?.headers));
       if (path === "/api/sync/push") {
         const { mutations } = JSON.parse(String(init?.body)) as { mutations: Mutation[] };
+        if (server.pushGate) await server.pushGate;
         const fail = server.failPush?.(mutations) ?? null;
         if (fail === "network") throw new NetworkError();
         if (fail === 401) throw new UnauthorizedError();
-        if (fail !== null) throw new ApiError(fail, { error: "x" });
+        if (fail !== null) throw new ApiError(fail, { error: server.failCode });
         server.pushes.push(mutations);
         return { results: mutations.map((m) => server.result(m)) } as T;
       }

@@ -14,6 +14,7 @@ import type {
   VisitNoteRow,
 } from "@magomap/domain";
 import Dexie, { type EntityTable } from "dexie";
+import { ACCOUNT_CHANGED, setRequestAccount } from "../api/client";
 
 export interface OutboxEntry {
   seq?: number;
@@ -76,12 +77,32 @@ export const ROW_TABLES: readonly SyncTable[] = [
 ];
 
 export const dbName = (userId: string) => `magomap-${userId}`;
+/** The account a database belongs to. */
+export const dbUserId = (db: MagomapDexie) => db.name.slice("magomap-".length);
 
 let current: MagomapDexie | null = null;
 
+/** Per account: how often its database was closed under the app (another tab deleted it). */
+const replaced = new Map<string, number>();
+const replacedListeners = new Set<() => void>();
+export const dbReplacements = (userId: string) => replaced.get(dbName(userId)) ?? 0;
+export function subscribeDbReplacements(fn: () => void): () => void {
+  replacedListeners.add(fn);
+  return () => replacedListeners.delete(fn);
+}
+
+/** One instance per account, so coming back to an account finds its running work again. */
+const instances = new Map<string, MagomapDexie>();
+
 /** Opens (and makes current) this account's own database: data, outbox and drafts. */
 export function openUserDb(userId: string): MagomapDexie {
-  if (current?.name === dbName(userId) && current.isOpen()) return current;
+  const known = instances.get(dbName(userId));
+  // A closed instance (deleted elsewhere, or closed on purpose) is replaced by a fresh one.
+  if (known && !known.hasBeenClosed()) {
+    current = known;
+    setRequestAccount(userId);
+    return known;
+  }
   const db = new Dexie(dbName(userId)) as MagomapDexie;
   db.version(1).stores({
     places: "id",
@@ -98,7 +119,23 @@ export function openUserDb(userId: string): MagomapDexie {
     drafts: "key",
     meta: "key",
   });
+  // Another tab deleted (or upgraded) this database: close for good, so no late write here
+  // recreates it, and ask again who is signed in.
+  db.on("versionchange", () => {
+    db.close({ disableAutoOpen: true });
+    if (instances.get(db.name) === db) instances.delete(db.name);
+    if (current === db) {
+      current = null;
+      setRequestAccount(null);
+    }
+    replaced.set(db.name, (replaced.get(db.name) ?? 0) + 1);
+    for (const fn of replacedListeners) fn();
+    window.dispatchEvent(new Event(ACCOUNT_CHANGED));
+    return false;
+  });
+  instances.set(db.name, db);
   current = db;
+  setRequestAccount(userId);
   return db;
 }
 
@@ -108,8 +145,20 @@ export function currentDb(): MagomapDexie {
   return current;
 }
 
-/** Closes the account's database (before deleting it), so nothing reopens or recreates it. */
-export function closeUserDb() {
-  current?.close();
-  current = null;
+/** The open account's database, or null when none is open. */
+export const openDbOrNull = (): MagomapDexie | null => current;
+
+/**
+ * Closes an account's database (before deleting it), so nothing reopens or recreates it. If it
+ * was the open one, no account is open afterwards.
+ */
+export function closeUserDb(userId?: string) {
+  const db = userId === undefined ? current : (instances.get(dbName(userId)) ?? null);
+  if (!db) return;
+  db.close();
+  instances.delete(db.name);
+  if (db === current) {
+    current = null;
+    setRequestAccount(null);
+  }
 }

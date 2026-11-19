@@ -1,10 +1,11 @@
+import type { Me } from "@magomap/domain";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Redirect, Route, Switch } from "wouter";
 import { useMe } from "./auth/useMe";
 import { SyncIndicator } from "./components/SyncIndicator";
-import { openUserDb } from "./data/db";
 import { SyncProvider } from "./data/SyncProvider";
+import { useUserDb } from "./data/useUserDb";
 import { AppLayout } from "./layout/AppLayout";
 import { MapStageProvider } from "./map/MapStage";
 import { MapPrefsProvider } from "./map/mapPrefs";
@@ -37,10 +38,15 @@ function Shell() {
     );
   }
   if (!me) return <Redirect to="/signin" />;
-  // Each account has its own local database; signing out keeps it for the next sign-in.
-  openUserDb(me.userId);
+  return <Signedin me={me} />;
+}
+
+function Signedin({ me }: { me: Me }) {
+  // Each account has its own local database; signing out keeps it for the next sign-in. A new
+  // account, or a database replaced under us, starts everything below over.
+  const { key } = useUserDb(me.userId);
   return (
-    <SyncProvider key={me.userId}>
+    <SyncProvider key={key}>
       <MapPrefsProvider userId={me.userId}>
         <MapStageProvider>
           <AppLayout map={<MapScreen />} status={<SyncIndicator />}>

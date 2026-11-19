@@ -407,6 +407,9 @@ async function decidePush(
       continue;
     }
 
+    // Never stamped earlier than the device's own time (at most a minute ahead), so an edit made
+    // on top of this version, stamped from its updatedAt, always comes after it.
+    const acceptedAt = Math.max(now, m.clientUpdatedAt);
     // Last write wins per row.
     if (existing && m.clientUpdatedAt <= Number(existing.client_updated_at)) {
       set(m, "ignored_stale", { row: toAnyRow(table, existing) });
@@ -433,7 +436,7 @@ async function decidePush(
       const deleted: Row = {
         ...existing,
         deleted_at: m.clientUpdatedAt,
-        updated_at: now,
+        updated_at: acceptedAt,
         client_updated_at: m.clientUpdatedAt,
       };
       if (table === "visit_notes" && existing.origin === "import") deleted.edited_by_user = 1;
@@ -454,7 +457,7 @@ async function decidePush(
             ownerName: null,
             removedAtProvider: null,
             providerSnapshotAt: null,
-            updatedAt: now,
+            updatedAt: acceptedAt,
           },
           m,
         ),
@@ -467,7 +470,7 @@ async function decidePush(
           role: "owner",
           removed_at: null,
           created_at: now,
-          updated_at: now,
+          updated_at: acceptedAt,
           deleted_at: null,
           client_updated_at: 0,
           seq: 0,
@@ -499,7 +502,7 @@ async function decidePush(
             providerColor: null,
             removedAtProvider: null,
             providerSnapshotAt: null,
-            updatedAt: now,
+            updatedAt: acceptedAt,
           },
           m,
         ),
@@ -518,7 +521,7 @@ async function decidePush(
       set(m, "rejected", { reason: "not_allowed" });
       continue;
     }
-    const next: Row = { ...r, updatedAt: now };
+    const next: Row = { ...r, updatedAt: acceptedAt };
     if (table === "visit_notes" && existing?.origin === "import") {
       Object.assign(next, { origin: "import", originKey: existing.origin_key, editedByUser: true });
     }

@@ -2,8 +2,8 @@
 import type { AnyRow, Mutation, PullResponse, PushResponse, SyncTable } from "@magomap/domain";
 import { userPlaceRowId } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
-import { ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
-import { currentDb, type MagomapDexie, type OutboxEntry, ROW_TABLES } from "./db";
+import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
+import { dbUserId, type MagomapDexie, type OutboxEntry, openDbOrNull, ROW_TABLES } from "./db";
 import { onWrite } from "./events";
 
 export type SyncStateName =
@@ -14,6 +14,8 @@ export type SyncStateName =
   | "error"
   | "clock_ahead";
 export interface SyncResult {
+  /** How this account's sync ended (the indicator may be showing another account's). */
+  state: SyncStateName;
   pushed: number;
   pulled: number;
   rejected: number;
@@ -49,6 +51,9 @@ function stopFor(error: unknown): Stop {
   if (error instanceof Stop) return error;
   if (error instanceof UnauthorizedError) return new Stop("needs_signin");
   if (error instanceof NetworkError) return new Stop("offline");
+  // Signed in as someone else elsewhere: nothing goes out until this tab follows.
+  if (error instanceof ApiError && error.code === "account_mismatch")
+    return new Stop("needs_signin");
   return new Stop("error");
 }
 
@@ -61,6 +66,12 @@ const toMutation = (e: OutboxEntry): Mutation => ({
   id: e.id,
   ...(e.op === "upsert" ? { row: e.row } : {}),
   clientUpdatedAt: e.clientUpdatedAt,
+});
+
+/** Requests made for the database's own account, even if another one opens meanwhile. */
+const forDb = (db: MagomapDexie, init: RequestInit = {}): RequestInit => ({
+  ...init,
+  headers: { ...(init.headers as Record<string, string>), [ACCOUNT_HEADER]: dbUserId(db) },
 });
 
 const bytes = (m: Mutation) => new TextEncoder().encode(JSON.stringify(m)).length;
@@ -151,10 +162,10 @@ async function applyResults(
 async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally): Promise<void> {
   let res: PushResponse;
   try {
-    res = await apiFetch<PushResponse>("/api/sync/push", {
-      method: "POST",
-      body: JSON.stringify({ mutations: entries.map(toMutation) }),
-    });
+    res = await apiFetch<PushResponse>(
+      "/api/sync/push",
+      forDb(db, { method: "POST", body: JSON.stringify({ mutations: entries.map(toMutation) }) }),
+    );
   } catch (error) {
     if (error instanceof ApiError && (error.status === 400 || error.status === 413)) {
       if (entries.length === 1) {
@@ -188,7 +199,7 @@ export async function pullAll(db: MagomapDexie): Promise<number> {
     const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
     let page: PullResponse;
     try {
-      page = await apiFetch<PullResponse>(`/api/sync/pull${q}`);
+      page = await apiFetch<PullResponse>(`/api/sync/pull${q}`, forDb(db));
     } catch (error) {
       throw stopFor(error);
     }
@@ -212,16 +223,14 @@ export async function pullAll(db: MagomapDexie): Promise<number> {
 
 // ---------- syncNow ----------
 
-let running: Promise<SyncResult> | null = null;
-
-async function run(): Promise<SyncResult> {
-  let db: MagomapDexie;
-  try {
-    db = currentDb();
-  } catch {
-    return { pushed: 0, pulled: 0, rejected: 0 };
-  }
-  setState("syncing");
+async function run(
+  db: MagomapDexie,
+): Promise<{ result: Omit<SyncResult, "state">; to: SyncStateName }> {
+  // Only the open account's sync speaks for the indicator; an old account's ends quietly.
+  const report = (to: SyncStateName, at?: number) => {
+    if (openDbOrNull() === db) setState(to, at);
+  };
+  report("syncing");
   const t: PushTally = { pushed: 0, rejected: 0, clockAhead: false, repull: false };
   try {
     const entries = await db.outbox.orderBy("seq").toArray();
@@ -231,56 +240,104 @@ async function run(): Promise<SyncResult> {
     const pulled = await pullAll(db);
     const now = Date.now();
     await db.meta.put({ key: "lastSyncAt", value: now });
-    setState(t.clockAhead ? "clock_ahead" : "idle", now);
-    return { pushed: t.pushed, pulled, rejected: t.rejected };
+    const to = t.clockAhead ? "clock_ahead" : "idle";
+    report(to, now);
+    return { result: { pushed: t.pushed, pulled, rejected: t.rejected }, to };
   } catch (error) {
-    setState(stopFor(error).to);
-    return { pushed: t.pushed, pulled: 0, rejected: t.rejected };
+    const { to } = stopFor(error);
+    report(to);
+    return { result: { pushed: t.pushed, pulled: 0, rejected: t.rejected }, to };
   }
 }
 
-/** Runs one sync; a call while one is running joins it. */
+/** Each database syncs on its own: one account's (or a closed instance's) run never stands in for another's. */
+const runs = new Map<MagomapDexie, { promise: Promise<SyncResult>; again: boolean }>();
+
+/**
+ * Syncs the open account. A call while its sync is running joins it, and that run goes round once
+ * more, so a change saved after it read the outbox still goes out.
+ */
 export function syncNow(): Promise<SyncResult> {
-  if (!running) {
-    running = run().finally(() => {
-      running = null;
-    });
+  const db = openDbOrNull();
+  if (!db) return Promise.resolve({ state: "idle", pushed: 0, pulled: 0, rejected: 0 });
+  const existing = runs.get(db);
+  if (existing) {
+    existing.again = true;
+    return existing.promise;
   }
-  return running;
+  const entry: { promise: Promise<SyncResult>; again: boolean } = {
+    promise: Promise.resolve({ state: "idle", pushed: 0, pulled: 0, rejected: 0 }),
+    again: false,
+  };
+  entry.promise = (async () => {
+    const total: SyncResult = { state: "idle", pushed: 0, pulled: 0, rejected: 0 };
+    do {
+      entry.again = false;
+      const r = await run(db);
+      total.state = r.to;
+      total.pushed += r.result.pushed;
+      total.pulled += r.result.pulled;
+      total.rejected += r.result.rejected;
+    } while (entry.again && (total.state === "idle" || total.state === "clock_ahead"));
+    return total;
+  })().finally(() => {
+    runs.delete(db);
+  });
+  runs.set(db, entry);
+  return entry.promise;
 }
 
 // ---------- triggers ----------
 
-/** Syncs on start, when back online or visible, 2 s after a write, and retries with backoff. */
+/**
+ * Syncs on start, when back online or visible, 2 s after a write, and retries errors and dropped
+ * connections with backoff.
+ */
 export function startSyncTriggers(): () => void {
   let writeTimer: ReturnType<typeof setTimeout> | undefined;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let attempt = 0;
+  let stopped = false;
+  let waiting: Promise<void> | null = null;
 
-  const go = async () => {
-    clearTimeout(retryTimer);
-    await syncNow();
-    const s = syncState().state;
-    if (s === "error") {
-      retryTimer = setTimeout(go, BACKOFF[Math.min(attempt, BACKOFF.length - 1)]);
-      attempt += 1;
-    } else {
-      attempt = 0;
-      if (s === "clock_ahead") retryTimer = setTimeout(go, 60_000);
+  // One chain of retries: a trigger while a sync is under way joins it and schedules nothing.
+  const go = () => {
+    if (stopped) return;
+    if (waiting) {
+      void syncNow();
+      return;
     }
+    clearTimeout(retryTimer);
+    waiting = (async () => {
+      // This account's own outcome, not the indicator's, decides the retry.
+      const { state: s } = await syncNow();
+      if (stopped) return;
+      clearTimeout(retryTimer);
+      // A dropped connection may come back without an "online" event: keep trying, spaced out.
+      if (s === "error" || s === "offline") {
+        retryTimer = setTimeout(go, BACKOFF[Math.min(attempt, BACKOFF.length - 1)]);
+        attempt += 1;
+      } else {
+        attempt = 0;
+        if (s === "clock_ahead") retryTimer = setTimeout(go, 60_000);
+      }
+    })().finally(() => {
+      waiting = null;
+    });
   };
-  const onOnline = () => void go();
+  const onOnline = () => go();
   const onVisible = () => {
-    if (document.visibilityState === "visible") void go();
+    if (document.visibilityState === "visible") go();
   };
   const offWrite = onWrite(() => {
     clearTimeout(writeTimer);
-    writeTimer = setTimeout(() => void go(), 2_000);
+    writeTimer = setTimeout(go, 2_000);
   });
   window.addEventListener("online", onOnline);
   document.addEventListener("visibilitychange", onVisible);
-  void go();
+  go();
   return () => {
+    stopped = true;
     clearTimeout(writeTimer);
     clearTimeout(retryTimer);
     offWrite();

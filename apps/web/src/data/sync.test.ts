@@ -8,9 +8,9 @@ vi.mock("../api/client", async (orig) => {
   const actual = await orig<typeof import("../api/client")>();
   return { ...actual, apiFetch: (path: string, init?: RequestInit) => server.fetch(path, init) };
 });
-const { openUserDb } = await import("./db");
+const { closeUserDb, openUserDb } = await import("./db");
 const { addVisitNote, editVisitNote } = await import("./writes");
-const { syncNow, syncState } = await import("./sync");
+const { startSyncTriggers, syncNow, syncState } = await import("./sync");
 
 let n = 0;
 beforeEach(() => {
@@ -20,6 +20,9 @@ beforeEach(() => {
   server.failPush = null;
   server.pullPages = [];
   server.pullStatus = null;
+  server.failCode = "x";
+  server.headers = [];
+  server.pushGate = null;
 });
 const open = () => openUserDb(`s${n}`);
 const note = (id: string, body: string, updatedAt = 5): VisitNoteRow => ({
@@ -128,6 +131,169 @@ describe("sync", () => {
     await syncNow();
     expect(syncState().state).toBe("needs_signin");
     expect(await db.outbox.count()).toBe(1);
+  });
+
+  it("sends every sync request for the account whose database it syncs", async () => {
+    open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    const running = syncNow();
+    // Another account opens meanwhile: this run still speaks for the first one.
+    openUserDb(`other${n}`);
+    await running;
+    expect(server.headers.length).toBeGreaterThanOrEqual(2);
+    for (const h of server.headers) expect(h.get("x-magomap-user")).toBe(`s${n}`);
+  });
+
+  it("keeps the outbox and asks to sign in when the session is another account's", async () => {
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "private" });
+    server.failPush = () => 409;
+    server.failCode = "account_mismatch";
+    await syncNow();
+    expect(await db.outbox.count()).toBe(1);
+    expect(await db.rejected.count()).toBe(0);
+    expect(syncState().state).toBe("needs_signin");
+  });
+
+  it("sends a change saved while a slow sync was already under way", async () => {
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "first" });
+    let release = () => {};
+    server.pushGate = new Promise((r) => {
+      release = r;
+    });
+    const first = syncNow();
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "second" });
+    const joined = syncNow();
+    release();
+    await Promise.all([first, joined]);
+    await vi.waitFor(async () => expect(await db.outbox.count()).toBe(0));
+    expect(server.pushes.flat().map((m) => (m.row as { body: string }).body)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("tries again by itself after a dropped connection, even if the browser says online", async () => {
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    let drops = 1;
+    server.failPush = () => (drops-- > 0 ? "network" : null);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stop = startSyncTriggers();
+    try {
+      await vi.waitFor(() => expect(syncState().state).toBe("offline"));
+      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.waitFor(async () => expect(await db.outbox.count()).toBe(0));
+    } finally {
+      stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs the new account's sync even while the old account's fails", async () => {
+    const a = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "A" });
+    let release = () => {};
+    server.pushGate = new Promise((r) => {
+      release = r;
+    });
+    server.failCode = "account_mismatch";
+    server.failPush = (ms) =>
+      ms.some((m) => (m.row as { body: string }).body === "A") ? 409 : null;
+    const first = syncNow();
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
+    const b = openUserDb(`b${n}`);
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "B" });
+    const second = syncNow();
+    release();
+    await Promise.all([first, second]);
+    expect(await b.outbox.count()).toBe(0);
+    expect(await a.outbox.count()).toBe(1);
+    expect(syncState().state).toBe("idle");
+  });
+
+  it("keeps reporting an account's sync after switching away and back", async () => {
+    const a = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "A" });
+    let release = () => {};
+    server.pushGate = new Promise((r) => {
+      release = r;
+    });
+    server.failPush = () => "network";
+    const first = syncNow();
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
+    openUserDb(`b${n}`);
+    expect(openUserDb(`s${n}`)).toBe(a);
+    const joined = syncNow();
+    release();
+    const [r1, r2] = await Promise.all([first, joined]);
+    expect(r1.state).toBe("offline");
+    expect(r2.state).toBe("offline");
+    expect(syncState().state).toBe("offline");
+  });
+
+  it("syncs a reopened database on its own, not through the closed one's run", async () => {
+    open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "old" });
+    let release = () => {};
+    server.pushGate = new Promise((r) => {
+      release = r;
+    });
+    const first = syncNow();
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
+    closeUserDb();
+    const again = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "new" });
+    const second = syncNow();
+    release();
+    await Promise.allSettled([first, second]);
+    expect(await again.outbox.count()).toBe(0);
+  });
+
+  it("schedules no retry after its triggers are stopped", async () => {
+    open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    server.failPush = () => "network";
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let pushes = 0;
+    const count = server.failPush;
+    server.failPush = (ms) => {
+      pushes += 1;
+      return count(ms);
+    };
+    try {
+      const stop = startSyncTriggers();
+      stop();
+      await vi.waitFor(() => expect(syncState().state).toBe("offline"));
+      await vi.advanceTimersByTimeAsync(700_000);
+      expect(pushes).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps one retry going when several triggers fail at once", async () => {
+    open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    let pushes = 0;
+    server.failPush = () => {
+      pushes += 1;
+      return "network";
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stop = startSyncTriggers();
+    try {
+      window.dispatchEvent(new Event("online"));
+      await vi.waitFor(() => expect(syncState().state).toBe("offline"));
+      // One chain: the first try, then retries 5 s, 30 s and 2 min apart.
+      await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000 + 1_000);
+      expect(pushes).toBe(4);
+    } finally {
+      stop();
+      vi.useRealTimers();
+    }
   });
 
   it("reports offline on a network failure", async () => {

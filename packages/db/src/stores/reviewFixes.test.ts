@@ -128,4 +128,24 @@ forEachDialect("push review regressions", (makeDb) => {
     expect((await push(db, A, [original], T0 + 600_000)).results[0]?.status).toBe("ignored_stale");
     expect((await mine(db, "visit_notes", A, uid("n1")))[0]?.body).toBe("newer");
   });
+
+  it("never stamps an accepted edit earlier than the device's own time, so the next edit wins", async () => {
+    const db = await setup(makeDb);
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    // A device 30 s ahead saves; the server accepts it.
+    const ahead = T0 + 30_000;
+    await push(db, A, [up("visit_notes", note("n1", P1, { body: "fast" }), ahead)], T0);
+    const [row] = await mine(db, "visit_notes", A, uid("n1"));
+    expect(Number(row?.updated_at)).toBeGreaterThanOrEqual(ahead);
+    // Another device with a right clock edits what it pulled, stamping above that row.
+    const next = Math.max(T0 + 5_000, Number(row?.updated_at) + 1);
+    const res = await push(
+      db,
+      A,
+      [up("visit_notes", note("n1", P1, { body: "later" }), next)],
+      T0 + 5_000,
+    );
+    expect(res.results[0]?.status).toBe("applied");
+    expect((await mine(db, "visit_notes", A, uid("n1")))[0]?.body).toBe("later");
+  });
 });

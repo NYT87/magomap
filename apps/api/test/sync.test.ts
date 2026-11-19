@@ -1,4 +1,6 @@
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import app from "../src/index";
 import { signSearchResult } from "../src/search/signing";
 import { call, devLogin } from "./helpers";
 
@@ -49,6 +51,54 @@ describe("sync routes", () => {
   it("requires a session", async () => {
     expect((await call("/api/sync/push", json({ mutations: [] }))).status).toBe(401);
     expect((await call("/api/sync/pull")).status).toBe(401);
+  });
+
+  it("refuses a request made for a different account than the session's", async () => {
+    const cookie = await devLogin("111");
+    const me = (await (await call("/api/me", { headers: { cookie } })).json()) as {
+      userId: string;
+    };
+    const as = (user: string) => ({ headers: { cookie, "x-magomap-user": user } });
+    const wrong = await call("/api/sync/pull", as("someone-else"));
+    expect(wrong.status).toBe(409);
+    expect(await wrong.json()).toEqual({ error: "account_mismatch" });
+    expect((await call("/api/sync/pull", as(me.userId))).status).toBe(200);
+    // Who-am-I answers whoever the cookie belongs to.
+    expect((await call("/api/me", as("someone-else"))).status).toBe(200);
+  });
+
+  it("refuses an account-scoped request that doesn't say which account it acts for", async () => {
+    const cookie = await devLogin("111");
+    // Straight to the app: the test helper would add the header the way the web app does.
+    const res = await app.request(
+      "https://magomap.test/api/sync/pull",
+      { headers: { cookie } },
+      env,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "account_mismatch" });
+  });
+
+  it("signs out only the account the page shows", async () => {
+    const cookie = await devLogin("111");
+    const res = await call("/api/auth/logout", {
+      method: "POST",
+      headers: { cookie, "x-magomap-user": "someone-else" },
+    });
+    expect(res.status).toBe(409);
+    expect((await call("/api/sync/pull", { headers: { cookie } })).status).toBe(200);
+    // Already signed out: still fine.
+    expect((await call("/api/auth/logout", { method: "POST" })).status).toBe(204);
+  });
+
+  it("signs out everywhere only for the account the page shows", async () => {
+    const cookie = await devLogin("111");
+    const res = await call("/api/auth/logout-all", {
+      method: "POST",
+      headers: { cookie, "x-magomap-user": "someone-else" },
+    });
+    expect(res.status).toBe(409);
+    expect((await call("/api/sync/pull", { headers: { cookie } })).status).toBe(200);
   });
 
   it("rejects a malformed envelope with 400", async () => {

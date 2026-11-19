@@ -9,6 +9,7 @@ vi.mock("../api/client", async (orig) => {
 const sync = vi.fn(async () => ({ pushed: 0, pulled: 0, rejected: 0 }));
 vi.mock("../data/sync", () => ({ syncNow: () => sync() }));
 const { ImportError, runImport } = await import("./runImport");
+const { openUserDb } = await import("../data/db");
 
 const summary = {
   listsAdded: 1,
@@ -45,6 +46,8 @@ function server(
 beforeEach(() => {
   api.mockReset();
   sync.mockClear();
+  // An import acts for the signed-in account, whose database is open.
+  openUserDb("imp");
 });
 
 describe("runImport", () => {
@@ -108,5 +111,24 @@ describe("runImport", () => {
     });
     await runImport(() => {});
     expect(api.mock.calls.filter((c) => String(c[0]).endsWith("/pages/0"))).toHaveLength(2);
+  });
+
+  it("keeps acting for the account it started for, even if another one opens meanwhile", async () => {
+    openUserDb("imp-a");
+    let first = true;
+    server([{ externalId: "a", itemCount: 1 }], (path) => {
+      if (path.endsWith("/pages/0") && first) {
+        first = false;
+        openUserDb("imp-b");
+        return new (class extends Error {})();
+      }
+      return undefined;
+    });
+    await runImport(() => {}).catch(() => {});
+    const accounts = api.mock.calls.map(([, init]) =>
+      new Headers((init as RequestInit).headers).get("x-magomap-user"),
+    );
+    expect(accounts.length).toBeGreaterThan(0);
+    expect(new Set(accounts)).toEqual(new Set(["imp-a"]));
   });
 });

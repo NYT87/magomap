@@ -8,6 +8,8 @@ import { SyncContext, type SyncControls } from "../data/SyncContext";
 import i18n from "../i18n";
 import { Account } from "./Account";
 
+const { closeUserDb, openDbOrNull, openUserDb } = await import("../data/db");
+
 vi.mock("../api/client", async (orig) => {
   const actual = await orig<typeof import("../api/client")>();
   return { ...actual, apiFetch: vi.fn(async () => ({})) };
@@ -52,7 +54,10 @@ describe("Account", () => {
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith("/api/account", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/api/account", {
+        method: "DELETE",
+        headers: { "x-magomap-user": "u1" },
+      }),
     );
     await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
   });
@@ -73,7 +78,10 @@ describe("Account", () => {
     expect(dialog).toHaveTextContent("2");
     await user.click(screen.getByRole("button", { name: "Sign out anyway" }));
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" }),
+      expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", {
+        method: "POST",
+        headers: { "x-magomap-user": "u1" },
+      }),
     );
     expect(await Dexie.exists("magomap-u1")).toBe(true);
   });
@@ -102,5 +110,99 @@ describe("Account", () => {
     renderAccount({ unsynced: 3 });
     await user.click(screen.getByRole("button", { name: "Delete account" }));
     expect(screen.getByRole("alertdialog")).toHaveTextContent("3 changes on this phone");
+  });
+
+  it("signs out everywhere only for the account it shows", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+    renderAccount();
+    await user.click(screen.getByRole("button", { name: "Sign out on every device" }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout-all", {
+        method: "POST",
+        headers: { "x-magomap-user": "u1" },
+      }),
+    );
+  });
+
+  it("leaves another account that opened meanwhile alone when the delete finishes", async () => {
+    await i18n.changeLanguage("en");
+    openUserDb("u1");
+    let answer: (v: unknown) => void = () => {};
+    vi.mocked(apiFetch).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          answer = r;
+        }),
+    );
+    window.history.pushState(null, "", "/account");
+    const user = userEvent.setup();
+    renderAccount();
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    await user.type(screen.getByRole("textbox"), "delete");
+    await user.click(screen.getByRole("button", { name: "Delete my account" }));
+    const other = openUserDb("u2");
+    answer({});
+    await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
+    expect(openDbOrNull()).toBe(other);
+    expect(window.location.pathname).toBe("/account");
+  });
+
+  it("leaves an account that opened while the database was being deleted alone", async () => {
+    await i18n.changeLanguage("en");
+    openUserDb("u1");
+    const realDelete = Dexie.delete.bind(Dexie);
+    let other: unknown = null;
+    const spy = vi.spyOn(Dexie, "delete").mockImplementation(async (name: string) => {
+      other = openUserDb("u3");
+      await realDelete(name);
+    });
+    window.history.pushState(null, "", "/account");
+    const user = userEvent.setup();
+    renderAccount();
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    await user.type(screen.getByRole("textbox"), "delete");
+    await user.click(screen.getByRole("button", { name: "Delete my account" }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
+    await new Promise((r) => setTimeout(r, 20));
+    spy.mockRestore();
+    expect(openDbOrNull()).toBe(other);
+    expect(window.location.pathname).toBe("/account");
+  });
+
+  it("still offers to sign out when unsent changes can't be counted", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+    renderAccount({
+      unsynced: 2,
+      syncNow: vi.fn(async () => {}),
+      countUnsynced: vi.fn(async () => {
+        throw new Error("closed");
+      }),
+    });
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("2");
+  });
+
+  it("finishes signing out when the account's database was replaced meanwhile", async () => {
+    await i18n.changeLanguage("en");
+    openUserDb("u1");
+    let answer: (v: unknown) => void = () => {};
+    vi.mocked(apiFetch).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          answer = r;
+        }),
+    );
+    window.history.pushState(null, "", "/account");
+    const user = userEvent.setup();
+    renderAccount();
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    // Another tab deleted this account's local data; a fresh database opened for the same account.
+    closeUserDb();
+    openUserDb("u1");
+    answer({});
+    await waitFor(() => expect(window.location.pathname).toBe("/signin"));
   });
 });

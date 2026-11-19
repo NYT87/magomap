@@ -24,11 +24,18 @@ interface Props {
  * once when the app is hidden or the editor closes, so a phone that discards the app mid-sentence
  * gives it back.
  */
-export function NoteEditor({ placeId, note, onDone }: Props) {
+export function NoteEditor(props: Props) {
+  const key = props.note ? `edit:${props.note.id}` : `new:${props.placeId}`;
+  // Another place or note starts a fresh editor: the old one keeps its own draft on the way out.
+  return <Editor key={key} draftKey={key} {...props} />;
+}
+
+function Editor({ placeId, note, onDone, draftKey: key }: Props & { draftKey: string }) {
   const { t } = useTranslation();
-  const key = note ? `edit:${note.id}` : `new:${placeId}`;
-  const draft = useLiveQuery(() => currentDb().drafts.get(key), [key], null);
-  const [visitedOn, setVisitedOn] = useState(note?.visitedOn ?? localToday());
+  // The account this editor was opened in: its draft never lands in another account's database.
+  const [db] = useState(currentDb);
+  const draft = useLiveQuery(() => db.drafts.get(key), [db, key], null);
+  const [visitedOn, setVisitedOn] = useState(note ? (note.visitedOn ?? "") : localToday());
   const [body, setBody] = useState(note?.body ?? "");
   const [restored, setRestored] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,8 +64,9 @@ export function NoteEditor({ placeId, note, onDone }: Props) {
     const value = unsaved.current;
     if (!value) return;
     unsaved.current = null;
-    void saveDraft(key, value);
-  }, [key]);
+    // A database closed under it (deleted in another tab) has nowhere to keep it.
+    saveDraft(key, value, db).catch(() => {});
+  }, [key, db]);
 
   useEffect(() => {
     if (!touched.current) return;
@@ -91,7 +99,7 @@ export function NoteEditor({ placeId, note, onDone }: Props) {
       if (note) await editVisitNote(note.id, value);
       else await addVisitNote(placeId, value);
       unsaved.current = null;
-      await clearDraft(key);
+      await clearDraft(key, db);
       onDone();
     } catch {
       setFailed(true);
@@ -102,7 +110,7 @@ export function NoteEditor({ placeId, note, onDone }: Props) {
 
   const discard = async () => {
     unsaved.current = null;
-    await clearDraft(key);
+    await clearDraft(key, db);
     onDone();
   };
 

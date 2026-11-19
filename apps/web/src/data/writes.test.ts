@@ -1,5 +1,6 @@
 import type { PlaceLocationRow, SearchResult } from "@magomap/domain";
 import { placeRowId } from "@magomap/domain/ids";
+import Dexie from "dexie";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { OutboxEntry } from "./db";
 import { openUserDb } from "./db";
@@ -118,6 +119,15 @@ describe("local writes", () => {
     expect((await db.drafts.get("new:p_kakao_1"))?.body).toBe("반쯤 쓴 메모");
     await clearDraft("new:p_kakao_1");
     expect(await db.drafts.get("new:p_kakao_1")).toBeUndefined();
+  });
+
+  it("never recreates an account's database that another tab deleted", async () => {
+    const name = `${user()}-gone`;
+    const db = openUserDb(name);
+    await saveDraft("k", { visitedOn: null, body: "a" });
+    await Dexie.delete(`magomap-${name}`);
+    await expect(saveDraft("k", { visitedOn: null, body: "late" }, db)).rejects.toThrow();
+    expect(await Dexie.exists(`magomap-${name}`)).toBe(false);
   });
 
   it("keeps separate data per account", async () => {

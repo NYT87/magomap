@@ -4,6 +4,7 @@ import {
   deleteAllSessions,
   deleteSession,
   findOrCreateUserByIdentity,
+  resolveSession,
 } from "@magomap/db/stores/users";
 import type { Me } from "@magomap/domain";
 import { type Context, Hono } from "hono";
@@ -11,7 +12,14 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { authorizeUrl, isAllowed, KakaoError, kakaoUserFromCode } from "./kakao";
-import { clearSessionCookie, requireUser, SESSION_COOKIE, setSessionCookie } from "./session";
+import {
+  ACCOUNT_HEADER,
+  clearSessionCookie,
+  requireSession,
+  requireUser,
+  SESSION_COOKIE,
+  setSessionCookie,
+} from "./session";
 
 const STATE_COOKIE = "mm_oauth_state";
 
@@ -78,7 +86,7 @@ authRoutes.post("/auth/dev", async (c) => {
   return c.json({ ok: true });
 });
 
-authRoutes.get("/me", requireUser, async (c) => {
+authRoutes.get("/me", requireSession, async (c) => {
   const user = await c.var.db.kysely
     .selectFrom("users")
     .select("display_name")
@@ -99,7 +107,14 @@ authRoutes.get("/me", requireUser, async (c) => {
 
 authRoutes.post("/auth/logout", async (c) => {
   const token = getCookie(c, SESSION_COOKIE);
-  if (token) await deleteSession(c.var.db, token);
+  if (token) {
+    // A page showing another account (this browser signed in again elsewhere) can't sign this one out.
+    const session = await resolveSession(c.var.db, token, Date.now());
+    if (session && c.req.header(ACCOUNT_HEADER) !== session.userId) {
+      return c.json({ error: "account_mismatch" }, 409);
+    }
+    await deleteSession(c.var.db, token);
+  }
   clearSessionCookie(c);
   return c.body(null, 204);
 });

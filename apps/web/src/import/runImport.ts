@@ -1,6 +1,7 @@
 // The server-driven Kakao import: the app only says "next page"; the server fetches from kakao-list.
 import type { ApiErrorCode, ImportSummary } from "@magomap/domain";
-import { ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
+import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
+import { currentDb, dbUserId } from "../data/db";
 import { syncNow } from "../data/sync";
 
 export type ImportStep = "start" | "list" | "complete";
@@ -26,8 +27,13 @@ const codeOf = (error: unknown): ImportError["code"] => {
 const retryable = (error: unknown) =>
   error instanceof NetworkError || (error instanceof ApiError && error.status >= 500);
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
-  const init = { method: "POST", body: JSON.stringify(body ?? {}) };
+async function post<T>(account: string, path: string, body?: unknown): Promise<T> {
+  // Every request, retries included, acts for the account the import started in.
+  const init = {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+    headers: { [ACCOUNT_HEADER]: account },
+  };
   try {
     return await apiFetch<T>(path, init);
   } catch (error) {
@@ -43,9 +49,10 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 export async function runImport(
   onProgress: (p: { listIndex: number; listCount: number }) => void,
 ): Promise<ImportSummary> {
+  const account = dbUserId(currentDb());
   let run: { runId: string; lists: { externalId: string; name: string; itemCount: number }[] };
   try {
-    run = await post("/api/import/runs", { provider: "kakao" });
+    run = await post(account, "/api/import/runs", { provider: "kakao" });
   } catch (error) {
     throw new ImportError("start", codeOf(error));
   }
@@ -55,17 +62,17 @@ export async function runImport(
     const at = `${base}/lists/${encodeURIComponent(list.externalId)}`;
     try {
       for (let page = 0; ; page++) {
-        const res = await post<{ done: boolean }>(`${at}/pages/${page}`);
+        const res = await post<{ done: boolean }>(account, `${at}/pages/${page}`);
         if (res.done) break;
       }
-      await post(`${at}/finish`);
+      await post(account, `${at}/finish`);
     } catch (error) {
       throw new ImportError("list", codeOf(error), listIndex);
     }
   }
   let summary: ImportSummary;
   try {
-    summary = await post<ImportSummary>(`${base}/complete`);
+    summary = await post<ImportSummary>(account, `${base}/complete`);
   } catch (error) {
     throw new ImportError("complete", codeOf(error));
   }

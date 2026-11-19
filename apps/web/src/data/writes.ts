@@ -335,11 +335,16 @@ export const removeFromList = (listItemId: string) =>
 
 // ---------- Drafts ----------
 
-export async function saveDraft(key: string, value: { visitedOn: string | null; body: string }) {
+/** Keeps a draft; `db` pins it to the account it was typed in, even if another one opens. */
+export async function saveDraft(
+  key: string,
+  value: { visitedOn: string | null; body: string },
+  db: MagomapDexie = currentDb(),
+) {
   const draft: Draft = { key, ...value, updatedAt: Date.now() };
-  await currentDb().drafts.put(draft);
+  await db.drafts.put(draft);
 }
 
-export async function clearDraft(key: string) {
-  await currentDb().drafts.delete(key);
+export async function clearDraft(key: string, db: MagomapDexie = currentDb()) {
+  await db.drafts.delete(key);
 }

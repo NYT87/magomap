@@ -21,7 +21,9 @@ export function PageRoutes({ me }: { me: Me }) {
       <Route path="/import">
         <ImportScreen />
       </Route>
-      <Route path="/places/:id">{(p) => <PlaceScreen id={decodeURIComponent(p.id)} />}</Route>
+      <Route path="/places/:id">
+        {(p) => <PlaceScreen key={p.id} id={decodeURIComponent(p.id)} />}
+      </Route>
       <Route path="/">
         <HomePanel />
       </Route>

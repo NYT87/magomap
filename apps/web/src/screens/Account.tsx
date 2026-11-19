@@ -3,10 +3,10 @@ import Dexie from "dexie";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
-import { apiFetch, NetworkError } from "../api/client";
+import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
 import { forgetMe } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { closeUserDb, dbName } from "../data/db";
+import { closeUserDb, dbName, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 
@@ -25,6 +25,9 @@ export function Account({ me }: { me: Me }) {
   const [error, setError] = useState<string | null>(null);
   const word = t("account.deleteWord");
 
+  // Every request here acts for the account this screen shows, never one opened meanwhile.
+  const forMe = (method: string) => ({ method, headers: { [ACCOUNT_HEADER]: me.userId } });
+
   const leave = () => {
     forgetMe();
     navigate("/signin");
@@ -32,11 +35,21 @@ export function Account({ me }: { me: Me }) {
 
   const signOut = async (everywhere: boolean, force = false) => {
     setError(null);
+    // Another account opened while waiting (another tab signed in): this screen is gone. A fresh
+    // database for the same account (its old one deleted elsewhere) is still this account.
+    const opened = openDbOrNull()?.name;
+    const switched = () => {
+      const now = openDbOrNull()?.name;
+      return now !== undefined && now !== opened;
+    };
     if (!force && (sync.unsynced > 0 || sync.rejected > 0)) {
       setBusy(true);
       if (sync.unsynced > 0) await sync.syncNow().catch(() => {});
-      const left = sync.countUnsynced ? await sync.countUnsynced() : sync.unsynced;
+      const left = sync.countUnsynced
+        ? await sync.countUnsynced().catch(() => sync.unsynced)
+        : sync.unsynced;
       setBusy(false);
+      if (switched()) return;
       if (left > 0 || sync.rejected > 0) {
         setDialog({ kind: "unsynced", count: left, rejected: sync.rejected, everywhere });
         return;
@@ -44,9 +57,9 @@ export function Account({ me }: { me: Me }) {
     }
     try {
       setBusy(true);
-      await apiFetch(everywhere ? "/api/auth/logout-all" : "/api/auth/logout", { method: "POST" });
+      await apiFetch(everywhere ? "/api/auth/logout-all" : "/api/auth/logout", forMe("POST"));
       // The local database is kept: unsynced changes go out at the next sign-in here.
-      leave();
+      if (!switched()) leave();
     } catch (e) {
       setError(e instanceof NetworkError ? t("account.signOutOffline") : t("account.failed"));
     } finally {
@@ -58,11 +71,12 @@ export function Account({ me }: { me: Me }) {
     setError(null);
     setBusy(true);
     try {
-      await apiFetch("/api/account", { method: "DELETE" });
-      // Close first, so nothing (a sync, a live query) reopens or recreates it.
-      closeUserDb();
+      await apiFetch("/api/account", forMe("DELETE"));
+      // Close this account's database first, so nothing (a sync, a live query) recreates it.
+      closeUserDb(me.userId);
       await Dexie.delete(dbName(me.userId));
-      leave();
+      // If another account opened meanwhile (even during the deletion), it stays on its own page.
+      if (openDbOrNull() === null) leave();
     } catch {
       setError(t("account.failed"));
     } finally {

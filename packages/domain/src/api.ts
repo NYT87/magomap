@@ -46,4 +46,5 @@ export type ApiErrorCode =
   | "account_gone"
   | "busy"
   | "not_found"
-  | "invalid";
+  | "invalid"
+  | "account_mismatch";

@@ -12,10 +12,14 @@ const login = await fetch(`${api}/api/auth/dev`, {
 if (!login.ok) throw new Error(`dev login failed: ${login.status} (is ALLOW_DEV_LOGIN=true?)`);
 const cookie =
   (login.headers.getSetCookie().find((c) => c.startsWith("mm_session=")) ?? "").split(";")[0] ?? "";
+const me = (await (await fetch(`${api}/api/me`, { headers: { cookie } })).json()) as {
+  userId: string;
+};
 const call = async (path: string, method = "GET", body?: unknown) => {
   const res = await fetch(`${api}${path}`, {
     method,
-    headers: { cookie, "content-type": "application/json" },
+    // Account-scoped routes need to be told which account the request acts for.
+    headers: { cookie, "content-type": "application/json", "x-magomap-user": me.userId },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
