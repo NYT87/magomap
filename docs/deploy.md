@@ -6,10 +6,12 @@ Requirements: Node 22, pnpm (the version in `package.json`), a Cloudflare accoun
 
 ## 1. Choose the database
 
+**Current choice (2026-11-19): D1.** The first deployment uses D1, created in an Asia location (`npx wrangler d1 create magomap --location apac`) so it sits near the people using it. Moving to Postgres (for example a separate database on the server kakao-list uses) is to be reconsidered once the app is in real use. The deciding factor is the latency from the Worker to that server's region. Postgres-only would also allow real transactions instead of the write token, but that is a rewrite and its own plan.
+
 ### Option A: D1
 
 ```bash
-npx wrangler d1 create magomap
+npx wrangler d1 create magomap --location apac
 ```
 
 - Put the printed `database_id` in `apps/api/wrangler.toml`, under `[[env.d1.d1_databases]]`.
