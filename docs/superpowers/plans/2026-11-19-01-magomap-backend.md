@@ -16,7 +16,9 @@
 
 **Spec:** `/home/motoko/workspace/magomap/docs/superpowers/specs/2026-11-19-magomap-design.md`, including its addenda.
 
-**Depends on:** nothing to start. The import builds against a fake `kakao-list` server (Task 5), and goes live once plan 01 is deployed.
+**Order:** this is plan 01 of 3. Build it first.
+
+**Depends on:** nothing. The import is built and tested against a fake `kakao-list` server (Task 5). It works with real Kakao data once plan 03 (the `kakao-list` integration) is deployed, which is done last, before go-live.
 
 ## Global Constraints
 
@@ -108,7 +110,7 @@
   - `sync.test.ts`, `location.test.ts`.
 - Subpath exports: `@magomap/domain`, `/ids`, `/location`.
 
-**Interfaces (Produces, used by every later task and by plan 03):**
+**Interfaces (Produces, used by every later task and by plan 02):**
 
 ```ts
 // rows.ts
@@ -278,7 +280,7 @@ async function migrate(db: Db, dir: string): Promise<string[]>;  // applies <dir
     - `name = "magomap"`, `main = "src/index.ts"`, a `compatibility_date` of at least 14 days ago, and `compatibility_flags = ["nodejs_compat"]`;
     - `[env.d1]`: `vars.DB_DRIVER = "d1"`, a `[[env.d1.d1_databases]]` binding `DB` with `migrations_dir = "../../packages/db/migrations/sqlite"`, and the other vars;
     - `[env.postgres]`: `vars.DB_DRIVER = "postgres"`, a `[[env.postgres.hyperdrive]]` binding `HYPERDRIVE` (with `localConnectionString` for dev), and the other vars.
-    - **No `assets` block yet.** Plan 03 Task 1 adds it.
+    - **No `assets` block yet.** Plan 02 Task 1 adds it.
   - `src/index.ts` and `src/env.ts`;
   - `src/db.ts`:
     - `getDb(c)`: for D1, built once per isolate and cached; for Postgres, built per request, with `c.executionCtx.waitUntil(db.close())`;

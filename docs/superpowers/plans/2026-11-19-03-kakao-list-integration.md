@@ -11,6 +11,8 @@
 - The server stamps a `complete` flag when it stores a snapshot.
 - A new Express route, authorised by a shared secret, maps the stored snapshot to the contract.
 
+**Order:** this is plan 03 of 3. It is done **last, before the owner's wife starts using magomap**. magomap is built and tested against a fake kakao-list server that serves the same contract (plan 01, Task 5), so nothing in plans 01–02 waits for this one. When this plan is deployed, set `KAKAO_LIST_URL` and `MAGOMAP_IMPORT_SECRET` on magomap and run one real import end to end.
+
 **Tech Stack:** TypeScript, Express 5, `pg`, `node:test` with `tsx`, `proj4` (new, in `@kakao-lists/domain`), pnpm workspaces, Biome.
 
 **Spec:** `/home/motoko/workspace/magomap/docs/superpowers/specs/2026-11-19-magomap-design.md` (section "Import from Kakao").

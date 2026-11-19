@@ -179,7 +179,7 @@ Each account is one person on a few devices, so a simple design is enough:
 
 **Removed places.** These stay in their Kakao list, at the end, marked "Removed from Kakao", with their diary intact. They are shown read-only as a membership. The user can remove the place themselves.
 
-**Changes needed in `kakao-list`.** They are made in that repo, as the **first phase of the implementation plan** (`magomap`'s import is built against a fake server serving the contract until they land). *(Designer's call.)*
+**Changes needed in `kakao-list`.** They are made in that repo, as the **last phase of the implementation plan, before go-live** (owner's decision, 2026-11-19) (`magomap`'s import is built against a fake server serving the contract until they land). *(Designer's call.)*
 1. **Keep coordinates.** The extension importer stores Kakao's raw `x`/`y` (WCONGNAMUL, which is EPSG:5181 × 2.5) and the favourite `type` on each item. The `kakao-list` server converts them to latitude/longitude when it builds the contract, so a conversion fix never needs a re-import. `magomap` stores lat/lng.
 2. **Integration endpoint.** `GET /api/integrations/magomap/snapshot?kakaoUserId=` returns that user's latest data in the import contract above, including the `complete` flag. It is authorised by a shared secret (constant-time compare), rate-limited, and logged. It is read-only.
 3. When `kakao-list`'s place storage refactor (TASK-24) lands, the endpoint can switch to the new records without changing the contract `magomap` relies on.
