@@ -3,6 +3,10 @@
 Date: 2026-11-19
 Status: draft, awaiting approval
 
+## Name
+
+**Mago (마고) / magomap** is inspired by **Mago Halmi (마고할미)**, the giant creation goddess of Korean mythology, who sculpted the earth's mountains, rivers and islands. The name fits a visual, map-centred app in which people curate their own personal geography. Use this origin in the README and on the homepage.
+
 ## Intent
 
 A map app, installed on the phone as a PWA, for keeping a personal record of places. Each saved place has its own **visit diary** (a new, dated note every visit) and its own **links**. Places are grouped into **lists**, like Google Maps lists; a place can be in many lists, and its diary and links belong to the place, so they are the same whichever list it is opened from.

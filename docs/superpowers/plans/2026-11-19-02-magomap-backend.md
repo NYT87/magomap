@@ -496,7 +496,7 @@ async function migrate(db: Db, dir: string): Promise<string[]>;  // applies <dir
 ### Task 7: Deploy configuration, CI and docs
 
 **Files:**
-- Create `README.md` and `apps/api/.dev.vars.example`.
+- Create `README.md` and `apps/api/.dev.vars.example`. The README opens with the name's origin, taken from the spec's "Name" section (Mago Halmi, 마고할미).
 - Create `docs/deploy.md` and `.github/workflows/ci.yml`.
 - Modify the root `package.json` to add these scripts:
   - `db:migrate:d1`: `wrangler d1 migrations apply DB --env d1`, which takes `--local` or `--remote`;
