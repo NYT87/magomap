@@ -1,0 +1,37 @@
+name = "magomap"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Every environment declares all of its vars and bindings: Wrangler does not inherit them.
+# Secrets (KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET, MAGOMAP_IMPORT_SECRET) go in .dev.vars
+# locally and `wrangler secret put --env <env>` when deployed.
+
+[env.d1]
+name = "magomap"
+[env.d1.vars]
+DB_DRIVER = "d1"
+KAKAO_REDIRECT_URI = "http://localhost:8787/api/auth/kakao/callback"
+KAKAO_JAVASCRIPT_KEY = ""
+ALLOWED_KAKAO_USER_IDS = ""
+KAKAO_LIST_URL = "http://localhost:8788"
+ALLOW_DEV_LOGIN = "false"
+[[env.d1.d1_databases]]
+binding = "DB"
+database_name = "magomap"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/db/migrations/sqlite"
+
+[env.postgres]
+name = "magomap"
+[env.postgres.vars]
+DB_DRIVER = "postgres"
+KAKAO_REDIRECT_URI = "http://localhost:8787/api/auth/kakao/callback"
+KAKAO_JAVASCRIPT_KEY = ""
+ALLOWED_KAKAO_USER_IDS = ""
+KAKAO_LIST_URL = "http://localhost:8788"
+ALLOW_DEV_LOGIN = "false"
+[[env.postgres.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "00000000000000000000000000000000"
+localConnectionString = "postgres://magomap:magomap@localhost:5432/magomap_dev"

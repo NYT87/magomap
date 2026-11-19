@@ -9,7 +9,8 @@
     "./postgres": "./src/postgres.ts",
     "./sqlite": "./src/sqlite.ts",
     "./migrate": "./src/migrate.ts",
-    "./testing": "./src/testing/dbs.ts"
+    "./testing": "./src/testing/dbs.ts",
+    "./stores/users": "./src/stores/users.ts"
   },
   "scripts": {
     "test": "vitest run",
