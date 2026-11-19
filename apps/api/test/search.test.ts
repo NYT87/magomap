@@ -43,7 +43,8 @@ describe("place search", () => {
       isEnd: true,
       results: [
         {
-          kakaoPlaceId: "27324155",
+          provider: "kakao",
+          externalId: "27324155",
           title: "바다정원 카페",
           address: "제주특별자치도 제주시 애월읍 고내리 1",
           roadAddress: "제주특별자치도 제주시 애월읍 애월해안로 1",

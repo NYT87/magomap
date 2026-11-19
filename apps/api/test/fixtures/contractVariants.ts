@@ -1,4 +1,4 @@
-import type { MagomapImportContract } from "@magomap/domain";
+import type { KakaoListContract } from "@magomap/domain/providers/kakao";
 import { baseContract } from "./contract";
 
 export type Variant =
@@ -7,7 +7,7 @@ export type Variant =
   | { name: "incomplete" }
   | { name: "moved"; args: [string, number] };
 
-export function contractFor(variant: Variant, kakaoUserId = "111"): MagomapImportContract {
+export function contractFor(variant: Variant, kakaoUserId = "111"): KakaoListContract {
   const c = baseContract(kakaoUserId);
   if (variant.name === "withoutFavourite") {
     for (const l of c.lists) l.items = l.items.filter((i) => i.favoriteSeq !== variant.args[0]);

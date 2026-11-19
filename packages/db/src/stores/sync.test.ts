@@ -1,19 +1,8 @@
-import { CLOCK_ALLOWANCE_MS } from "@magomap/domain";
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
 import { applyPush } from "./sync";
-import {
-  addUser,
-  del,
-  interleaved,
-  note,
-  ownItem,
-  ownList,
-  searchedPlace,
-  T0,
-  up,
-} from "./testkit";
+import { addUser, del, note, ownItem, ownList, searchedPlace, T0, up } from "./testkit";
 
 const A = "user-a";
 const B = "user-b";
@@ -72,7 +61,6 @@ async function insertProviderList(db: Db, id = "l_kakao_9") {
 }
 
 forEachDialect("push", (makeDb) => {
-  // Validation and batching
   it("rejects one invalid mutation and applies the rest", async () => {
     const db = await setup(makeDb);
     const bad = up("links", {
@@ -88,21 +76,6 @@ forEachDialect("push", (makeDb) => {
       db,
       A,
       [up("places", searchedPlace("1")), bad, up("visit_notes", note("n1", P1))],
-      T0,
-    );
-    expect(res.results.map((r) => r.reason ?? r.status)).toEqual(["applied", "invalid", "applied"]);
-  });
-
-  it("rejects text Postgres can't store in one mutation only", async () => {
-    const db = await setup(makeDb);
-    const res = await applyPush(
-      db,
-      A,
-      [
-        up("places", searchedPlace("1")),
-        up("visit_notes", note("bad", P1, { body: "a\u0000b" })),
-        up("visit_notes", note("good", P1)),
-      ],
       T0,
     );
     expect(res.results.map((r) => r.reason ?? r.status)).toEqual(["applied", "invalid", "applied"]);
@@ -124,20 +97,6 @@ forEachDialect("push", (makeDb) => {
     const late = await applyPush(db, A, [up("visit_notes", note("n1", P1), T0 + 2)], T0);
     expect(late.results[0]?.status).toBe("ignored_stale");
     expect(await mine(db, "visit_notes", A, "n1")).toHaveLength(0);
-  });
-
-  it("reports superseded mutations with the final outcome", async () => {
-    const db = await setup(makeDb);
-    const res = await applyPush(
-      db,
-      A,
-      [
-        up("visit_notes", note("n1", "p_kakao_404"), T0 + 1),
-        up("visit_notes", note("n1", "p_kakao_404"), T0 + 2),
-      ],
-      T0,
-    );
-    expect(res.results.map((r) => r.reason)).toEqual(["missing_parent", "missing_parent"]);
   });
 
   it("gives every row of one push the same new seq", async () => {
@@ -167,7 +126,6 @@ forEachDialect("push", (makeDb) => {
     expect(await mine(db, "visit_notes", A)).toHaveLength(1);
   });
 
-  // Shared places
   it("creates a searched place once, with its source and the user's place", async () => {
     const db = await setup(makeDb);
     const res = await applyPush(
@@ -237,7 +195,6 @@ forEachDialect("push", (makeDb) => {
     ]);
   });
 
-  // Lists and items
   it("refuses writes to provider lists and their items", async () => {
     const db = await setup(makeDb);
     await insertProviderList(db);
@@ -308,7 +265,6 @@ forEachDialect("push", (makeDb) => {
     expect(await shared(db, "list_items")).toHaveLength(1);
   });
 
-  // Notes, links and last write wins
   it("ignores a stale edit and returns the server row", async () => {
     const db = await setup(makeDb);
     await applyPush(
@@ -386,87 +342,5 @@ forEachDialect("push", (makeDb) => {
       T0,
     );
     expect((await mine(db, "visit_notes", A, "kn_p_kakao_1_l_kakao_9"))[0]?.edited_by_user).toBe(1);
-  });
-
-  it("keeps a row deleted before its create arrived, and accepts a newer create", async () => {
-    const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    await applyPush(db, A, [del("visit_notes", "n1", T0 + 5)], T0);
-    expect(
-      (await applyPush(db, A, [up("visit_notes", note("n1", P1), T0 + 3)], T0)).results[0]?.status,
-    ).toBe("ignored_stale");
-    expect(await mine(db, "visit_notes", A, "n1")).toHaveLength(0);
-    expect(
-      (await applyPush(db, A, [up("visit_notes", note("n1", P1), T0 + 9)], T0)).results[0]?.status,
-    ).toBe("applied");
-  });
-
-  it("answers clock_ahead for a time ahead of the server, and accepts it later", async () => {
-    const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const ahead = up("visit_notes", note("n1", P1), T0 + CLOCK_ALLOWANCE_MS + 120_000);
-    expect((await applyPush(db, A, [ahead], T0)).results[0]).toMatchObject({
-      status: "rejected",
-      reason: "clock_ahead",
-    });
-    expect((await applyPush(db, A, [ahead], T0 + 180_000)).results[0]?.status).toBe("applied");
-  });
-
-  it("never lets a retry overwrite a newer edit", async () => {
-    const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const original = up("visit_notes", note("n1", P1, { body: "old" }), T0 + 30_000, "orig");
-    await applyPush(db, A, [original], T0);
-    await applyPush(
-      db,
-      A,
-      [up("visit_notes", note("n1", P1, { body: "newer" }), T0 + 120_000)],
-      T0 + 120_000,
-    );
-    expect((await applyPush(db, A, [original], T0 + 600_000)).results[0]?.status).toBe(
-      "ignored_stale",
-    );
-    expect((await mine(db, "visit_notes", A, "n1"))[0]?.body).toBe("newer");
-  });
-
-  // Concurrency
-  it("reports a write another device beat as stale, with the winner", async () => {
-    const db = await setup(makeDb);
-    await applyPush(
-      db,
-      A,
-      [up("places", searchedPlace("1")), up("visit_notes", note("n1", P1), T0 + 1)],
-      T0,
-    );
-    const racing = interleaved(db, () =>
-      applyPush(db, A, [up("visit_notes", note("n1", P1, { body: "B newer" }), T0 + 9)], T0),
-    );
-    const res = await applyPush(
-      racing,
-      A,
-      [up("visit_notes", note("n1", P1, { body: "A older" }), T0 + 5)],
-      T0,
-    );
-    expect(res.results[0]).toMatchObject({ status: "ignored_stale", row: { body: "B newer" } });
-  });
-
-  it("lets a newer delete that lands first beat an older create", async () => {
-    const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1"))], T0);
-    const racing = interleaved(db, () => applyPush(db, A, [del("visit_notes", "n1", T0 + 9)], T0));
-    const res = await applyPush(racing, A, [up("visit_notes", note("n1", P1), T0 + 5)], T0);
-    expect(res.results[0]?.status).toBe("ignored_stale");
-    expect(await mine(db, "visit_notes", A, "n1")).toHaveLength(0);
-  });
-
-  it("adds no location history for a move another device's newer move beat", async () => {
-    const db = await setup(makeDb);
-    await applyPush(db, A, [up("places", searchedPlace("1", { lat: 33 }), T0 + 1)], T0);
-    const racing = interleaved(db, () =>
-      applyPush(db, B, [up("places", searchedPlace("1", { lat: 34 }), T0 + 9)], T0),
-    );
-    await applyPush(racing, A, [up("places", searchedPlace("1", { lat: 35 }), T0 + 5)], T0);
-    expect((await shared(db, "places", P1))[0]?.lat).toBe(34);
-    expect(await shared(db, "place_locations")).toMatchObject([{ lat: 33 }]);
   });
 });

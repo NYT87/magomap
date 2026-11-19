@@ -58,9 +58,7 @@ forEachDialect("connector", (makeDb) => {
   it("rolls back every statement when one fails", async () => {
     const db = await makeDb();
     const insert = (id: string) =>
-      db.kysely
-        .insertInto("users")
-        .values({ id, display_name: null, change_seq: 0, created_at: now });
+      db.kysely.insertInto("users").values({ id, display_name: null, created_at: now });
     await expect(db.atomic([insert("a"), insert("a")])).rejects.toThrow();
     const rows = await db.kysely.selectFrom("users").selectAll().execute();
     expect(rows).toHaveLength(0);

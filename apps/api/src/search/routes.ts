@@ -1,4 +1,5 @@
 import type { SearchResult } from "@magomap/domain";
+import { KAKAO } from "@magomap/domain/providers/kakao";
 import { Hono } from "hono";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
@@ -52,7 +53,8 @@ searchRoutes.get("/search/places", async (c) => {
   const body = (await res.json()) as { documents?: KakaoDocument[]; meta?: { is_end?: boolean } };
   const results: SearchResult[] = (body.documents ?? [])
     .map((d) => ({
-      kakaoPlaceId: d.id,
+      provider: KAKAO,
+      externalId: d.id,
       title: d.place_name,
       address: orNull(d.address_name),
       roadAddress: orNull(d.road_address_name),
@@ -61,6 +63,6 @@ searchRoutes.get("/search/places", async (c) => {
       lat: Number(d.y),
       lng: Number(d.x),
     }))
-    .filter((r) => r.kakaoPlaceId && Number.isFinite(r.lat) && Number.isFinite(r.lng));
+    .filter((r) => r.externalId && Number.isFinite(r.lat) && Number.isFinite(r.lng));
   return c.json({ results, isEnd: body.meta?.is_end ?? true });
 });

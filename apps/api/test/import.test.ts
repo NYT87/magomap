@@ -1,9 +1,16 @@
+import { kakaoContractToImport } from "@magomap/domain/providers/kakao";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { baseContract } from "./fixtures/contract";
 import { call, devLogin } from "./helpers";
 import { network } from "./msw";
 
+const START = {
+  provider: "kakao",
+  complete: true,
+  subscriptionKnown: true,
+  importedAt: "2026-11-19T00:00:00.000Z",
+};
 const KAKAO_LIST = "http://localhost:8788/api/integrations/magomap/snapshot";
 const jsonInit = (method: string, body: unknown, cookie: string) => ({
   method,
@@ -55,10 +62,10 @@ describe("import source", () => {
 describe("import runs", () => {
   it("imports a list through the run endpoints", async () => {
     const cookie = await devLogin("111");
-    const contract = baseContract();
+    const contract = kakaoContractToImport(baseContract());
     const start = await call(
       "/api/import/runs",
-      jsonInit("POST", { complete: true, importedAt: contract.importedAt }, cookie),
+      jsonInit("POST", { ...START, importedAt: contract.importedAt }, cookie),
     );
     const { runId } = (await start.json()) as { runId: string };
     const { items, ...meta } = contract.lists[0] as (typeof contract.lists)[number];
@@ -74,7 +81,7 @@ describe("import runs", () => {
     ).toBe(200);
     const done = await call(
       `/api/import/runs/${runId}/complete`,
-      jsonInit("POST", { kakaoFolderIds: [101] }, cookie),
+      jsonInit("POST", { externalIds: ["101"] }, cookie),
     );
     expect(await done.json()).toMatchObject({ listsAdded: 1, placesAdded: 2 });
     const latest = await call("/api/import/runs/latest", { headers: { cookie } });
@@ -85,9 +92,9 @@ describe("import runs", () => {
     const owner = await devLogin("111");
     const other = await devLogin("222");
     const { runId } = (await (
-      await call("/api/import/runs", jsonInit("POST", { complete: true, importedAt: "x" }, owner))
+      await call("/api/import/runs", jsonInit("POST", START, owner))
     ).json()) as { runId: string };
-    const meta = { kakaoFolderId: 101, name: "x", subscribed: false };
+    const meta = { externalId: "101", name: "x", followed: false };
     const res = await call(
       `/api/import/runs/${runId}/lists/101/chunks/0`,
       jsonInit("PUT", { meta, items: [] }, other),
@@ -98,9 +105,9 @@ describe("import runs", () => {
   it("rejects a chunk over 500 items and a folder mismatch", async () => {
     const cookie = await devLogin("111");
     const { runId } = (await (
-      await call("/api/import/runs", jsonInit("POST", { complete: true, importedAt: "x" }, cookie))
+      await call("/api/import/runs", jsonInit("POST", START, cookie))
     ).json()) as { runId: string };
-    const meta = { kakaoFolderId: 101, name: "x", subscribed: false };
+    const meta = { externalId: "101", name: "x", followed: false };
     const items = Array.from({ length: 501 }, (_, i) => ({
       favoriteSeq: String(i),
       placeKey: `P${i}`,
@@ -128,10 +135,10 @@ describe("import runs", () => {
   it("answers 409 for a superseded run", async () => {
     const cookie = await devLogin("111");
     const first = (await (
-      await call("/api/import/runs", jsonInit("POST", { complete: true, importedAt: "x" }, cookie))
+      await call("/api/import/runs", jsonInit("POST", START, cookie))
     ).json()) as { runId: string };
-    await call("/api/import/runs", jsonInit("POST", { complete: true, importedAt: "x" }, cookie));
-    const meta = { kakaoFolderId: 101, name: "x", subscribed: false };
+    await call("/api/import/runs", jsonInit("POST", START, cookie));
+    const meta = { externalId: "101", name: "x", followed: false };
     const res = await call(
       `/api/import/runs/${first.runId}/lists/101/chunks/0`,
       jsonInit("PUT", { meta, items: [] }, cookie),
@@ -170,9 +177,9 @@ describe("import hardening (security review)", () => {
   it("rejects an import chunk body over 2 MB with 413", async () => {
     const cookie = await devLogin("111");
     const { runId } = (await (
-      await call("/api/import/runs", jsonInit("POST", { complete: true, importedAt: "x" }, cookie))
+      await call("/api/import/runs", jsonInit("POST", START, cookie))
     ).json()) as { runId: string };
-    const meta = { kakaoFolderId: 101, name: "x", subscribed: false };
+    const meta = { externalId: "101", name: "x", followed: false };
     const items = Array.from({ length: 450 }, (_, i) => ({
       favoriteSeq: String(i),
       placeKey: `P${i}`,

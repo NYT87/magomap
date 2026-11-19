@@ -3,8 +3,7 @@ import { call, devLogin } from "./helpers";
 
 const T0 = 1_763_000_000_000;
 const place = {
-  id: "kp_42",
-  kakaoPlaceId: "42",
+  id: "p_kakao_42",
   title: "바다정원 카페",
   address: "제주 애월읍",
   roadAddress: null,
@@ -13,10 +12,11 @@ const place = {
   phone: null,
   lat: 33.46,
   lng: 126.31,
-  source: "search",
+  providerSnapshotAt: null,
   createdAt: T0,
   updatedAt: T0,
   deletedAt: null,
+  source: { provider: "kakao", externalId: "42" },
 };
 
 const json = (body: unknown, cookie?: string) => ({
@@ -65,7 +65,7 @@ describe("sync routes", () => {
               mutationId: "m1",
               table: "places",
               op: "upsert",
-              id: "kp_42",
+              id: "p_kakao_42",
               row: place,
               clientUpdatedAt: T0 + 1,
             },
@@ -80,7 +80,7 @@ describe("sync routes", () => {
       rows: { table: string; row: { id: string } }[];
       hasMore: boolean;
     };
-    expect(pulled.rows.map((r) => `${r.table}:${r.row.id}`)).toContain("places:kp_42");
+    expect(pulled.rows.map((r) => `${r.table}:${r.row.id}`)).toContain("places:p_kakao_42");
     expect(pulled.hasMore).toBe(false);
   });
 });

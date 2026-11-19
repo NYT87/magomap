@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
 import { forEachDialect } from "../testing/dbs";
+import { applyPush } from "./sync";
+import { note, ownList, searchedPlace } from "./testkit";
 import {
   createSession,
   deleteAccount,
@@ -70,51 +72,83 @@ forEachDialect("users store", (makeDb) => {
     expect(await resolveSession(db, b.token, now)).toBeNull();
   });
 
-  it("deletes every row of one account and nothing of another", async () => {
+  it("deletes one account's own data, keeps shared places and another user's data", async () => {
     const db = await makeDb();
     const me = await findOrCreateUserByIdentity(db, "kakao", "1", null, now);
     const other = await findOrCreateUserByIdentity(db, "kakao", "2", null, now);
     for (const u of [me.userId, other.userId]) {
       await createSession(db, u, now);
-      await db.kysely
-        .insertInto("places")
-        .values({
-          user_id: u,
-          id: "kp_1",
-          kakao_place_id: "1",
-          title: "t",
-          address: null,
-          road_address: null,
-          address_source: null,
-          category: null,
-          phone: null,
-          lat: null,
-          lng: null,
-          source: "search",
-          created_at: now,
-          updated_at: now,
-          deleted_at: null,
-          client_updated_at: now,
-          seq: 1,
-        })
-        .execute();
+      await applyPush(
+        db,
+        u,
+        [
+          {
+            mutationId: `p${u}`,
+            table: "places",
+            op: "upsert",
+            id: "p_kakao_1",
+            clientUpdatedAt: now + 1,
+            row: searchedPlace("1"),
+          },
+          {
+            mutationId: `l${u}`,
+            table: "lists",
+            op: "upsert",
+            id: `own-${u}`,
+            clientUpdatedAt: now + 1,
+            row: ownList(`own-${u}`),
+          },
+          {
+            mutationId: `n${u}`,
+            table: "visit_notes",
+            op: "upsert",
+            id: `n-${u}`,
+            clientUpdatedAt: now + 1,
+            row: note(`n-${u}`, "p_kakao_1"),
+          },
+        ],
+        now,
+      );
     }
     await deleteAccount(db, me.userId);
-    for (const table of ["users", "identities", "sessions", "places"] as const) {
-      const column = table === "users" ? "id" : "user_id";
+    for (const table of [
+      "identities",
+      "sessions",
+      "user_places",
+      "user_lists",
+      "visit_notes",
+    ] as const) {
       const mine = await db.kysely
         .selectFrom(table)
-        .select(column)
-        .where(column, "=", me.userId)
+        .select("user_id")
+        .where("user_id", "=", me.userId)
         .execute();
       const theirs = await db.kysely
         .selectFrom(table)
-        .select(column)
-        .where(column, "=", other.userId)
+        .select("user_id")
+        .where("user_id", "=", other.userId)
         .execute();
       expect(mine, table).toHaveLength(0);
       expect(theirs.length, table).toBeGreaterThan(0);
     }
+    expect(
+      await db.kysely.selectFrom("users").selectAll().where("id", "=", me.userId).execute(),
+    ).toHaveLength(0);
+    expect(
+      await db.kysely
+        .selectFrom("lists")
+        .selectAll()
+        .where("id", "=", `own-${me.userId}`)
+        .execute(),
+    ).toHaveLength(0);
+    expect(
+      await db.kysely
+        .selectFrom("lists")
+        .selectAll()
+        .where("id", "=", `own-${other.userId}`)
+        .execute(),
+    ).toHaveLength(1);
+    expect(await db.kysely.selectFrom("places").selectAll().execute()).toHaveLength(1);
   });
 });
 
@@ -131,6 +165,6 @@ forEachDialect("account deletion ordering", (makeDb) => {
       },
     };
     await deleteAccount(recording, userId);
-    expect(seen[0]).toMatch(/^update "users"/i);
+    expect(seen[0]).toMatch(/^update "sync_state"/i);
   });
 });

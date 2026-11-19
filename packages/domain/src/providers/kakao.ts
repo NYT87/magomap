@@ -48,6 +48,9 @@ export const kakaoListContractSchema = z.object({
     .max(LIMITS.importLists),
 });
 
+/** kakao-list's contract as it arrives over the wire. */
+export type KakaoListContract = z.infer<typeof kakaoListContractSchema>;
+
 const defined = <T extends object>(value: T): T =>
   Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
 

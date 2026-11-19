@@ -28,7 +28,7 @@ export async function findOrCreateUserByIdentity(
   await db.atomic([
     db.kysely
       .insertInto("users")
-      .values({ id: userId, display_name: displayName, change_seq: 0, created_at: now }),
+      .values({ id: userId, display_name: displayName, created_at: now }),
     db.kysely.insertInto("identities").values({
       user_id: userId,
       provider,
@@ -105,28 +105,37 @@ export async function deleteAllSessions(db: Db, userId: string): Promise<void> {
   await db.kysely.deleteFrom("sessions").where("user_id", "=", userId).execute();
 }
 
+/** Per-user tables: everything here with the user's id is theirs alone. */
 const USER_TABLES = [
   "identities",
   "sessions",
-  "places",
-  "lists",
-  "list_items",
+  "user_places",
   "visit_notes",
   "links",
-  "place_locations",
+  "tombstones",
   "import_runs",
   "import_seen",
-  "tombstones",
 ] as const satisfies readonly (keyof Database)[];
 
-/** Removes every row of the user, in every table, all-or-nothing. */
+/**
+ * Removes the user's own data, all-or-nothing: their per-user rows, and the own lists they
+ * own with those lists' items. Shared places and provider lists stay. The global write
+ * counter is claimed first, like every writer, so no write can land mid-deletion.
+ */
 export async function deleteAccount(db: Db, userId: string): Promise<void> {
+  const ownLists = sql`SELECT list_id FROM user_lists WHERE user_id = ${userId} AND role = 'owner'`;
   await db.atomic([
-    // Lock the user row first, like every writer, so no write can land mid-deletion.
     db.kysely
-      .updateTable("users")
-      .set({ write_token: "deleting", change_seq: sql`change_seq + 1` })
-      .where("id", "=", userId),
+      .updateTable("sync_state")
+      .set({ change_seq: sql`change_seq + 1`, write_token: "deleting" })
+      .where("id", "=", 1),
+    db.kysely
+      .deleteFrom("list_items")
+      .where(
+        sql<boolean>`list_id IN (SELECT id FROM lists WHERE provider IS NULL AND id IN (${ownLists}))`,
+      ),
+    db.kysely.deleteFrom("lists").where(sql<boolean>`provider IS NULL AND id IN (${ownLists})`),
+    db.kysely.deleteFrom("user_lists").where("user_id", "=", userId),
     ...USER_TABLES.map((t) => db.kysely.deleteFrom(t).where("user_id", "=", userId)),
     db.kysely.deleteFrom("users").where("id", "=", userId),
   ]);

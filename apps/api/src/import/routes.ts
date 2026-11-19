@@ -7,7 +7,7 @@ import {
   RunNotFoundError,
   startImportRun,
 } from "@magomap/db/stores/importRuns";
-import { importItemsChunkSchema, importListMetaSchema } from "@magomap/domain";
+import { importItemsChunkSchema, importListMetaSchema, providerNameSchema } from "@magomap/domain";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { requireUser } from "../auth/session";
@@ -70,19 +70,24 @@ importRoutes.get("/import/kakao/source", async (c) => {
 
 importRoutes.post("/import/runs", async (c) => {
   const body = z
-    .object({ complete: z.boolean(), importedAt: z.string().min(1).max(40) })
+    .object({
+      provider: providerNameSchema,
+      complete: z.boolean(),
+      subscriptionKnown: z.boolean(),
+      importedAt: z.string().min(1).max(40),
+    })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid" }, 400);
   return c.json(await startImportRun(c.var.db, c.var.userId, body.data, Date.now()));
 });
 
-const folderParam = (c: Context<AppEnv>) => {
-  const n = Number(c.req.param("kakaoFolderId"));
-  return Number.isSafeInteger(n) && n >= 0 ? n : null;
+const listParam = (c: Context<AppEnv>) => {
+  const value = c.req.param("externalId") ?? "";
+  return value.length > 0 && value.length <= 200 ? value : null;
 };
 
-importRoutes.put("/import/runs/:runId/lists/:kakaoFolderId/chunks/:index", async (c) => {
-  const folder = folderParam(c);
+importRoutes.put("/import/runs/:runId/lists/:externalId/chunks/:index", async (c) => {
+  const externalId = listParam(c);
   // A chunk is at most 500 places; real ones are far below 2 MB. Keeps a request within the CPU budget.
   if (Number(c.req.header("content-length") ?? 0) > CHUNK_BYTES) {
     return c.json({ error: "too_large" }, 413);
@@ -98,7 +103,12 @@ importRoutes.put("/import/runs/:runId/lists/:kakaoFolderId/chunks/:index", async
   }
   const meta = importListMetaSchema.safeParse(raw?.meta);
   const items = importItemsChunkSchema.safeParse(raw?.items);
-  if (folder === null || !meta.success || !items.success || meta.data.kakaoFolderId !== folder) {
+  if (
+    externalId === null ||
+    !meta.success ||
+    !items.success ||
+    meta.data.externalId !== externalId
+  ) {
     return c.json({ error: "invalid" }, 400);
   }
   return onRun(c, () =>
@@ -113,17 +123,17 @@ importRoutes.put("/import/runs/:runId/lists/:kakaoFolderId/chunks/:index", async
   );
 });
 
-importRoutes.post("/import/runs/:runId/lists/:kakaoFolderId/finish", async (c) => {
-  const folder = folderParam(c);
-  if (folder === null) return c.json({ error: "invalid" }, 400);
+importRoutes.post("/import/runs/:runId/lists/:externalId/finish", async (c) => {
+  const externalId = listParam(c);
+  if (externalId === null) return c.json({ error: "invalid" }, 400);
   return onRun(c, () =>
-    finishImportList(c.var.db, c.var.userId, c.req.param("runId"), folder, Date.now()),
+    finishImportList(c.var.db, c.var.userId, c.req.param("runId"), externalId, Date.now()),
   );
 });
 
 importRoutes.post("/import/runs/:runId/complete", async (c) => {
   const body = z
-    .object({ kakaoFolderIds: z.array(z.number().int().nonnegative()).max(500) })
+    .object({ externalIds: z.array(z.string().min(1).max(200)).max(500) })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid" }, 400);
   return onRun(c, () =>
@@ -131,7 +141,7 @@ importRoutes.post("/import/runs/:runId/complete", async (c) => {
       c.var.db,
       c.var.userId,
       c.req.param("runId"),
-      body.data.kakaoFolderIds,
+      body.data.externalIds,
       Date.now(),
     ),
   );

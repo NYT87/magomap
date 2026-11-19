@@ -1,7 +1,7 @@
-import type { MagomapImportContract } from "@magomap/domain";
+import type { KakaoListContract } from "@magomap/domain/providers/kakao";
 
 /** A small Kakao import as kakao-list would serve it (contract v1). */
-export function baseContract(kakaoUserId = "111"): MagomapImportContract {
+export function baseContract(kakaoUserId = "111"): KakaoListContract {
   return {
     contractVersion: 1,
     kakaoUserId,

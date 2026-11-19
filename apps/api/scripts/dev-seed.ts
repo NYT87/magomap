@@ -1,6 +1,6 @@
 // Signs in with dev login on a local `wrangler dev` and runs a full Kakao import from the fake kakao-list.
 //   pnpm --filter @magomap/api dev:seed     (API_URL defaults to http://localhost:8787, KAKAO_USER to 111)
-import { importContractSchema } from "@magomap/domain";
+import { kakaoContractToImport } from "@magomap/domain/providers/kakao";
 
 const api = process.env.API_URL ?? "http://localhost:8787";
 const kakaoUserId = process.env.KAKAO_USER ?? "111";
@@ -23,22 +23,24 @@ const call = async (path: string, method = "GET", body?: unknown) => {
   return res.json();
 };
 
-const contract = importContractSchema.parse(await call("/api/import/kakao/source"));
+const contract = kakaoContractToImport(await call("/api/import/kakao/source"));
 const { runId } = (await call("/api/import/runs", "POST", {
+  provider: contract.provider,
   complete: contract.complete,
+  subscriptionKnown: contract.subscriptionKnown,
   importedAt: contract.importedAt,
 })) as { runId: string };
 for (const list of contract.lists) {
   const { items, ...meta } = list;
   for (let i = 0; i * 500 < Math.max(items.length, 1); i++) {
-    await call(`/api/import/runs/${runId}/lists/${meta.kakaoFolderId}/chunks/${i}`, "PUT", {
+    await call(`/api/import/runs/${runId}/lists/${meta.externalId}/chunks/${i}`, "PUT", {
       meta,
       items: items.slice(i * 500, (i + 1) * 500),
     });
   }
-  await call(`/api/import/runs/${runId}/lists/${meta.kakaoFolderId}/finish`, "POST", {});
+  await call(`/api/import/runs/${runId}/lists/${meta.externalId}/finish`, "POST", {});
 }
 const summary = await call(`/api/import/runs/${runId}/complete`, "POST", {
-  kakaoFolderIds: contract.lists.map((l) => l.kakaoFolderId),
+  externalIds: contract.lists.map((l) => l.externalId),
 });
 console.log("imported", summary);
