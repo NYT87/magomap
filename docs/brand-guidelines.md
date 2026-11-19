@@ -245,6 +245,13 @@ The minimum clear space equals the height of the pin's head.
 
 ---
 
+### Banners
+
+The banners are in `assets/banners/launch/`. Regenerate them with `banner.html?style=ink|type|product&w=…&h=…`.
+- **Type-led (`type`)** is used where the banner is seen small: the share card (`type-1200x630.png`) and GitHub's social preview (`type-1280x640.png`).
+- **Ink-line landscape (`ink`)** is used where it's seen large: the homepage hero (`ink-1920x720.png`) and the README header (`ink-1280x400.png`).
+- **Product shot (`product`)** is kept for later use, for example a store listing or a release post.
+
 ## 6. Design Components
 
 ### Buttons
