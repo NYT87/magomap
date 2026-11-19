@@ -1,0 +1,51 @@
+{
+  "app": {
+    "name": "magomap",
+    "loading": "Opening your map…"
+  },
+  "nav": {
+    "map": "Map",
+    "lists": "Lists",
+    "import": "Import",
+    "account": "Account",
+    "back": "Back",
+    "menu": "Menu"
+  },
+  "signin": {
+    "title": "Your own map, shaped by you",
+    "lead": "Keep the places you love, and what you remember about each visit.",
+    "kakao": "Sign in with Kakao",
+    "devTitle": "Developer sign-in",
+    "devUser": "Kakao user id",
+    "devName": "Nickname",
+    "devSubmit": "Sign in",
+    "devFailed": "Couldn't sign in. Check the user id and try again."
+  },
+  "notInvited": {
+    "title": "This map is invite-only for now",
+    "body": "Your Kakao account isn't on the guest list yet. Ask the person who runs this magomap to add you.",
+    "back": "Back to sign-in"
+  },
+  "account": {
+    "title": "Account",
+    "signedInAs": "Signed in as {{name}}",
+    "noName": "Signed in",
+    "kakao": "Kakao login connected",
+    "linkGoogle": "Link Google (coming later)",
+    "language": "Language",
+    "signOut": "Sign out",
+    "signOutEverywhere": "Sign out on every device",
+    "unsyncedTitle": "Some changes haven't synced yet",
+    "unsyncedBody_one": "{{count}} change is saved only on this device. It'll be sent the next time you sign in here.",
+    "unsyncedBody_other": "{{count}} changes are saved only on this device. They'll be sent the next time you sign in here.",
+    "signOutAnyway": "Sign out anyway",
+    "cancel": "Cancel",
+    "deleteAccount": "Delete account",
+    "deleteTitle": "Delete your account?",
+    "deleteBody": "Your notes, links, own lists and saved places are removed from the server and from this device. This can't be undone.",
+    "deleteWord": "delete",
+    "deletePrompt": "Type “{{word}}” to confirm",
+    "deleteConfirm": "Delete my account",
+    "failed": "Couldn't reach the server. Try again when you're online."
+  }
+}

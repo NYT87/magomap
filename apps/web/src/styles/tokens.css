@@ -1,0 +1,92 @@
+/* === PRIMITIVES === */
+:root {
+  --primitive-color-primary-50: #e9f1ef;
+  --primitive-color-primary-100: #d2e2de;
+  --primitive-color-primary-200: #a5c5be;
+  --primitive-color-primary-300: #79a99d;
+  --primitive-color-primary-400: #4c8c7d;
+  --primitive-color-primary-500: #1f6f5c;
+  --primitive-color-primary-600: #1a5e4e;
+  --primitive-color-primary-700: #164e40;
+  --primitive-color-primary-800: #113d33;
+  --primitive-color-primary-900: #0c2c25;
+  --primitive-color-secondary-50: #f8eeea;
+  --primitive-color-secondary-100: #f0ddd4;
+  --primitive-color-secondary-200: #e1bbaa;
+  --primitive-color-secondary-300: #d2997f;
+  --primitive-color-secondary-400: #c37755;
+  --primitive-color-secondary-500: #b4552a;
+  --primitive-color-secondary-600: #994824;
+  --primitive-color-secondary-700: #7e3b1d;
+  --primitive-color-secondary-800: #632f17;
+  --primitive-color-secondary-900: #482211;
+}
+
+/* Brand tokens from docs/brand-guidelines.md (the source of truth). */
+:root {
+  color-scheme: light dark;
+  --color-pine: #1f6f5c;
+  --color-pine-deep: #185848;
+  --color-clay: #b4552a;
+  --color-river: #2f6fa3;
+  --color-bg: #fbf8f2;
+  --color-surface: #f3eee4;
+  --color-text: #1e2321;
+  --color-text-secondary: #5e6660;
+  --color-border: #e3dccf;
+  --color-on-primary: #ffffff;
+  --color-success: #2e7d4f;
+  --color-warning: #a86a12;
+  --color-error: #b3261e;
+  --color-info: #2f6fa3;
+
+  /* Own-list colour presets ("Map Markers") */
+  --list-pine: #1f6f5c;
+  --list-clay: #b4552a;
+  --list-river: #2f6fa3;
+  --list-persimmon: #d9662b;
+  --list-plum: #7a4e7e;
+  --list-moss: #6b7a2f;
+  --list-slate: #4a5a68;
+  --list-rose: #b84a62;
+
+  --font-body:
+    "Pretendard Variable", "Pretendard", system-ui, -apple-system, "Apple SD Gothic Neo",
+    "Noto Sans KR", sans-serif;
+  --font-display: "Gowun Batang", "Nanum Myeongjo", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  --radius-button: 12px;
+  --radius-card: 16px;
+  --radius-input: 12px;
+  --radius-modal: 20px;
+  --radius-pill: 9999px;
+
+  --shadow: 0 1px 2px rgba(30, 35, 33, 0.06), 0 4px 16px rgba(30, 35, 33, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-pine: #6fc2a8;
+    --color-pine-deep: #8fd3bd;
+    --color-clay: #e38b5e;
+    --color-river: #7db3e0;
+    --color-bg: #141816;
+    --color-surface: #1d2220;
+    --color-text: #e8e4dc;
+    --color-text-secondary: #a7afa9;
+    --color-border: #2e3532;
+    --color-on-primary: #141816;
+    --color-info: #7db3e0;
+    /* Not in the guidelines: #b3261e is too dark on Night Background (2.6:1); this is 9.6:1. */
+    --color-error: #f2b8b5;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  }
+}

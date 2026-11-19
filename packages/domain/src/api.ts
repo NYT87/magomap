@@ -39,4 +39,11 @@ export type ApiErrorCode =
   | "kakao_list_unavailable"
   | "search_unavailable"
   | "rate_limited"
-  | "run_closed";
+  | "run_closed"
+  | "snapshot_changed"
+  | "list_conflict"
+  | "incomplete"
+  | "account_gone"
+  | "busy"
+  | "not_found"
+  | "invalid";
