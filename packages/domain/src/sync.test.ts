@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  customPinRowId,
   importedNoteRowId,
-  kakaoListRowId,
-  kakaoMembershipRowId,
-  kakaoPlaceRowId,
   newId,
-  ownMembershipRowId,
+  ownItemRowId,
+  pinRowId,
+  placeRowId,
+  providerItemRowId,
+  providerListRowId,
+  userListRowId,
+  userPlaceRowId,
 } from "./ids";
 import { mutationRowSchemas, pushEnvelopeSchema } from "./sync";
 
@@ -46,7 +48,13 @@ describe("push envelope", () => {
 
 describe("row schemas", () => {
   it("rejects a javascript: link", () => {
-    const row = { ...baseRow, id: "l1", placeId: "kp_1", url: "javascript:alert(1)", title: null };
+    const row = {
+      ...baseRow,
+      id: "l1",
+      placeId: "p_kakao_1",
+      url: "javascript:alert(1)",
+      title: null,
+    };
     expect(mutationRowSchemas.links.safeParse(row).success).toBe(false);
   });
 
@@ -54,7 +62,7 @@ describe("row schemas", () => {
     const row = {
       ...baseRow,
       id: "l1",
-      placeId: "kp_1",
+      placeId: "p_kakao_1",
       url: "https://example.com/a",
       title: null,
     };
@@ -65,7 +73,7 @@ describe("row schemas", () => {
     const row = {
       ...baseRow,
       id: "n1",
-      placeId: "kp_1",
+      placeId: "p_kakao_1",
       visitedOn: "2026-13-01",
       body: "hi",
       origin: "user",
@@ -79,7 +87,7 @@ describe("row schemas", () => {
     const row = {
       ...baseRow,
       id: "n1",
-      placeId: "kp_1",
+      placeId: "p_kakao_1",
       visitedOn: "2026-11-19",
       body: "창가 자리에서 바다가 보였어요.",
       origin: "user",
@@ -93,7 +101,7 @@ describe("row schemas", () => {
     const row = {
       ...baseRow,
       id: "n1",
-      placeId: "kp_1",
+      placeId: "p_kakao_1",
       visitedOn: null,
       body: "가".repeat(20_001),
       origin: "user",
@@ -105,13 +113,15 @@ describe("row schemas", () => {
 });
 
 describe("ids", () => {
-  it("builds the deterministic ids", () => {
-    expect(kakaoPlaceRowId("123")).toBe("kp_123");
-    expect(customPinRowId("987")).toBe("kf_987");
-    expect(kakaoListRowId(55)).toBe("kl_55");
-    expect(kakaoMembershipRowId(55, "987")).toBe("ki_55_987");
-    expect(ownMembershipRowId("list-a", "kp_123")).toBe("li_list-a_kp_123");
-    expect(importedNoteRowId("kp_123", 55)).toBe("kn_kp_123_55");
+  it("builds the deterministic, provider-neutral ids", () => {
+    expect(placeRowId("kakao", "27324155")).toBe("p_kakao_27324155");
+    expect(pinRowId("kakao", "101", "9001")).toBe("pin_kakao_101_9001");
+    expect(providerListRowId("kakao", "101")).toBe("l_kakao_101");
+    expect(providerItemRowId("kakao", "101", "9001")).toBe("i_kakao_101_9001");
+    expect(ownItemRowId("list-a", "p_kakao_1")).toBe("li_list-a_p_kakao_1");
+    expect(userListRowId("l_kakao_101")).toBe("ul_l_kakao_101");
+    expect(userPlaceRowId("p_kakao_1")).toBe("up_p_kakao_1");
+    expect(importedNoteRowId("p_kakao_1", "l_kakao_101")).toBe("kn_p_kakao_1_l_kakao_101");
   });
 
   it("makes UUIDv7 ids", () => {
@@ -121,10 +131,24 @@ describe("ids", () => {
   });
 });
 
+describe("push envelope tables", () => {
+  const one = (table: string, op = "upsert") => ({
+    mutations: [{ mutationId: "m", table, op, id: "x", row: {}, clientUpdatedAt: 1 }],
+  });
+  it("lets a delete on places through the envelope (the server refuses it)", () => {
+    expect(pushEnvelopeSchema.safeParse(one("places", "delete")).success).toBe(true);
+  });
+  it("refuses server-owned tables", () => {
+    for (const t of ["user_lists", "user_places", "place_sources", "place_locations"]) {
+      expect(pushEnvelopeSchema.safeParse(one(t)).success, t).toBe(false);
+    }
+  });
+});
+
 describe("text and numbers Postgres can store", () => {
   const note = (body: string) => ({
     id: "n1",
-    placeId: "kp_1",
+    placeId: "p_kakao_1",
     visitedOn: null,
     body,
     origin: "user",
@@ -149,9 +173,9 @@ describe("text and numbers Postgres can store", () => {
 
   it("rejects a list position beyond a 32-bit integer", () => {
     const item = {
-      id: "li_a_kp_1",
+      id: "li_a_p_kakao_1",
       listId: "a",
-      placeId: "kp_1",
+      placeId: "p_kakao_1",
       position: 1_763_000_000_000,
       addedAt: now,
       kakaoFavoriteSeq: null,

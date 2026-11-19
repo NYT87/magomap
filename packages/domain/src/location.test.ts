@@ -43,9 +43,9 @@ describe("isLocationMove", () => {
 
   it("ignores a new address from a different source", () => {
     const current = { ...seoul, lat: null, lng: null };
-    expect(
-      isLocationMove(current, { address: "부산 해운대구", addressSource: "kakao_import" }),
-    ).toBe(false);
+    expect(isLocationMove(current, { address: "부산 해운대구", addressSource: "import" })).toBe(
+      false,
+    );
   });
 
   it("treats filling in coordinates for the first time as no move", () => {

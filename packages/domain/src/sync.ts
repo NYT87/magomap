@@ -54,33 +54,40 @@ const base = {
 const latitude = z.number().min(-90).max(90);
 const longitude = z.number().min(-180).max(180);
 
+const providerName = storableText(40).pipe(z.string().regex(/^[a-z0-9]+$/));
+
+/** Places a client may push: created from a provider search result (`source`), or a location refresh. */
 export const mutationRowSchemas = {
   places: z.object({
     ...base,
-    kakaoPlaceId: storableText(200).pipe(z.string().min(1)).nullable(),
     title: storableText(LIMITS.importTitle).pipe(z.string().min(1)),
     address: nullableText(LIMITS.importText),
     roadAddress: nullableText(LIMITS.importText),
-    addressSource: z.enum(["kakao_import", "search"]).nullable(),
+    addressSource: z.enum(["import", "search"]).nullable(),
     category: nullableText(LIMITS.importTitle),
     phone: nullableText(100),
     lat: latitude.nullable(),
     lng: longitude.nullable(),
-    source: z.enum(["kakao_import", "search"]),
+    providerSnapshotAt: ms.nullable().optional(),
+    /** The search result's provider and id; required to create the place. */
+    source: z.object({
+      provider: providerName,
+      externalId: storableText(200).pipe(z.string().min(1)),
+    }),
   }),
   lists: z.object({
     ...base,
-    kind: z.enum(["kakao", "own"]),
-    kakaoFolderId: z.number().int().nullable(),
-    subscribed: z.boolean(),
-    ownerName: nullableText(LIMITS.importTitle),
+    provider: z.null(),
+    externalId: z.null(),
     name: storableText(LIMITS.listName).pipe(z.string().trim().min(1)),
     description: nullableText(LIMITS.importText),
     color: z
       .string()
       .regex(/^#[0-9A-Fa-f]{6}$/)
       .nullable(),
-    removedFromKakaoAt: ms.nullable(),
+    ownerName: z.null().optional(),
+    removedAtProvider: z.null().optional(),
+    providerSnapshotAt: z.null().optional(),
   }),
   list_items: z.object({
     ...base,
@@ -88,17 +95,18 @@ export const mutationRowSchemas = {
     placeId: id,
     position,
     addedAt: ms,
-    kakaoFavoriteSeq: nullableText(200),
-    kakaoNote: nullableText(LIMITS.importText),
-    kakaoColor: nullableText(40),
-    removedFromKakaoAt: ms.nullable(),
+    externalId: z.null().optional(),
+    providerNote: z.null().optional(),
+    providerColor: z.null().optional(),
+    removedAtProvider: z.null().optional(),
+    providerSnapshotAt: z.null().optional(),
   }),
   visit_notes: z.object({
     ...base,
     placeId: id,
     visitedOn: isoDate.nullable(),
     body: storableText(LIMITS.noteBody),
-    origin: z.enum(["user", "kakao_list"]),
+    origin: z.enum(["user", "import"]),
     originKey: nullableText(200),
     editedByUser: z.boolean(),
   }),
@@ -122,7 +130,7 @@ export interface Mutation {
 export type MutationStatus = "applied" | "ignored_stale" | "rejected";
 export type RejectReason =
   | "invalid"
-  | "kakao_owned"
+  | "provider_owned"
   | "server_owned"
   | "missing_parent"
   | "not_allowed"

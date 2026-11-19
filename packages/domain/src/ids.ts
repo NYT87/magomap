@@ -5,30 +5,46 @@ export function newId(): string {
   return v7();
 }
 
-/** Place id for a Kakao place: the same row from search, import or any device. */
-export function kakaoPlaceRowId(placeKey: string): string {
-  return `kp_${placeKey}`;
+/** A place, identified by its first external source: the same row from search, import or any user. */
+export function placeRowId(provider: string, externalId: string): string {
+  return `p_${provider}_${externalId}`;
 }
 
-/** Place id for a Kakao favourite that has no place key (a custom pin). */
-export function customPinRowId(favoriteSeq: string): string {
-  return `kf_${favoriteSeq}`;
+/** A provider favourite with no place id (a custom pin): one per list item, never merged. */
+export function pinRowId(provider: string, listExternalId: string, itemExternalId: string): string {
+  return `pin_${provider}_${listExternalId}_${itemExternalId}`;
 }
 
-export function kakaoListRowId(folderId: number): string {
-  return `kl_${folderId}`;
+/** A provider list, shared by everyone who imported it. */
+export function providerListRowId(provider: string, externalId: string): string {
+  return `l_${provider}_${externalId}`;
 }
 
-export function kakaoMembershipRowId(folderId: number, favoriteSeq: string): string {
-  return `ki_${folderId}_${favoriteSeq}`;
+/** A place in a provider list, shared like its list. */
+export function providerItemRowId(
+  provider: string,
+  listExternalId: string,
+  itemExternalId: string,
+): string {
+  return `i_${provider}_${listExternalId}_${itemExternalId}`;
 }
 
-/** Own-list membership: deterministic, so two devices adding the same place collapse into one row. */
-export function ownMembershipRowId(listId: string, placeId: string): string {
+/** A place in an own list: deterministic, so two devices adding the same place collapse into one row. */
+export function ownItemRowId(listId: string, placeId: string): string {
   return `li_${listId}_${placeId}`;
 }
 
-/** The diary entry created from a kakao-list local note for a place in one Kakao list. */
-export function importedNoteRowId(placeId: string, folderId: number): string {
-  return `kn_${placeId}_${folderId}`;
+/** A user's access to a list. */
+export function userListRowId(listId: string): string {
+  return `ul_${listId}`;
+}
+
+/** A user's place ("my places"). */
+export function userPlaceRowId(placeId: string): string {
+  return `up_${placeId}`;
+}
+
+/** The diary entry created from an imported local note, per user, place and list. */
+export function importedNoteRowId(placeId: string, listId: string): string {
+  return `kn_${placeId}_${listId}`;
 }

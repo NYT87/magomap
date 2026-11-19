@@ -1,0 +1,88 @@
+// The Kakao provider adapter: maps kakao-list's import contract (v1) into the neutral ImportContract.
+// This is the only place in the domain package that knows Kakao's field names.
+import { z } from "zod";
+import { type ImportContract, importContractSchema } from "../importContract";
+import { LIMITS } from "../limits";
+import { position, storableText } from "../sync";
+
+export const KAKAO = "kakao";
+
+const text = (max: number) => storableText(max);
+const required = (max: number) => text(max).pipe(z.string().min(1));
+
+const kakaoItem = z.object({
+  favoriteSeq: required(200),
+  favoriteType: text(40).optional(),
+  placeKey: required(200).optional(),
+  title: required(LIMITS.importTitle),
+  address: text(LIMITS.importText).optional(),
+  category: text(LIMITS.importTitle).optional(),
+  phone: text(100).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  kakaoNote: text(LIMITS.importText).optional(),
+  kakaoColor: text(40).optional(),
+  localNote: text(LIMITS.importText).optional(),
+  position,
+});
+
+/** kakao-list's GET /api/integrations/magomap/snapshot body (contract v1). */
+export const kakaoListContractSchema = z.object({
+  contractVersion: z.literal(1),
+  kakaoUserId: required(200),
+  importedAt: required(40),
+  complete: z.boolean(),
+  subscriptionKnown: z.boolean().optional(),
+  lists: z
+    .array(
+      z.object({
+        kakaoFolderId: z.number().int().nonnegative(),
+        name: required(LIMITS.importTitle),
+        description: text(LIMITS.importText).optional(),
+        icon: text(200).optional(),
+        subscribed: z.boolean(),
+        ownerName: text(LIMITS.importTitle).optional(),
+        items: z.array(kakaoItem).max(LIMITS.importListItems),
+      }),
+    )
+    .max(LIMITS.importLists),
+});
+
+const defined = <T extends object>(value: T): T =>
+  Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
+
+/** Validates kakao-list's contract and maps it to the neutral import. Throws on an invalid contract. */
+export function kakaoContractToImport(raw: unknown): ImportContract {
+  const c = kakaoListContractSchema.parse(raw);
+  return importContractSchema.parse({
+    provider: KAKAO,
+    importedAt: c.importedAt,
+    complete: c.complete,
+    subscriptionKnown: c.subscriptionKnown ?? false,
+    lists: c.lists.map((l) =>
+      defined({
+        externalId: String(l.kakaoFolderId),
+        name: l.name,
+        description: l.description,
+        followed: l.subscribed,
+        ownerName: l.ownerName,
+        items: l.items.map((i) =>
+          defined({
+            externalId: i.favoriteSeq,
+            placeExternalId: i.placeKey,
+            title: i.title,
+            address: i.address,
+            category: i.category,
+            phone: i.phone,
+            lat: i.lat,
+            lng: i.lng,
+            providerNote: i.kakaoNote,
+            providerColor: i.kakaoColor,
+            localNote: i.localNote,
+            position: i.position,
+          }),
+        ),
+      }),
+    ),
+  }) as ImportContract;
+}

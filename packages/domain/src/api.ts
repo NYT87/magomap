@@ -12,7 +12,8 @@ export interface PublicConfig {
 }
 
 export interface SearchResult {
-  kakaoPlaceId: string;
+  provider: string;
+  externalId: string;
   title: string;
   address: string | null;
   roadAddress: string | null;

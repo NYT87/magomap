@@ -1,4 +1,4 @@
-export type AddressSource = "kakao_import" | "search";
+export type AddressSource = "import" | "search";
 
 export type LocationFields = {
   lat: number | null;

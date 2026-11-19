@@ -2,37 +2,37 @@ import { z } from "zod";
 import { LIMITS } from "./limits";
 import { position, storableText } from "./sync";
 
+/** A provider-neutral import, produced by a provider adapter (e.g. providers/kakao). */
 export interface ImportItem {
-  favoriteSeq: string;
-  favoriteType?: string;
-  placeKey?: string;
+  externalId: string;
+  placeExternalId?: string;
   title: string;
   address?: string;
   category?: string;
   phone?: string;
   lat?: number;
   lng?: number;
-  kakaoNote?: string;
-  kakaoColor?: string;
+  providerNote?: string;
+  providerColor?: string;
   localNote?: string;
   position: number;
 }
 
 export interface ImportList {
-  kakaoFolderId: number;
+  externalId: string;
   name: string;
   description?: string;
-  icon?: string;
-  subscribed: boolean;
+  followed: boolean;
   ownerName?: string;
   items: ImportItem[];
 }
 
-export interface MagomapImportContract {
-  contractVersion: 1;
-  kakaoUserId: string;
+export interface ImportContract {
+  provider: string;
   importedAt: string;
   complete: boolean;
+  /** Whether `followed` is reliable; without it nobody is treated as a list's owner. */
+  subscriptionKnown: boolean;
   lists: ImportList[];
 }
 
@@ -48,39 +48,40 @@ export interface ImportSummary {
 }
 
 const text = (max: number) => storableText(max);
+const required = (max: number) => text(max).pipe(z.string().min(1));
 
 export const importItemSchema = z.object({
-  favoriteSeq: text(200).pipe(z.string().min(1)),
-  favoriteType: text(40).optional(),
-  placeKey: text(200).pipe(z.string().min(1)).optional(),
-  title: text(LIMITS.importTitle).pipe(z.string().min(1)),
+  externalId: required(200),
+  placeExternalId: required(200).optional(),
+  title: required(LIMITS.importTitle),
   address: text(LIMITS.importText).optional(),
   category: text(LIMITS.importTitle).optional(),
   phone: text(100).optional(),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
-  kakaoNote: text(LIMITS.importText).optional(),
-  kakaoColor: text(40).optional(),
+  providerNote: text(LIMITS.importText).optional(),
+  providerColor: text(40).optional(),
   localNote: text(LIMITS.importText).optional(),
   position,
 });
 
 export const importListMetaSchema = z.object({
-  kakaoFolderId: z.number().int().nonnegative(),
-  name: text(LIMITS.importTitle).pipe(z.string().min(1)),
+  externalId: required(200),
+  name: required(LIMITS.importTitle),
   description: text(LIMITS.importText).optional(),
-  icon: text(200).optional(),
-  subscribed: z.boolean(),
+  followed: z.boolean(),
   ownerName: text(LIMITS.importTitle).optional(),
 });
 
 export const importItemsChunkSchema = z.array(importItemSchema).max(LIMITS.importChunkItems);
 
+export const providerNameSchema = text(40).pipe(z.string().regex(/^[a-z0-9]+$/));
+
 export const importContractSchema = z.object({
-  contractVersion: z.literal(1),
-  kakaoUserId: text(200).pipe(z.string().min(1)),
-  importedAt: z.string().min(1).max(40),
+  provider: providerNameSchema,
+  importedAt: required(40),
   complete: z.boolean(),
+  subscriptionKnown: z.boolean(),
   lists: z
     .array(
       importListMetaSchema.extend({ items: z.array(importItemSchema).max(LIMITS.importListItems) }),
