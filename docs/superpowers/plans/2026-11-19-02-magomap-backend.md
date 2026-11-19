@@ -11,7 +11,7 @@
 
 **Tech Stack:** TypeScript (strict), Hono, Kysely, `kysely-d1`, `pg` (Kysely `PostgresDialect`, through Hyperdrive with `nodejs_compat`), `better-sqlite3` (tests and local dev only), zod, `uuid` (v7), Vitest, `@cloudflare/vitest-pool-workers`, Wrangler, Biome.
 
-**Spec:** `/home/motoko/workspace/magomap/docs/superpowers/specs/2026-11-19-magomap-design.md`
+**Spec:** `/home/motoko/workspace/magomap/docs/superpowers/specs/2026-11-19-magomap-design.md`. This includes the "location history" addendum.
 
 **Depends on:** nothing to start. The import task builds against a fake `kakao-list` server, and works for real once plan 01 is deployed.
 
@@ -29,6 +29,7 @@
   - Kakao memberships are `ki_<kakaoFolderId>_<favoriteSeq>`, Kakao lists are `kl_<kakaoFolderId>`, and diary entries imported from kakao-list are `kn_<placeId>_<kakaoFolderId>`.
   - Everything else is a client-generated UUIDv7.
   - Primary keys are `(user_id, id)`.
+- **Location moves:** a move is a distance of more than 30 m (haversine), or a change in the `address` or `road_address` text. Only the server writes `place_locations`.
 - Timestamps are integer epoch ms. Booleans are 0/1 integers. Dates (`visited_on`) are `YYYY-MM-DD` text.
 - Limits:
   - diary body ≤ 20,000 chars;
@@ -71,7 +72,7 @@
 
 ```ts
 // rows.ts  (wire format, camelCase)
-type SyncTable = "places" | "lists" | "list_items" | "visit_notes" | "links";
+type SyncTable = "places" | "lists" | "list_items" | "visit_notes" | "links" | "place_locations"; // place_locations: pull-only
 interface Base { id: string; createdAt: number; updatedAt: number; deletedAt: number | null; seq?: number }
 interface PlaceRow extends Base { kakaoPlaceId: string | null; title: string; address: string | null; roadAddress: string | null;
   category: string | null; phone: string | null; lat: number | null; lng: number | null; source: "kakao_import" | "search" }
@@ -82,6 +83,13 @@ interface ListItemRow extends Base { listId: string; placeId: string; position: 
 interface VisitNoteRow extends Base { placeId: string; visitedOn: string | null; body: string;
   origin: "user" | "kakao_list"; originKey: string | null; editedByUser: boolean }
 interface LinkRow extends Base { placeId: string; url: string; title: string | null }
+interface PlaceLocationRow extends Base { placeId: string; address: string | null; roadAddress: string | null;
+  lat: number | null; lng: number | null; validFrom: number; validUntil: number; detectedBy: "kakao_import" | "search" }
+
+// location.ts
+function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;   // haversine
+function isLocationMove(current: LocationFields, incoming: LocationFields): boolean;                  // > 30 m or address/roadAddress text differs
+type LocationFields = { lat: number | null; lng: number | null; address: string | null; roadAddress: string | null };
 type RowOf<T extends SyncTable> = /* mapping above */;
 
 // sync.ts
@@ -120,6 +128,12 @@ function customPinRowId(favoriteSeq: string): string;    // "kf_<seq>"
   - It accepts a valid visit-note upsert.
   - `kakaoPlaceRowId("123") === "kp_123"`.
   - `newId()` returns 36 characters, and the version digit is `7`.
+  - `isLocationMove`:
+    - a 10 m shift with the same address is false;
+    - a 50 m shift is true;
+    - the same coordinates with a different `address` is true;
+    - a `null` incoming lat/lng with the same address is false.
+  - `pushRequestSchema` rejects any mutation on `place_locations`.
 
 - [ ] **Step 2: Run** `pnpm -r test`. Expected: FAIL.
 - [ ] **Step 3: Implement** the types and schemas, using the limits from Global Constraints.
@@ -143,6 +157,7 @@ function customPinRowId(favoriteSeq: string): string;    // "kf_<seq>"
 - `identities(user_id, provider, provider_user_id, created_at)`, unique on `(provider, provider_user_id)`.
 - `sessions(token_hash PK, user_id, expires_at, created_at)`.
 - `import_runs(user_id, id, started_at, finished_at, status, complete, summary_json, error)`.
+- `place_locations` follows the spec addendum, with the syncable columns and an index on `(user_id, place_id)`.
 - Postgres uses `BIGINT` for ms timestamps and `seq`.
 
 **Interfaces:**
@@ -247,7 +262,10 @@ async function migrate(db: Db): Promise<void>;             // runs migrations/*.
    - created, with `source: "search"`, an id equal to `kakaoPlaceRowId(kakaoPlaceId)`, and lat/lng present;
    - deleted.
 
-   An upsert on an existing place only clears `deleted_at` (restore). It never changes the Kakao fields.
+   An upsert on an existing place clears `deleted_at` (restore). Its title and category are never changed. When the place's `source` is `search` or `kakao_import` and the incoming location fields differ, they are applied with the **location rule**:
+   - when `isLocationMove` holds, add a `place_locations` row with the old fields, `valid_from` set to the previous move's `valid_until` or the place's `created_at`, `valid_until = now`, and `detected_by: "search"`, then update the place;
+   - otherwise update the coordinates silently.
+4b. **No client writes to `place_locations`.** Any such mutation is rejected with reason `server_owned`.
 5. **A visit note or link written for a deleted place restores the place.** The same batch also sets the place's `deleted_at` to null.
 6. **Ownership.**
    - A `list_items` row must reference the user's own list and an existing place of the same user.
@@ -264,6 +282,7 @@ async function migrate(db: Db): Promise<void>;             // runs migrations/*.
   - pull with a null cursor returns everything;
   - paging with `limitPerTable = 2` over 5 places plus 3 notes returns every row exactly once and ends with `hasMore: false`;
   - after a further push, pulling from the last cursor returns only the changed rows.
+  - a search-sourced upsert moving a saved place 100 m creates one `place_locations` row (`detected_by: "search"`), and a pull returns it.
 - [ ] **Step 2: Write the failing route tests.**
   - 401 without a session;
   - 400 for an invalid body;
@@ -304,7 +323,7 @@ The client drives the import so that no request does more than one list's work.
 **What `importList` does, in one `atomic` batch:**
 - **List.** Upsert the list `kl_<folderId>` (kind `kakao`, `subscribed`, `ownerName`, name, description). Clear `removed_from_kakao_at`.
 - **Places.** For each item, upsert the place with id `kp_<placeKey>`, or `kf_<favoriteSeq>` when there is no `placeKey`.
-  - Kakao fields are refreshed: title, address, category, phone, lat/lng (only when present).
+  - Kakao fields are refreshed: title, address, category, phone, lat/lng (only when present). Address and coordinate changes go through the **location rule** from Task 4, with `detected_by: "kakao_import"`. Only places that moved are read back before the batch, so the statement budget holds.
   - `deleted_at` is never cleared by import. A place the user deleted stays deleted even while it is still in a Kakao list. Its membership row is still updated, and the PWA hides memberships whose place is deleted.
 - **Memberships.** Upsert `ki_<folderId>_<favoriteSeq>` with `kakaoNote`, `kakaoColor` and position. Clear `removed_from_kakao_at` (counted as restored when it was set).
 - **Missing memberships.** Memberships of this list that are not in the upload get `removed_from_kakao_at = now`. This happens **even when the run is not complete**, because one list's upload is the whole list.
@@ -325,6 +344,10 @@ The client drives the import so that no request does more than one list's work.
   - **Search then import:** a place created from search with `kp_123`, then imported with `placeKey: "123"`, is the same row, and its diary entries remain.
   - **Large list:** one list with 3,000 items imports within ≤ 50 statements, each with ≤ 100 parameters. Use a statement-counting `Db` wrapper.
   - **Subscribed list:** it imports with `subscribed = 1` and `owner_name` set.
+  - **Moves:**
+    - an import where a place moved 200 m creates one `place_locations` row with the old coordinates and `detected_by: "kakao_import"`, and updates the place;
+    - an import with a 5 m change creates no row;
+    - two moves create two rows, and the second row's `valid_from` equals the first row's `valid_until`.
 - [ ] **Step 2: Write the failing route tests.**
   - `source` passes the fake kakao-list body through byte-for-byte (via `fetchMock`), and sends the bearer secret.
   - An upstream 404 gives 404 `no_snapshot`.

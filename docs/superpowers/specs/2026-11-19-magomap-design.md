@@ -303,6 +303,33 @@ It syncs to the PWA like the other tables (read-only on the client), so history 
 
 **Not included.** No manual editing of locations, and no undoing a move.
 
+## Addendum (2026-11-19): phone and desktop layouts
+
+- **Phone first, but desktop is a real layout**, not a stretched phone screen.
+- **Phone** (width < 768 px):
+  - a full-screen map;
+  - the search bar on top;
+  - the list picker as a bottom sheet;
+  - the place page, lists, import and account as full screens with a back button.
+- **Tablet and desktop** (≥ 768 px):
+  - the map fills the right side;
+  - a persistent left panel, 360–420 px wide, holds search, the list picker, the lists, and the open place (with diary and links).
+  - Opening a place keeps the map visible and centres it on the place.
+  - The import and account pages also open in the panel.
+  - Keyboard: `/` focuses search, and `Esc` closes the place.
+- **Both:** the same routes and URLs, so a link opened on a phone or a desktop shows the same thing, laid out for that screen.
+
+## Addendum (2026-11-19): project homepage on GitHub Pages
+
+- **A public front door**: what magomap is, screenshots, and an **"Open magomap"** button linking to the deployed app. This follows `kakao-list`'s homepage plan (`kakao-list/docs/project-homepage.md`).
+- **Address:** `https://<github-owner>.github.io/magomap/`. It assumes the repo is published on GitHub as `magomap`. The app URL is a build setting (`APP_URL`).
+- **Korean (default, at the root) and English** (under `/en/`), with a language switch on every page and no automatic redirect.
+- **Pages:**
+  - **Home:** a pitch, what you can do (map, visit diary, links, lists, Kakao import, offline), screenshots on phone and desktop, and "Open magomap". It also links to kakao-list for importing.
+  - **Get started:** sign in with Kakao, import through kakao-list, and add to the home screen on iOS and Android.
+  - **Privacy:** what is stored and how to delete it. There is no tracking.
+- **Built** as a static site (`apps/homepage`, Vite multi-page, no framework). It is deployed by a GitHub Actions Pages workflow. Actions are pinned to release SHAs at least 14 days old.
+
 ## Implementation notes (from planning)
 
 - **The import runs list by list, driven by the app.** It fetches the contract through the Worker, then starts a run, uploads each list, and completes the run. The reason is that D1 has no interactive transactions and Workers Free allows about 10 ms of CPU per request. The rules are unchanged: removals only after a complete run, nothing deleted, and diaries untouched.
