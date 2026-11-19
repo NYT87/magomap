@@ -80,5 +80,20 @@
     "count_other": "{{count}} places",
     "by": "by {{name}}",
     "none": "None yet"
+  },
+  "search": {
+    "label": "Search places",
+    "placeholder": "Search places or your notes",
+    "clear": "Clear search",
+    "offline": "You're offline, so this searches your saved places.",
+    "rateLimited": "That's a lot of searches. Wait a moment, then try again.",
+    "unavailable": "Search isn't available right now. Your saved places still work.",
+    "saved": "Saved",
+    "save": "Save",
+    "saving": "Saving…",
+    "noResults": "Nothing found for “{{q}}”.",
+    "results_one": "{{count}} result",
+    "results_other": "{{count}} results",
+    "saveFailed": "Couldn't save this place. Try searching again."
   }
 }

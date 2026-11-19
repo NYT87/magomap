@@ -1,5 +1,5 @@
 import { Layers, List as ListIcon, LocateFixed, Map as MapIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { Sheet } from "../components/Sheet";
@@ -9,6 +9,7 @@ import { useMapStage } from "../map/MapStage";
 import { MapView } from "../map/MapView";
 import { useMapData } from "../map/useMapData";
 import { VisiblePlacesList } from "../map/VisiblePlacesList";
+import { SearchBar } from "../search/SearchBar";
 
 /** Asks for the position only when tapped. */
 function useLocate() {
@@ -32,7 +33,7 @@ export function MissingLocationNote({ count }: { count: number }) {
 }
 
 /** The always-mounted map, with its phone controls at the root. */
-export function MapScreen({ search }: { search?: ReactNode }) {
+export function MapScreen() {
   const { t } = useTranslation();
   const layout = useLayout();
   const [location] = useLocation();
@@ -47,7 +48,9 @@ export function MapScreen({ search }: { search?: ReactNode }) {
       <MapView data={data} />
       {phoneRoot && (
         <>
-          <div className="mm-map-top">{search}</div>
+          <div className="mm-map-top">
+            <SearchBar />
+          </div>
           <div className="mm-map-tools">
             <button type="button" className="mm-fab" onClick={() => setSheet(true)}>
               <Layers aria-hidden size={22} strokeWidth={1.75} />
@@ -103,12 +106,12 @@ export function MapScreen({ search }: { search?: ReactNode }) {
 }
 
 /** The desktop panel at the root: which lists show, and the places on the map. */
-export function HomePanel({ search }: { search?: ReactNode }) {
+export function HomePanel() {
   const data = useMapData();
   if (!data) return null;
   return (
     <div className="mm-screen">
-      {search}
+      <SearchBar />
       <ListPicker sections={data.sections} />
       <MissingLocationNote count={data.withoutLocation} />
       <VisiblePlacesList places={data.shownPlaces} />

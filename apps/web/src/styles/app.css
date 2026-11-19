@@ -843,3 +843,123 @@ a {
   overflow-y: auto;
   padding: var(--space-sm) var(--space-md) calc(var(--space-lg) + env(safe-area-inset-bottom));
 }
+
+/* ---------- Search ---------- */
+
+.mm-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mm-search__box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 48px;
+  padding: 0 var(--space-xs) 0 var(--space-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+}
+
+.mm-map-top .mm-search__box {
+  box-shadow: var(--shadow);
+}
+
+.mm-search__box:focus-within {
+  border-color: var(--color-pine);
+}
+
+.mm-search__icon {
+  flex: none;
+  color: var(--color-text-secondary);
+}
+
+.mm-search__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--space-xs);
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+.mm-search__input:focus-visible {
+  outline: none;
+}
+
+.mm-search__input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.mm-search__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mm-map-top .mm-search__results {
+  max-height: 60dvh;
+  overflow-y: auto;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.mm-search__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-hit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mm-hit[data-selected] {
+  box-shadow: inset 3px 0 0 var(--color-pine);
+}
+
+.mm-hit__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 56px;
+  justify-content: center;
+  padding: var(--space-sm);
+  color: var(--color-text);
+  background: none;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-hit__title {
+  font-weight: 600;
+}
+
+.mm-badge {
+  flex: none;
+  padding: 2px 10px;
+  color: var(--color-pine);
+  background: color-mix(in srgb, var(--color-pine) 12%, transparent);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mm-button--small {
+  min-height: 44px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
