@@ -176,7 +176,7 @@ Each account is one person on a few devices, so a simple design is enough:
 **Removed places.** These stay in their Kakao list, at the end, marked "Removed from Kakao", with their diary intact. They are shown read-only as a membership. The user can remove the place themselves.
 
 **Changes needed in `kakao-list`.** They are made in that repo, as the **first phase of the implementation plan** (`magomap`'s import is built against a fake server serving the contract until they land). *(Designer's call.)*
-1. **Keep coordinates.** The extension importer stores Kakao's `x`/`y` on each item (raw values; they appear to be WCONGNAMUL), plus category if available. A shared helper converts them to latitude/longitude, as `kakao-list/docs/map-view.md` already plans. `magomap` stores lat/lng.
+1. **Keep coordinates.** The extension importer stores Kakao's raw `x`/`y` (WCONGNAMUL, which is EPSG:5181 × 2.5) and the favourite `type` on each item. The `kakao-list` server converts them to latitude/longitude when it builds the contract, so a conversion fix never needs a re-import. `magomap` stores lat/lng.
 2. **Integration endpoint.** `GET /api/integrations/magomap/snapshot?kakaoUserId=` returns that user's latest data in the import contract above, including the `complete` flag. It is authorised by a shared secret (constant-time compare), rate-limited, and logged. It is read-only.
 3. When `kakao-list`'s place storage refactor (TASK-24) lands, the endpoint can switch to the new records without changing the contract `magomap` relies on.
 4. `kakao-list`'s planned `apps/map` (TASK-26) and place links (TASK-25) are covered by `magomap` and should probably be dropped there. *(Owner to confirm in that repo.)*
@@ -279,7 +279,13 @@ Each account is one person on a few devices, so a simple design is enough:
 **When it's recorded**
 - **Kakao import.** The place's coordinates or address changed.
 - **Kakao search.** A result for an already-saved place has a new location. Saving or opening the result updates the place.
-- **A move** means more than **30 m** of distance, or a different address text. Smaller coordinate changes update the place silently and are not recorded, so Kakao's jitter doesn't fill the history.
+- **A move** means:
+  - when both the old and new locations have coordinates: more than **30 m** of distance. The address text is ignored, because search and import format addresses differently.
+  - only when coordinates are missing on one side: a different address, and only if both addresses came from the same source.
+- **Not a move:**
+  - a value that is missing in the new data never counts as a change and never overwrites;
+  - filling in coordinates for the first time is a silent update;
+  - smaller coordinate changes update the place silently, so Kakao's jitter doesn't fill the history.
 - **Server-side only.** History is written by the server, in the same atomic batch as the place update. The client never creates history rows. For a search-detected move, the client sends the new location with a place upsert, and the server applies the move rule.
 - **Never deleted** except with the place itself or the account.
 
