@@ -3,3 +3,8 @@ packages:
   - packages/*
 # Dependencies must have been published at least 14 days ago.
 minimumReleaseAge: 20160
+# Native or binary install scripts that are allowed to run.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  workerd: true
