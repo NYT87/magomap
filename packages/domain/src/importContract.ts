@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "./limits";
+import { position, storableText } from "./sync";
 
 export interface ImportItem {
   favoriteSeq: string;
@@ -46,13 +47,13 @@ export interface ImportSummary {
   notesImported: number;
 }
 
-const text = (max: number) => z.string().max(max);
+const text = (max: number) => storableText(max);
 
 export const importItemSchema = z.object({
-  favoriteSeq: z.string().min(1).max(200),
+  favoriteSeq: text(200).pipe(z.string().min(1)),
   favoriteType: text(40).optional(),
-  placeKey: z.string().min(1).max(200).optional(),
-  title: z.string().min(1).max(LIMITS.importTitle),
+  placeKey: text(200).pipe(z.string().min(1)).optional(),
+  title: text(LIMITS.importTitle).pipe(z.string().min(1)),
   address: text(LIMITS.importText).optional(),
   category: text(LIMITS.importTitle).optional(),
   phone: text(100).optional(),
@@ -61,12 +62,12 @@ export const importItemSchema = z.object({
   kakaoNote: text(LIMITS.importText).optional(),
   kakaoColor: text(40).optional(),
   localNote: text(LIMITS.importText).optional(),
-  position: z.number().int().nonnegative(),
+  position,
 });
 
 export const importListMetaSchema = z.object({
   kakaoFolderId: z.number().int().nonnegative(),
-  name: z.string().min(1).max(LIMITS.importTitle),
+  name: text(LIMITS.importTitle).pipe(z.string().min(1)),
   description: text(LIMITS.importText).optional(),
   icon: text(200).optional(),
   subscribed: z.boolean(),
@@ -77,7 +78,7 @@ export const importItemsChunkSchema = z.array(importItemSchema).max(LIMITS.impor
 
 export const importContractSchema = z.object({
   contractVersion: z.literal(1),
-  kakaoUserId: z.string().min(1).max(200),
+  kakaoUserId: text(200).pipe(z.string().min(1)),
   importedAt: z.string().min(1).max(40),
   complete: z.boolean(),
   lists: z

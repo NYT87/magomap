@@ -119,6 +119,18 @@ export async function startImportRun(
   return { runId };
 }
 
+/** Place columns an import may refresh. */
+const IMPORT_PLACE_COLUMNS = [
+  "title",
+  "category",
+  "phone",
+  "lat",
+  "lng",
+  "address",
+  "address_source",
+  "updated_at",
+];
+
 const placeIdOf = (item: ImportItem) =>
   item.placeKey ? kakaoPlaceRowId(item.placeKey) : customPinRowId(item.favoriteSeq);
 
@@ -310,7 +322,18 @@ export async function importListChunk(
   const seen = memberIds.map((id) => ({ user_id: userId, run_id: runId, list_item_id: id }));
   const next: RunState = { ...state, summary: add(state.summary, counts) };
   await db.atomic([
-    ...writeStatements(db, userId, writes, { newerOnly: new Set() }),
+    ...writeStatements(db, userId, writes, {
+      newerOnly: new Set(),
+      tableOptions: {
+        // A refresh never touches whether the user deleted the place, or its sync clock.
+        places: { update: IMPORT_PLACE_COLUMNS },
+        // Never overwrite an imported note the user edited or deleted, even concurrently.
+        visit_notes: {
+          update: ["body", "updated_at"],
+          where: sql<boolean>`visit_notes.edited_by_user = 0 AND visit_notes.deleted_at IS NULL`,
+        },
+      },
+    }),
     ...bulkUpsertQuery(db, "import_seen", seen, {
       conflict: ["user_id", "run_id", "list_item_id"],
       update: [],
@@ -328,17 +351,21 @@ export async function finishImportList(
   kakaoFolderId: number,
   now: number,
 ): Promise<ImportSummary> {
-  const { state } = await runningRun(db, userId, runId);
-  const missing = await db.kysely
-    .selectFrom("list_items")
-    .selectAll()
-    .where("user_id", "=", userId)
-    .where("list_id", "=", kakaoListRowId(kakaoFolderId))
-    .where("removed_from_kakao_at", "is", null)
-    .where(
-      sql<boolean>`id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`,
-    )
-    .execute();
+  const { run, state } = await runningRun(db, userId, runId);
+  // An incomplete kakao-list snapshot may hold partial lists, so it never marks removals.
+  const missing =
+    run.complete !== 1
+      ? []
+      : await db.kysely
+          .selectFrom("list_items")
+          .selectAll()
+          .where("user_id", "=", userId)
+          .where("list_id", "=", kakaoListRowId(kakaoFolderId))
+          .where("removed_from_kakao_at", "is", null)
+          .where(
+            sql<boolean>`id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`,
+          )
+          .execute();
   const writes = new Map<SyncTable, Map<string, Row>>([
     [
       "list_items",

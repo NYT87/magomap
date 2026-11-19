@@ -7,9 +7,23 @@ import {
   type SyncTable,
 } from "./rows";
 
-const id = z.string().min(1).max(300);
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+/** Text Postgres can store: no NUL characters and no lone surrogates (SQLite accepts both). */
+export function isStorableText(value: string): boolean {
+  return !value.includes("\u0000") && !LONE_SURROGATE.test(value);
+}
+
+/** A string with a max length that every supported database can store. */
+export const storableText = (max: number) =>
+  z.string().max(max).refine(isStorableText, "Text contains characters that can't be stored");
+
+/** Positions are 32-bit integers in the database. */
+export const position = z.number().int().nonnegative().max(2_147_483_647);
+
+const id = storableText(300).pipe(z.string().min(1));
 const ms = z.number().int().nonnegative();
-const nullableText = (max: number) => z.string().max(max).nullable();
+const nullableText = (max: number) => storableText(max).nullable();
 
 /** A real calendar date in YYYY-MM-DD form. */
 export const isoDate = z
@@ -21,17 +35,14 @@ export const isoDate = z
     return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
   }, "Not a real date");
 
-export const httpUrl = z
-  .string()
-  .max(LIMITS.linkUrl)
-  .refine((value) => {
-    try {
-      const url = new URL(value);
-      return url.protocol === "http:" || url.protocol === "https:";
-    } catch {
-      return false;
-    }
-  }, "Links must be http or https");
+export const httpUrl = storableText(LIMITS.linkUrl).refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "Links must be http or https");
 
 const base = {
   id,
@@ -46,8 +57,8 @@ const longitude = z.number().min(-180).max(180);
 export const mutationRowSchemas = {
   places: z.object({
     ...base,
-    kakaoPlaceId: z.string().min(1).max(200).nullable(),
-    title: z.string().min(1).max(LIMITS.importTitle),
+    kakaoPlaceId: storableText(200).pipe(z.string().min(1)).nullable(),
+    title: storableText(LIMITS.importTitle).pipe(z.string().min(1)),
     address: nullableText(LIMITS.importText),
     roadAddress: nullableText(LIMITS.importText),
     addressSource: z.enum(["kakao_import", "search"]).nullable(),
@@ -63,7 +74,7 @@ export const mutationRowSchemas = {
     kakaoFolderId: z.number().int().nullable(),
     subscribed: z.boolean(),
     ownerName: nullableText(LIMITS.importTitle),
-    name: z.string().trim().min(1).max(LIMITS.listName),
+    name: storableText(LIMITS.listName).pipe(z.string().trim().min(1)),
     description: nullableText(LIMITS.importText),
     color: z
       .string()
@@ -75,20 +86,20 @@ export const mutationRowSchemas = {
     ...base,
     listId: id,
     placeId: id,
-    position: z.number().int().nonnegative(),
+    position,
     addedAt: ms,
-    kakaoFavoriteSeq: z.string().max(200).nullable(),
+    kakaoFavoriteSeq: nullableText(200),
     kakaoNote: nullableText(LIMITS.importText),
-    kakaoColor: z.string().max(40).nullable(),
+    kakaoColor: nullableText(40),
     removedFromKakaoAt: ms.nullable(),
   }),
   visit_notes: z.object({
     ...base,
     placeId: id,
     visitedOn: isoDate.nullable(),
-    body: z.string().max(LIMITS.noteBody),
+    body: storableText(LIMITS.noteBody),
     origin: z.enum(["user", "kakao_list"]),
-    originKey: z.string().max(200).nullable(),
+    originKey: nullableText(200),
     editedByUser: z.boolean(),
   }),
   links: z.object({

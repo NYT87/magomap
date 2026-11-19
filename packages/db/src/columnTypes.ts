@@ -136,4 +136,10 @@ export const COLUMN_TYPES: {
     run_id: "text",
     list_item_id: "text",
   },
+  tombstones: {
+    user_id: "text",
+    table_name: "text",
+    id: "text",
+    deleted_at: "bigint",
+  },
 };

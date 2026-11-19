@@ -16,7 +16,7 @@ import {
 } from "@magomap/domain";
 import { kakaoPlaceRowId, newId, ownMembershipRowId } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
-import { sql } from "kysely";
+import { type RawBuilder, sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
 import { inJson, toAnyRow, toDbRow } from "../mapping";
 import type { Database } from "../schema";
@@ -98,43 +98,84 @@ export async function latestValidUntil(db: Db, userId: string, placeIds: Iterabl
   return out;
 }
 
-/** Statements that write rows and stamp them with the user's new change_seq. */
+export interface TableWriteOptions {
+  /** Columns overwritten on conflict (default: every column). */
+  update?: string[];
+  /** Extra condition on the DO UPDATE. */
+  where?: RawBuilder<boolean>;
+}
+
+/**
+ * Statements that write rows and stamp them with the user's new change_seq, as one batch:
+ * bump change_seq, upsert, run `extra`, then stamp seq on every touched row.
+ */
 export function writeStatements(
   db: Db,
   userId: string,
   writes: Map<SyncTable, Map<string, Row>>,
-  opts: { newerOnly: Set<SyncTable> },
+  opts: {
+    newerOnly: Set<SyncTable>;
+    tableOptions?: Partial<Record<SyncTable, TableWriteOptions>>;
+    /** Targeted statements whose rows also need a new seq. */
+    extra?: { statements: Statement[]; touched: [SyncTable, string[]][] };
+  },
 ): Statement[] {
   const statements: Statement[] = [];
-  const touched: [SyncTable, string[]][] = [];
+  const touched = new Map<SyncTable, Set<string>>();
+  const touch = (table: SyncTable, ids: string[]) => {
+    if (!touched.has(table)) touched.set(table, new Set());
+    for (const id of ids) touched.get(table)?.add(id);
+  };
   for (const table of SYNC_TABLES) {
     const rows = [...(writes.get(table)?.values() ?? [])];
     if (rows.length === 0) continue;
-    const columns = Object.keys(rows[0] as Row).filter(
-      (c) => c !== "user_id" && c !== "id",
-    ) as never[];
+    const tableOpts = opts.tableOptions?.[table];
+    const columns = (tableOpts?.update ??
+      Object.keys(rows[0] as Row).filter((c) => c !== "user_id" && c !== "id")) as never[];
     statements.push(
       ...bulkUpsertQuery(db, table, rows as never[], {
         conflict: ["user_id", "id"] as never[],
         update: columns,
         whereNewer: opts.newerOnly.has(table),
+        ...(tableOpts?.where ? { where: tableOpts.where } : {}),
       }),
     );
-    touched.push([table, rows.map((r) => r.id)]);
+    touch(
+      table,
+      rows.map((r) => r.id),
+    );
   }
+  statements.push(...(opts.extra?.statements ?? []));
+  for (const [table, ids] of opts.extra?.touched ?? []) touch(table, ids);
   if (statements.length === 0) return [];
   const bump = db.kysely
     .updateTable("users")
     .set({ change_seq: sql`change_seq + 1` })
     .where("id", "=", userId);
-  const stamps = touched.map(([table, ids]) =>
+  const stamps = [...touched].map(([table, ids]) =>
     db.kysely
       .updateTable(table)
       .set({ seq: sql`(SELECT change_seq FROM users WHERE id = ${userId})` } as never)
       .where("user_id", "=", userId)
-      .where(inJson(db, "id", ids)),
+      .where(inJson(db, "id", [...ids])),
   );
   return [bump, ...statements, ...stamps];
+}
+
+/** A device clock may run ahead; never accept a time more than this past the server's. */
+export const CLOCK_ALLOWANCE_MS = 60_000;
+
+async function readTombstones(db: Db, userId: string, keys: { table: SyncTable; id: string }[]) {
+  const out = new Map<string, number>();
+  if (keys.length === 0) return out;
+  const rows = await db.kysely
+    .selectFrom("tombstones")
+    .select(["table_name", "id", "deleted_at"])
+    .where("user_id", "=", userId)
+    .where(inJson(db, "id", [...new Set(keys.map((k) => k.id))]))
+    .execute();
+  for (const r of rows) out.set(`${r.table_name}:${r.id}`, Number(r.deleted_at));
+  return out;
 }
 
 export async function applyPush(
@@ -146,6 +187,9 @@ export async function applyPush(
   const results = new Map<string, PushResult>();
   const set = (m: Mutation, status: PushResult["status"], extra: Partial<PushResult> = {}) =>
     results.set(m.mutationId, { mutationId: m.mutationId, status, ...extra });
+  // Clamp times from clocks that run ahead, so one bad device can't lock a row.
+  const latest = now + CLOCK_ALLOWANCE_MS;
+  const at = (m: Mutation) => Math.min(m.clientUpdatedAt, latest);
 
   // 1. Validate each mutation on its own.
   const valid: { m: Mutation; row?: Row }[] = [];
@@ -159,19 +203,20 @@ export async function applyPush(
     else valid.push({ m, row: parsed.data as Row });
   }
 
-  // 2. Coalesce: keep the last mutation per row.
+  // 2. Coalesce: keep the last mutation per row; earlier ones share its outcome.
   const last = new Map<string, { m: Mutation; row?: Row }>();
+  const superseded = new Map<string, Mutation[]>();
   for (const v of valid) {
     const key = `${v.m.table}:${v.m.id}`;
     const previous = last.get(key);
-    if (previous) set(previous.m, "applied");
+    if (previous) superseded.set(key, [...(superseded.get(key) ?? []), previous.m]);
     last.set(key, v);
   }
   const work = [...last.values()].sort(
     (a, b) => APPLY_ORDER.indexOf(a.m.table) - APPLY_ORDER.indexOf(b.m.table),
   );
 
-  // 3. Pre-read the rows and their parents.
+  // 3. Pre-read the rows, their parents, and tombstones.
   const idsOf = (t: SyncTable) => work.filter((w) => w.m.table === t).map((w) => w.m.id);
   const existingItems = await readByIds(db, userId, "list_items", idsOf("list_items"));
   const placeIds = new Set(idsOf("places"));
@@ -189,6 +234,11 @@ export async function applyPush(
     ["links", await readByIds(db, userId, "links", idsOf("links"))],
   ]);
   const validUntil = await latestValidUntil(db, userId, idsOf("places"));
+  const tombstones = await readTombstones(
+    db,
+    userId,
+    work.map((w) => ({ table: w.m.table, id: w.m.id })),
+  );
 
   // 4. Decide each mutation, in parent-first order.
   const writes = new Map<SyncTable, Map<string, Row>>();
@@ -197,8 +247,11 @@ export async function applyPush(
     writes.get(table)?.set(row.id, row);
     if (table !== "place_locations") state.get(table)?.set(row.id, row);
   };
+  const newTombstones: { user_id: string; table_name: string; id: string; deleted_at: number }[] =
+    [];
+  const restores = new Set<string>();
   const dbRow = (table: SyncTable, row: Row, m: Mutation) =>
-    toDbRow(table, row as never, userId, { clientUpdatedAt: m.clientUpdatedAt }) as unknown as Row;
+    toDbRow(table, row as never, userId, { clientUpdatedAt: at(m) }) as unknown as Row;
   const isKakaoList = (listId: unknown) =>
     state.get("lists")?.get(String(listId))?.kind === "kakao";
 
@@ -219,26 +272,30 @@ export async function applyPush(
       continue;
     }
 
-    if (existing && m.clientUpdatedAt <= Number(existing.client_updated_at) && table !== "places") {
+    // Last write wins per row (the SQL repeats this check, for races).
+    if (existing && at(m) <= Number(existing.client_updated_at)) {
       set(m, "ignored_stale", { row: toAnyRow(table, existing) });
+      continue;
+    }
+    // A row deleted before the server ever saw it stays deleted against older writes.
+    const tombstone = existing ? undefined : tombstones.get(`${table}:${m.id}`);
+    if (tombstone !== undefined && at(m) <= tombstone) {
+      set(m, "ignored_stale");
       continue;
     }
 
     if (m.op === "delete") {
       if (!existing) {
+        newTombstones.push({ user_id: userId, table_name: table, id: m.id, deleted_at: at(m) });
         set(m, "applied");
         continue;
       }
       const deleted: Row = {
         ...existing,
-        deleted_at: m.clientUpdatedAt,
+        deleted_at: at(m),
         updated_at: now,
-        client_updated_at: m.clientUpdatedAt,
+        client_updated_at: at(m),
       };
-      if (table === "places" && m.clientUpdatedAt <= Number(existing.client_updated_at)) {
-        set(m, "ignored_stale", { row: toAnyRow(table, existing) });
-        continue;
-      }
       if (table === "visit_notes" && existing.origin === "kakao_list") deleted.edited_by_user = 1;
       write(table, deleted);
       set(m, "applied");
@@ -258,12 +315,8 @@ export async function applyPush(
           set(m, "rejected", { reason: "not_allowed" });
           continue;
         }
-        write(table, { ...dbRow(table, { ...r, deletedAt: null, updatedAt: now }, m) });
+        write(table, dbRow(table, { ...r, deletedAt: null, updatedAt: now }, m));
         set(m, "applied");
-        continue;
-      }
-      if (m.clientUpdatedAt <= Number(existing.client_updated_at)) {
-        set(m, "ignored_stale", { row: toAnyRow(table, existing) });
         continue;
       }
       const current = toAnyRow("places", existing) as PlaceRow;
@@ -284,11 +337,12 @@ export async function applyPush(
         table,
         dbRow(table, { ...update.place, deletedAt: null, updatedAt: now } as unknown as Row, m),
       );
-      if (update.history)
+      if (update.history) {
         write(
           "place_locations",
           dbRow("place_locations", update.history as unknown as Row, { ...m, clientUpdatedAt: 0 }),
         );
+      }
       set(m, "applied");
       continue;
     }
@@ -363,13 +417,40 @@ export async function applyPush(
       });
     }
     write(table, dbRow(table, next, m));
-    if (place.deleted_at != null) write("places", { ...place, deleted_at: null, updated_at: now });
+    // A note or link written for a deleted place brings the place back, touching nothing else.
+    if (place.deleted_at != null) restores.add(place.id);
     set(m, "applied");
   }
 
-  // 5. One atomic batch: bump change_seq, write, stamp seq.
+  // Superseded mutations report the outcome of the mutation that replaced them.
+  for (const [key, earlier] of superseded) {
+    const final = results.get(last.get(key)?.m.mutationId ?? "");
+    for (const m of earlier) {
+      if (final) results.set(m.mutationId, { ...final, mutationId: m.mutationId });
+    }
+  }
+
+  // 5. One atomic batch: bump change_seq, write, tombstones, restores, stamp seq.
+  const extra: Statement[] = [
+    ...bulkUpsertQuery(db, "tombstones", newTombstones, {
+      conflict: ["user_id", "table_name", "id"],
+      update: ["deleted_at"],
+      where: sql<boolean>`excluded.deleted_at > tombstones.deleted_at`,
+    }),
+  ];
+  if (restores.size > 0) {
+    extra.push(
+      db.kysely
+        .updateTable("places")
+        .set({ deleted_at: null, updated_at: now })
+        .where("user_id", "=", userId)
+        .where(inJson(db, "id", [...restores]))
+        .where("deleted_at", "is not", null),
+    );
+  }
   const statements = writeStatements(db, userId, writes, {
-    newerOnly: new Set<SyncTable>(["lists", "list_items", "visit_notes", "links"]),
+    newerOnly: new Set<SyncTable>(["places", "lists", "list_items", "visit_notes", "links"]),
+    extra: { statements: extra, touched: [["places", [...restores]]] },
   });
   if (statements.length > 0) await db.atomic(statements);
   return { results: mutations.map((m) => results.get(m.mutationId) as PushResult) };

@@ -115,6 +115,7 @@ const USER_TABLES = [
   "place_locations",
   "import_runs",
   "import_seen",
+  "tombstones",
 ] as const satisfies readonly (keyof Database)[];
 
 /** Removes every row of the user, in every table, all-or-nothing. */

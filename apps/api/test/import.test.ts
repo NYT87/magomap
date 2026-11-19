@@ -140,3 +140,50 @@ describe("import runs", () => {
     expect(await res.json()).toEqual({ error: "run_closed" });
   });
 });
+
+describe("import hardening (security review)", () => {
+  it("does not follow a redirect from kakao-list, so the secret can't travel to another host", async () => {
+    const cookie = await devLogin("111");
+    let leaked = false;
+    let contacted = false;
+    network.use(
+      http.get(
+        KAKAO_LIST,
+        () =>
+          new HttpResponse(null, {
+            status: 302,
+            headers: { location: "https://evil.example/steal" },
+          }),
+      ),
+      http.get("https://evil.example/steal", ({ request }) => {
+        contacted = true;
+        leaked = (request.headers.get("authorization") ?? "") !== "";
+        return HttpResponse.json(baseContract("111"));
+      }),
+    );
+    const res = await call("/api/import/kakao/source", { headers: { cookie } });
+    expect(res.status).toBe(502);
+    expect(leaked).toBe(false);
+    expect(contacted).toBe(false);
+  });
+
+  it("rejects an import chunk body over 2 MB with 413", async () => {
+    const cookie = await devLogin("111");
+    const { runId } = (await (
+      await call("/api/import/runs", jsonInit("POST", { complete: true, importedAt: "x" }, cookie))
+    ).json()) as { runId: string };
+    const meta = { kakaoFolderId: 101, name: "x", subscribed: false };
+    const items = Array.from({ length: 450 }, (_, i) => ({
+      favoriteSeq: String(i),
+      placeKey: `P${i}`,
+      title: "t",
+      position: i,
+      kakaoNote: "가".repeat(2_000),
+    }));
+    const res = await call(
+      `/api/import/runs/${runId}/lists/101/chunks/0`,
+      jsonInit("PUT", { meta, items }, cookie),
+    );
+    expect(res.status).toBe(413);
+  });
+});

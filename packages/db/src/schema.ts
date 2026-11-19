@@ -142,6 +142,13 @@ export interface ImportSeenTable {
   list_item_id: string;
 }
 
+export interface TombstonesTable {
+  user_id: string;
+  table_name: string;
+  id: string;
+  deleted_at: number;
+}
+
 export interface Database {
   places: PlacesTable;
   lists: ListsTable;
@@ -154,4 +161,5 @@ export interface Database {
   sessions: SessionsTable;
   import_runs: ImportRunsTable;
   import_seen: ImportSeenTable;
+  tombstones: TombstonesTable;
 }

@@ -13,6 +13,8 @@ import { z } from "zod";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
 
+const CHUNK_BYTES = 2_000_000;
+
 export const importRoutes = new Hono<AppEnv>();
 importRoutes.use("/import/*", requireUser);
 
@@ -44,8 +46,10 @@ importRoutes.get("/import/kakao/source", async (c) => {
   url.searchParams.set("kakaoUserId", kakaoUserId);
   let upstream: Response;
   try {
+    // Never follow redirects: the secret must not travel to another host.
     upstream = await fetch(url, {
       headers: { authorization: `Bearer ${c.env.MAGOMAP_IMPORT_SECRET}` },
+      redirect: "manual",
     });
   } catch {
     return c.json({ error: "kakao_list_unavailable" }, 502);
@@ -79,7 +83,19 @@ const folderParam = (c: Context<AppEnv>) => {
 
 importRoutes.put("/import/runs/:runId/lists/:kakaoFolderId/chunks/:index", async (c) => {
   const folder = folderParam(c);
-  const raw = (await c.req.json().catch(() => null)) as { meta?: unknown; items?: unknown } | null;
+  // A chunk is at most 500 places; real ones are far below 2 MB. Keeps a request within the CPU budget.
+  if (Number(c.req.header("content-length") ?? 0) > CHUNK_BYTES) {
+    return c.json({ error: "too_large" }, 413);
+  }
+  const text = await c.req.text();
+  if (new TextEncoder().encode(text).length > CHUNK_BYTES)
+    return c.json({ error: "too_large" }, 413);
+  let raw: { meta?: unknown; items?: unknown } | null = null;
+  try {
+    raw = JSON.parse(text) as { meta?: unknown; items?: unknown };
+  } catch {
+    raw = null;
+  }
   const meta = importListMetaSchema.safeParse(raw?.meta);
   const items = importItemsChunkSchema.safeParse(raw?.items);
   if (folder === null || !meta.success || !items.success || meta.data.kakaoFolderId !== folder) {

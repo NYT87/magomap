@@ -120,3 +120,48 @@ describe("ids", () => {
     expect(id[14]).toBe("7");
   });
 });
+
+describe("text and numbers Postgres can store", () => {
+  const note = (body: string) => ({
+    id: "n1",
+    placeId: "kp_1",
+    visitedOn: null,
+    body,
+    origin: "user",
+    originKey: null,
+    editedByUser: false,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  });
+
+  it("rejects a NUL character", () => {
+    expect(mutationRowSchemas.visit_notes.safeParse(note("a\u0000b")).success).toBe(false);
+  });
+
+  it("rejects a lone surrogate", () => {
+    expect(mutationRowSchemas.visit_notes.safeParse(note("emoji \ud83d cut")).success).toBe(false);
+  });
+
+  it("accepts a whole emoji", () => {
+    expect(mutationRowSchemas.visit_notes.safeParse(note("좋아요 😀")).success).toBe(true);
+  });
+
+  it("rejects a list position beyond a 32-bit integer", () => {
+    const item = {
+      id: "li_a_kp_1",
+      listId: "a",
+      placeId: "kp_1",
+      position: 1_763_000_000_000,
+      addedAt: now,
+      kakaoFavoriteSeq: null,
+      kakaoNote: null,
+      kakaoColor: null,
+      removedFromKakaoAt: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    expect(mutationRowSchemas.list_items.safeParse(item).success).toBe(false);
+  });
+});
