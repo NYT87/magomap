@@ -18,6 +18,8 @@
 
 **Order:** this is plan 01 of 3. Build it first.
 
+**Build process:** every task follows `docs/superpowers/build-process.md`: the builder, then the gate (`scripts/gate.sh`), then the reviewers listed there for the task, for at most 3 rounds.
+
 **Depends on:** nothing. The import is built and tested against a fake `kakao-list` server (Task 5). It works with real Kakao data once plan 03 (the `kakao-list` integration) is deployed, which is done last, before go-live.
 
 ## Global Constraints
@@ -104,7 +106,8 @@
 - Create at the root:
   - `package.json` (scripts `build`, `test`, `typecheck`, `check`);
   - `pnpm-workspace.yaml`, `biome.json`, `tsconfig.base.json`, `.gitignore`, `.nvmrc` (`22`);
-  - `docker-compose.yml` (`postgres:17` on 5432).
+  - `docker-compose.yml` (`postgres:17` on 5432);
+  - `scripts/checks.sh` and `scripts/gate.sh`, exactly as described in `docs/superpowers/build-process.md` ("The gate"). `.gitignore` covers `tmp/` and `gate.log`.
 - Create in `packages/domain/src/`:
   - `rows.ts`, `sync.ts`, `importContract.ts`, `api.ts`, `ids.ts`, `location.ts`, `index.ts`;
   - `sync.test.ts`, `location.test.ts`.
@@ -196,7 +199,10 @@ function mergeLocation(current: LocationFields, incoming: Partial<LocationFields
 - [ ] **Step 2: Run** `pnpm -r test`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** `pnpm -r test && pnpm typecheck && pnpm check`. Expected: PASS.
-- [ ] **Step 5: Commit** with `feat(domain): wire types, ids, validation and location rule`.
+- [ ] **Step 5: Check the gate.**
+  - `scripts/gate.sh` prints `GATE: PASS`.
+  - With a throwaway edit to `biome.json`, it prints `GATE: FAIL protected path: biome.json`. Revert the edit afterwards.
+- [ ] **Step 6: Commit** with `feat(domain): wire types, ids, validation and location rule`.
 
 ### Task 2: Database connector, schema and migrations
 
@@ -506,7 +512,7 @@ async function migrate(db: Db, dir: string): Promise<string[]>;  // applies <dir
   - `deploy:d1` and `deploy:postgres`.
 
 **`ci.yml`:**
-- Runs `pnpm test`, `pnpm typecheck` and `pnpm check`.
+- Runs `scripts/checks.sh`, the same commands the gate uses.
 - Has a `postgres:17` service, with `TEST_DATABASE_URL` set.
 - Actions are pinned to the commit SHA of releases at least 14 days old.
 
