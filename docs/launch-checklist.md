@@ -13,6 +13,7 @@ Run this before the owner's wife starts using magomap (plan 03, Task 4). Each li
 ## It works for real
 
 - [ ] **A real Kakao sign-in** works for both accounts, and someone not on the allowlist sees "not invited".
+- [ ] **Owner gates from plan 03 are done.** G1: three Kakao SDK coordinate fixtures (Seoul, Busan, Jeju) are in kakao-list's `packages/domain/src/coordinates.fixtures.ts` and its test passes. G2: a real extension import confirmed the favourite `type` values, which folders carry `subscribe` (her own public lists must not read as followed), and that she and a follower see the same favourite `seq`; the answers are in kakao-list's `docs/kakao-maps-private-api.md`.
 - [ ] **A real import** from kakao-list (plan 03) brings in her lists. The places have coordinates and appear on the map, and a re-import changes nothing.
 - [ ] **On her actual phone:**
   - install the PWA;
