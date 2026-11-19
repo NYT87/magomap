@@ -7,3 +7,4 @@ coverage/
 tmp/
 gate.log
 /.superpowers/
+graft/
