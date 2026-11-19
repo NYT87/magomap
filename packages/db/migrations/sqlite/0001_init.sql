@@ -1,9 +1,9 @@
--- magomap initial schema. Statements are separated by lines that are exactly `-- statement`.
+-- magomap schema (shared, provider-neutral). Statements are separated by lines that are exactly `-- statement`.
 CREATE TABLE users (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   display_name TEXT,
-  change_seq INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (id)
 );
 -- statement
 CREATE TABLE identities (
@@ -14,21 +14,55 @@ CREATE TABLE identities (
   PRIMARY KEY (provider, provider_user_id)
 );
 -- statement
-CREATE INDEX identities_user ON identities (user_id);
--- statement
 CREATE TABLE sessions (
-  token_hash TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
   user_id TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (token_hash)
 );
 -- statement
-CREATE INDEX sessions_user ON sessions (user_id);
+CREATE TABLE tombstones (
+  user_id TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  id TEXT NOT NULL,
+  deleted_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, table_name, id)
+);
 -- statement
-CREATE TABLE places (
+CREATE TABLE import_runs (
   user_id TEXT NOT NULL,
   id TEXT NOT NULL,
-  kakao_place_id TEXT,
+  provider TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  status TEXT NOT NULL,
+  complete INTEGER NOT NULL,
+  subscription_known INTEGER NOT NULL,
+  snapshot_at INTEGER NOT NULL,
+  summary_json TEXT,
+  error TEXT,
+  PRIMARY KEY (user_id, id)
+);
+-- statement
+CREATE TABLE import_seen (
+  user_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  list_item_id TEXT NOT NULL,
+  PRIMARY KEY (user_id, run_id, list_item_id)
+);
+-- statement
+CREATE TABLE sync_state (
+  id INTEGER NOT NULL,
+  change_seq INTEGER NOT NULL,
+  write_token TEXT,
+  PRIMARY KEY (id)
+);
+-- statement
+INSERT INTO sync_state (id, change_seq, write_token) VALUES (1, 0, NULL);
+-- statement
+CREATE TABLE places (
+  id TEXT NOT NULL,
   title TEXT NOT NULL,
   address TEXT,
   road_address TEXT,
@@ -37,49 +71,99 @@ CREATE TABLE places (
   phone TEXT,
   lat REAL,
   lng REAL,
-  source TEXT NOT NULL,
+  provider_snapshot_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   deleted_at INTEGER,
   client_updated_at INTEGER NOT NULL,
   seq INTEGER NOT NULL,
-  PRIMARY KEY (user_id, id)
+  PRIMARY KEY (id)
 );
 -- statement
-CREATE INDEX places_seq ON places (user_id, seq, id);
+CREATE INDEX places_seq ON places (seq, id);
+-- statement
+CREATE TABLE place_sources (
+  id TEXT NOT NULL,
+  place_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER,
+  client_updated_at INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+-- statement
+CREATE INDEX place_sources_seq ON place_sources (seq, id);
+-- statement
+CREATE TABLE place_locations (
+  id TEXT NOT NULL,
+  place_id TEXT NOT NULL,
+  address TEXT,
+  road_address TEXT,
+  lat REAL,
+  lng REAL,
+  valid_from INTEGER NOT NULL,
+  valid_until INTEGER NOT NULL,
+  detected_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER,
+  client_updated_at INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+-- statement
+CREATE INDEX place_locations_seq ON place_locations (seq, id);
 -- statement
 CREATE TABLE lists (
-  user_id TEXT NOT NULL,
   id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  kakao_folder_id INTEGER,
-  subscribed INTEGER NOT NULL,
-  owner_name TEXT,
+  provider TEXT,
+  external_id TEXT,
   name TEXT NOT NULL,
   description TEXT,
   color TEXT,
-  removed_from_kakao_at INTEGER,
+  owner_name TEXT,
+  removed_at_provider INTEGER,
+  provider_snapshot_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   deleted_at INTEGER,
   client_updated_at INTEGER NOT NULL,
   seq INTEGER NOT NULL,
-  PRIMARY KEY (user_id, id)
+  PRIMARY KEY (id)
 );
 -- statement
-CREATE INDEX lists_seq ON lists (user_id, seq, id);
+CREATE INDEX lists_seq ON lists (seq, id);
 -- statement
 CREATE TABLE list_items (
-  user_id TEXT NOT NULL,
   id TEXT NOT NULL,
   list_id TEXT NOT NULL,
   place_id TEXT NOT NULL,
   position INTEGER NOT NULL,
   added_at INTEGER NOT NULL,
-  kakao_favorite_seq TEXT,
-  kakao_note TEXT,
-  kakao_color TEXT,
-  removed_from_kakao_at INTEGER,
+  external_id TEXT,
+  provider_note TEXT,
+  provider_color TEXT,
+  removed_at_provider INTEGER,
+  provider_snapshot_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER,
+  client_updated_at INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  PRIMARY KEY (id)
+);
+-- statement
+CREATE INDEX list_items_seq ON list_items (seq, id);
+-- statement
+CREATE TABLE user_lists (
+  user_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  list_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  removed_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   deleted_at INTEGER,
@@ -88,7 +172,22 @@ CREATE TABLE list_items (
   PRIMARY KEY (user_id, id)
 );
 -- statement
-CREATE INDEX list_items_seq ON list_items (user_id, seq, id);
+CREATE INDEX user_lists_seq ON user_lists (user_id, seq, id);
+-- statement
+CREATE TABLE user_places (
+  user_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  place_id TEXT NOT NULL,
+  saved_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER,
+  client_updated_at INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  PRIMARY KEY (user_id, id)
+);
+-- statement
+CREATE INDEX user_places_seq ON user_places (user_id, seq, id);
 -- statement
 CREATE TABLE visit_notes (
   user_id TEXT NOT NULL,
@@ -125,54 +224,28 @@ CREATE TABLE links (
 -- statement
 CREATE INDEX links_seq ON links (user_id, seq, id);
 -- statement
-CREATE TABLE place_locations (
-  user_id TEXT NOT NULL,
-  id TEXT NOT NULL,
-  place_id TEXT NOT NULL,
-  address TEXT,
-  road_address TEXT,
-  lat REAL,
-  lng REAL,
-  valid_from INTEGER NOT NULL,
-  valid_until INTEGER NOT NULL,
-  detected_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  deleted_at INTEGER,
-  client_updated_at INTEGER NOT NULL,
-  seq INTEGER NOT NULL,
-  PRIMARY KEY (user_id, id)
-);
+CREATE UNIQUE INDEX place_sources_external ON place_sources (provider, external_id);
 -- statement
-CREATE INDEX place_locations_seq ON place_locations (user_id, seq, id);
+CREATE INDEX place_sources_place ON place_sources (place_id);
 -- statement
-CREATE UNIQUE INDEX places_kakao ON places (user_id, kakao_place_id) WHERE kakao_place_id IS NOT NULL;
+CREATE INDEX place_locations_place ON place_locations (place_id);
 -- statement
-CREATE INDEX list_items_place ON list_items (user_id, place_id);
+CREATE UNIQUE INDEX lists_external ON lists (provider, external_id) WHERE provider IS NOT NULL;
+-- statement
+CREATE INDEX list_items_list ON list_items (list_id);
+-- statement
+CREATE INDEX list_items_place ON list_items (place_id);
+-- statement
+CREATE INDEX user_lists_list ON user_lists (user_id, list_id);
+-- statement
+CREATE INDEX user_places_place ON user_places (user_id, place_id);
 -- statement
 CREATE INDEX visit_notes_place ON visit_notes (user_id, place_id);
 -- statement
 CREATE INDEX links_place ON links (user_id, place_id);
 -- statement
-CREATE INDEX place_locations_place ON place_locations (user_id, place_id);
+CREATE INDEX identities_user ON identities (user_id);
 -- statement
-CREATE INDEX list_items_list ON list_items (user_id, list_id);
+CREATE INDEX sessions_user ON sessions (user_id);
 -- statement
-CREATE TABLE import_runs (
-  user_id TEXT NOT NULL,
-  id TEXT NOT NULL,
-  started_at INTEGER NOT NULL,
-  finished_at INTEGER,
-  status TEXT NOT NULL,
-  complete INTEGER NOT NULL,
-  summary_json TEXT,
-  error TEXT,
-  PRIMARY KEY (user_id, id)
-);
--- statement
-CREATE TABLE import_seen (
-  user_id TEXT NOT NULL,
-  run_id TEXT NOT NULL,
-  list_item_id TEXT NOT NULL,
-  PRIMARY KEY (user_id, run_id, list_item_id)
-);
+CREATE UNIQUE INDEX import_runs_one_running ON import_runs (user_id) WHERE status = 'running';

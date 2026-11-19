@@ -8,18 +8,16 @@ const now = 1_763_000_000_000;
 
 function place(i: number, overrides: Record<string, unknown> = {}) {
   return {
-    user_id: "u1",
-    id: `kp_${i}`,
-    kakao_place_id: String(i),
+    id: `p_test_${i}`,
     title: `장소 ${i}`,
     address: `서울 ${i}`,
     road_address: null,
-    address_source: "kakao_import",
+    address_source: "import",
     category: null,
     phone: null,
     lat: 37.5 + i / 1e6,
     lng: 127 + i / 1e6,
-    source: "kakao_import",
+    provider_snapshot_at: null,
     created_at: now,
     updated_at: now,
     deleted_at: null,
@@ -33,7 +31,7 @@ function note(i: number, body: string) {
   return {
     user_id: "u1",
     id: `n${i}`,
-    place_id: "kp_1",
+    place_id: "p_test_1",
     visited_on: "2026-11-19",
     body,
     origin: "user",
@@ -72,7 +70,7 @@ forEachDialect("connector", (makeDb) => {
     const db = await makeDb();
     const rows = Array.from({ length: 3000 }, (_, i) => place(i));
     const statements = await compiled(
-      bulkUpsertQuery(db, "places", rows, { conflict: ["user_id", "id"], update: ["title"] }),
+      bulkUpsertQuery(db, "places", rows, { conflict: ["id"], update: ["title"] }),
     );
     expect(statements.length).toBeLessThanOrEqual(10);
     for (const s of statements) {
@@ -82,9 +80,7 @@ forEachDialect("connector", (makeDb) => {
           expect(new TextEncoder().encode(p).length).toBeLessThanOrEqual(1_000_000);
       }
     }
-    await db.atomic(
-      bulkUpsertQuery(db, "places", rows, { conflict: ["user_id", "id"], update: ["title"] }),
-    );
+    await db.atomic(bulkUpsertQuery(db, "places", rows, { conflict: ["id"], update: ["title"] }));
     const count = await db.kysely
       .selectFrom("places")
       .select(sql<number>`count(*)`.as("n"))
@@ -110,7 +106,7 @@ forEachDialect("connector", (makeDb) => {
   it("does not overwrite a newer row with whereNewer", async () => {
     const db = await makeDb();
     const opts = {
-      conflict: ["user_id", "id"] as const,
+      conflict: ["id"] as const,
       update: ["title", "client_updated_at"] as const,
       whereNewer: true,
     };
@@ -135,11 +131,11 @@ forEachDialect("connector", (makeDb) => {
   it("keeps the existing lat when the incoming one is null, via updateExpr", async () => {
     const db = await makeDb();
     await db.atomic(
-      bulkUpsertQuery(db, "places", [place(1)], { conflict: ["user_id", "id"], update: ["lat"] }),
+      bulkUpsertQuery(db, "places", [place(1)], { conflict: ["id"], update: ["lat"] }),
     );
     await db.atomic(
       bulkUpsertQuery(db, "places", [place(1, { lat: null })], {
-        conflict: ["user_id", "id"],
+        conflict: ["id"],
         update: ["lat"],
         updateExpr: { lat: sql`coalesce(excluded.lat, places.lat)` },
       }),
@@ -152,7 +148,7 @@ forEachDialect("connector", (makeDb) => {
     const db = await makeDb();
     await db.atomic(
       bulkUpsertQuery(db, "places", [place(1, { seq: 42 })], {
-        conflict: ["user_id", "id"],
+        conflict: ["id"],
         update: [],
       }),
     );
