@@ -2,6 +2,9 @@ import type { Me } from "@magomap/domain";
 import { Route, Switch } from "wouter";
 import { PlaceScreen } from "./place/PlaceScreen";
 import { Account } from "./screens/Account";
+import { ImportScreen } from "./screens/ImportScreen";
+import { ListScreen } from "./screens/ListScreen";
+import { ListsScreen } from "./screens/ListsScreen";
 import { HomePanel } from "./screens/MapScreen";
 
 /** The pages shown in the panel (desktop) or over the map (phone). */
@@ -10,6 +13,13 @@ export function PageRoutes({ me }: { me: Me }) {
     <Switch>
       <Route path="/account">
         <Account me={me} />
+      </Route>
+      <Route path="/lists">
+        <ListsScreen />
+      </Route>
+      <Route path="/lists/:id">{(p) => <ListScreen id={decodeURIComponent(p.id)} />}</Route>
+      <Route path="/import">
+        <ImportScreen />
       </Route>
       <Route path="/places/:id">{(p) => <PlaceScreen id={decodeURIComponent(p.id)} />}</Route>
       <Route path="/">

@@ -5,12 +5,14 @@ import { useInertBackground } from "./useInertBackground";
 interface Props {
   title: string;
   children: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
   onCancel: () => void;
+  /** "dialog" for a form; "alertdialog" (default) for a confirmation. */
+  role?: "dialog" | "alertdialog";
 }
 
 /** A small modal confirmation: focus moves in, Esc cancels, focus returns on close. */
-export function ConfirmDialog({ title, children, actions, onCancel }: Props) {
+export function ConfirmDialog({ title, children, actions, onCancel, role = "alertdialog" }: Props) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
   useInertBackground();
@@ -26,21 +28,38 @@ export function ConfirmDialog({ title, children, actions, onCancel }: Props) {
       before?.focus();
     };
   }, [onCancel]);
+  const content = (
+    <>
+      <h2 id={titleId} className="mm-dialog__title">
+        {title}
+      </h2>
+      <div className="mm-dialog__body">{children}</div>
+      {actions && <div className="mm-dialog__actions">{actions}</div>}
+    </>
+  );
   return createPortal(
     <div className="mm-scrim">
-      <div
-        ref={ref}
-        className="mm-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <h2 id={titleId} className="mm-dialog__title">
-          {title}
-        </h2>
-        <div className="mm-dialog__body">{children}</div>
-        <div className="mm-dialog__actions">{actions}</div>
-      </div>
+      {role === "dialog" ? (
+        <div
+          ref={ref}
+          className="mm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+        >
+          {content}
+        </div>
+      ) : (
+        <div
+          ref={ref}
+          className="mm-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+        >
+          {content}
+        </div>
+      )}
     </div>,
     document.body,
   );

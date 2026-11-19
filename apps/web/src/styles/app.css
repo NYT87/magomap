@@ -1263,3 +1263,76 @@ a {
 .mm-inline-form .mm-input {
   flex: 1;
 }
+
+/* ---------- Lists and import ---------- */
+
+.mm-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: 56px;
+  padding: var(--space-xs) 0;
+  color: var(--color-text);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mm-place-row[data-removed] .mm-place-row__title {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.mm-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mm-colors legend {
+  width: 100%;
+  margin-bottom: var(--space-xs);
+}
+
+.mm-color {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+
+.mm-color input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mm-color__dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--color-bg);
+}
+
+.mm-color input:checked + .mm-color__dot {
+  box-shadow:
+    0 0 0 2px var(--color-bg),
+    0 0 0 4px var(--color-text);
+}
+
+.mm-color input:focus-visible + .mm-color__dot {
+  outline: 3px solid var(--color-river);
+  outline-offset: 4px;
+}
+
+.mm-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--color-pine);
+}
