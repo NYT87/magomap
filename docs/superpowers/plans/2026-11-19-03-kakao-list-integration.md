@@ -13,7 +13,7 @@
 
 **Changed by the plan 01b reviews (read first):** the magomap endpoint is replaced by **two paged read endpoints**, because the magomap Worker now fetches import data itself, one list and one page at a time:
 - `GET /api/integrations/magomap/lists?kakaoUserId=<id>` returns `{ contractVersion: 1, kakaoUserId, importedAt, complete, subscriptionKnown: true, lists: [{ kakaoFolderId, name, description?, icon?, subscribed, ownerName?, itemCount }] }`.
-- `GET /api/integrations/magomap/lists/:kakaoFolderId/items?kakaoUserId=<id>&offset=<n>&limit=<≤500>` returns `{ contractVersion: 1, kakaoFolderId, importedAt, total, offset, items: [ … same item fields as the contract … ] }`.
+- `GET /api/integrations/magomap/lists/:kakaoFolderId/items?kakaoUserId=<id>&offset=<n>&limit=<≤500>` returns `{ contractVersion: 1, kakaoFolderId, importedAt, total, offset, items: [ … same item fields as the contract … ] }`. magomap refuses a page whose `total` differs from the list's `itemCount`, or whose `offset` and item count aren't exactly the page asked for, so both endpoints must read the same snapshot.
   - `importedAt` must be the same on both endpoints for one stored snapshot.
   - An unknown list or user gives `404 { "error": "no_snapshot" }`.
 

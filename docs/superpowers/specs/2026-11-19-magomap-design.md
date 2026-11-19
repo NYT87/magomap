@@ -421,8 +421,10 @@ Adding a provider means adding an adapter. The schema stays the same.
 - **The server fetches import data itself.** Each request from the app reads one thing from kakao-list, for the caller's own Kakao id: either the list summaries, or one page of at most 500 items. The app only says "next page". It never sends import contents, so it can't change shared lists or places. A page from a different snapshot than the run's is refused (`snapshot_changed`); the app restarts the import.
 - **Search results are signed** by the server (`SIGNING_SECRET`). A pushed place must carry that signature, over exactly its fields, for up to 30 days. Nobody can create or move a shared place with made-up data.
 - **Client-created ids are UUIDs:** own lists, notes and links. They can't impersonate provider rows. Composite ids encode each part, so they never collide.
-- **Removals record the snapshot that made them**, so an older snapshot can't undo them. An older snapshot never changes which items a list has.
-- **Everyone who has a list receives all of its places**, including places added later.
+- **A run imports exactly the lists it fetched, completely.** The server keeps one progress row per list. Pages arrive in order and must match the list's summary (offset, size, total). A list can only be finished once all its pages arrived, and a run can only be completed once every list finished. Only then are missing items or lists marked removed. A complete snapshot with no lists removes the previous ones.
+- **Removals record the snapshot that made them**, so an older snapshot can't undo them. A newer owner snapshot that still lacks a removed list advances that time. An older snapshot never changes which items a list has, but it still imports that user's own notes.
+- **Search results are ordered by when they were signed**, not by the phone's clock, so an old result can't move a place back.
+- **Everyone who has a list receives all of its places**, including places added later and places an item switches to.
 - **Notes, links and own-list items** can only be attached to places the user has, or sees in one of their lists.
 - **Writes for a deleted account are refused.**
 
