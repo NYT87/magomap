@@ -5,6 +5,7 @@ import type {
   ImportRunInfo,
   ImportSummary,
   PlaceRow,
+  ResumeList,
   SyncTable,
 } from "@magomap/domain";
 import {
@@ -798,13 +799,56 @@ export async function latestImportRun(db: Db, userId: string): Promise<ImportRun
     .executeTakeFirst();
   if (!run) return null;
   const state = run.summary_json ? (JSON.parse(run.summary_json) as RunState) : null;
+  const progress =
+    run.status === "running"
+      ? await runLists(db, userId, run.id).then((lists) => ({
+          listsDone: lists.filter((l) => l.finished === 1).length,
+          listCount: lists.length,
+        }))
+      : undefined;
   return {
     runId: run.id,
     status: run.status as ImportRunInfo["status"],
     startedAt: run.started_at,
     finishedAt: run.finished_at,
     summary: state?.summary ?? null,
+    snapshotAt: Number(run.snapshot_at),
+    ...(progress ? { progress } : {}),
   };
+}
+
+/** Where the running run stands, list by list, so an interrupted import can be continued. */
+export async function runProgress(
+  db: Db,
+  userId: string,
+  runId: string,
+): Promise<{ snapshotAt: number; lists: ResumeList[] }> {
+  const { run } = await runningRun(db, userId, runId);
+  const lists = (await runLists(db, userId, runId)).map((l) => ({
+    externalId: l.external_id,
+    name: l.name,
+    itemCount: l.item_count,
+    pagesDone: l.pages_done,
+    finished: l.finished === 1,
+  }));
+  return { snapshotAt: Number(run.snapshot_at), lists };
+}
+
+/** True when the user has a completed import of exactly this kakao-list sync. */
+export async function importedSnapshot(
+  db: Db,
+  userId: string,
+  snapshotAt: number,
+): Promise<boolean> {
+  const row = await db.kysely
+    .selectFrom("import_runs")
+    .select("id")
+    .where("user_id", "=", userId)
+    .where("status", "=", "completed")
+    .where("snapshot_at", "=", snapshotAt)
+    .limit(1)
+    .executeTakeFirst();
+  return row !== undefined;
 }
 
 /** The running run's snapshot time and fetched list summaries (for the server-driven import). */
