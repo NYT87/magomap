@@ -510,6 +510,64 @@ describe("Account", () => {
       held.close();
     });
 
+    /** Another tab's write that holds the account's drafts table until `release()` is called. */
+    const holdWrite = async () => {
+      const db = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1");
+        r.onsuccess = () => ok(r.result);
+      });
+      let held = true;
+      const tx = db.transaction("drafts", "readwrite");
+      const store = tx.objectStore("drafts");
+      // Keep the transaction alive with one small request after another.
+      const keepAlive = () => {
+        if (!held) return;
+        store.get("none").onsuccess = keepAlive;
+      };
+      keepAlive();
+      const done = new Promise<void>((ok) => {
+        tx.oncomplete = () => ok();
+      });
+      return async () => {
+        held = false;
+        await done;
+        db.close();
+      };
+    };
+
+    it("never clears the data later after saying it was kept", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const release = await holdWrite();
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 8_000 });
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
+      await release();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await draftsLeft()).toBe(1);
+    });
+
+    it("leaves another account that opened during the wait alone", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const release = await holdWrite();
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      // Another tab signs in as someone else while the removal waits.
+      const other = openUserDb("u2");
+      await new Promise((r) => setTimeout(r, 4_500));
+      expect(window.location.pathname).toBe("/account");
+      expect(openDbOrNull()).toBe(other);
+      await release();
+    });
+
     it("keeps the data when the server sign-out fails", async () => {
       await i18n.changeLanguage("en");
       await seedDevice();

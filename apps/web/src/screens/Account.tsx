@@ -111,8 +111,10 @@ export function Account({ me }: { me: Me }) {
       // Removed only when everything reached the server ("Sign out anyway" keeps unsynced data).
       // Otherwise the local database is kept: unsynced changes go out at the next sign-in here.
       if (removeData && !force) {
-        // The sign-in screen says how it went (removed, kept for unsent changes, or still going).
+        // The sign-in screen says how it went (removed, or kept).
         const result = await forgetAccountOnDevice(me.userId);
+        // Another account opened while the removal waited (another tab signed in): leave it be.
+        if (switched()) return;
         try {
           sessionStorage.setItem(REMOVE_RESULT, result);
         } catch {

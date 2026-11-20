@@ -190,25 +190,30 @@ export async function forgetAccountOnDevice(userId: string): Promise<RemovalResu
   const known = instances.get(dbName(userId));
   const db = known && !known.hasBeenClosed() ? known : defineUserDb(userId);
   let kept: boolean;
+  // Sign-out doesn't wait long for the tables: another tab's write, or an older version of the
+  // database held open, can hold them. Giving up cancels the clearing for good: the transaction
+  // checks this flag once it has the tables, and aborts instead of clearing.
+  let cancelled = false;
+  let clearingStarted = false;
   try {
     const clearing = db.transaction("rw", db.tables, async () => {
       if ((await db.outbox.count()) > 0 || (await db.rejected.count()) > 0) return true;
+      if (cancelled) throw new Error("removal cancelled");
+      clearingStarted = true;
       await Promise.all(db.tables.map((table) => table.clear()));
       return false;
     });
-    // Opening a database another tab holds at an older version waits for that tab. Don't make
-    // sign-out wait with it: after a moment, keep everything (closing our copy cancels the open,
-    // so nothing is cleared later behind the person's back).
+    clearing.catch(() => {});
     const timedOut = new Promise<"timeout">((resolve) =>
       setTimeout(() => resolve("timeout"), 4_000),
     );
     const outcome = await Promise.race([clearing, timedOut]);
-    if (outcome === "timeout") {
-      if (db !== known) db.close();
-      clearing.catch(() => {});
+    if (outcome !== "timeout") kept = outcome;
+    // Already clearing: it finishes in a moment, so report what really happened.
+    else if (clearingStarted) kept = await clearing;
+    else {
+      cancelled = true;
       kept = true;
-    } else {
-      kept = outcome;
     }
   } catch {
     // Couldn't read it: keep everything rather than guess.
