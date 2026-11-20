@@ -121,6 +121,8 @@ VERDICT: PASS | CHANGES
 | kakao-direct-sync · 6 Extension | code, security |
 | kakao-direct-sync · 7 Sync in Account | code, ui, ux, a11y |
 | kakao-direct-sync · 8 Ship | the owner |
+| place-lists-notes · 1 Kakao notes as cards | code, ui, ux, a11y |
+| place-lists-notes · 2 Lists first | code, ui, ux, a11y |
 
 **Models.**
 - The builder and `reviewer-security` use the most capable model.
