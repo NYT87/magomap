@@ -41,7 +41,10 @@ describe("SyncIndicator, compact", () => {
     status.current = { state: "idle", unsynced: 0, rejected: 2 };
     const { container } = render(<SyncIndicator compact />);
     expect(container.querySelector(".mm-sync__icon .mm-sync__dot")).not.toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Synced" }));
+    const icon = screen.getByRole("button", { name: "Synced. 2 changes couldn't be saved" });
+    expect(icon).toHaveAttribute("aria-haspopup", "dialog");
+    expect(screen.getByRole("status")).toHaveTextContent("Synced. 2 changes couldn't be saved");
+    await userEvent.click(icon);
     const dialog = screen.getByRole("dialog", { name: "Sync" });
     await userEvent.click(
       within(dialog).getByRole("button", { name: "2 changes couldn't be saved" }),
@@ -83,6 +86,12 @@ describe("SyncIndicator, compact", () => {
     expect(view.container.querySelector(".mm-sync__count")).toBeNull();
   });
 
+  it("names the waiting count where the sentence has none", () => {
+    status.current = { state: "syncing", unsynced: 2, rejected: 0 };
+    render(<SyncIndicator compact />);
+    expect(screen.getByRole("button")).toHaveAccessibleName("Syncing…. 2 changes waiting to sync");
+  });
+
   it("keeps focus in the sheet while the status changes, and returns it to the icon on close", async () => {
     status.current = { state: "needs_signin", unsynced: 0, rejected: 0 };
     const view = render(<SyncIndicator compact />);
@@ -111,7 +120,9 @@ describe("SyncIndicator, compact", () => {
   it("returns focus to the icon after Sync leads to the refused changes and both close", async () => {
     status.current = { state: "idle", unsynced: 0, rejected: 1 };
     render(<SyncIndicator compact />);
-    await userEvent.click(screen.getByRole("button", { name: "Synced" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Synced. 1 change couldn't be saved" }),
+    );
     await userEvent.click(screen.getByRole("button", { name: "1 change couldn't be saved" }));
     expect(screen.getByRole("dialog", { name: "Changes that couldn't be saved" })).toBeVisible();
     await userEvent.keyboard("{Escape}");

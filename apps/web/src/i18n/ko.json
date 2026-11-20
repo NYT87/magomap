@@ -246,6 +246,8 @@
     "needsSigninNone": "동기화하려면 다시 로그인해 주세요",
     "error": "서버에 연결하지 못했어요. 계속 다시 시도할게요",
     "clockAhead": "휴대폰 시계가 빨라요. 변경은 여기 저장했고, 시계가 맞춰지면 동기화돼요",
+    "waiting_one": "동기화를 기다리는 변경 {{count}}개",
+    "waiting_other": "동기화를 기다리는 변경 {{count}}개",
     "rejected_one": "변경 {{count}}개를 저장하지 못했어요",
     "rejected_other": "변경 {{count}}개를 저장하지 못했어요",
     "rejectedTitle": "저장하지 못한 변경",

@@ -13,8 +13,9 @@ interface Props {
   children: ReactNode;
   /** The sync indicator: in the header on desktop and on phone pages (the map has its own). */
   status?: ReactNode;
-  /** A notice that stays mounted: under the status on desktop, under the header on phone pages,
-   *  and where the map renders `<NoticeSlot />` on the phone map. */
+  /** A notice shown under the status on desktop, under the header on phone pages, and where the
+   *  map renders `<NoticeSlot />` on the phone map. It remounts when the phone switches between
+   *  map and page; what it shows lives in the caller's store (useAppUpdate), not in the notice. */
   notice?: ReactNode;
 }
 

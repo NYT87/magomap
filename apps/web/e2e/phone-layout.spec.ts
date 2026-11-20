@@ -60,23 +60,29 @@ test("search results fit the screen", async ({ page, context }, info) => {
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width - GUTTER + 1);
 });
 
-test("the header title wraps at 200% text and the sync icon stays on screen", async ({
+test("a long header title wraps instead of being clipped, and the sync icon stays on screen", async ({
   page,
   context,
 }, info) => {
   if (info.project.name !== "phone") return;
   await devLogin(context, "111");
   await page.goto("/account");
-  await page.evaluate(() => {
-    document.documentElement.style.fontSize = "200%";
-  });
   const title = page.locator(".mm-page__header h1");
   await expect(title).toBeVisible();
+  const header = page.locator(".mm-page__header");
+  const before = (await header.boundingBox())?.height ?? 0;
+  await title.evaluate((el) => {
+    el.textContent = "A much longer title that cannot possibly fit on one line of a phone";
+  });
   const clipped = await title.evaluate((el) => el.scrollWidth > el.clientWidth);
   expect(clipped).toBe(false);
+  const after = (await header.boundingBox())?.height ?? 0;
+  expect(after).toBeGreaterThan(before);
+  expect(after).toBeGreaterThan(44);
   const icon = await page.locator(".mm-page__header button").last().boundingBox();
   const width = page.viewportSize()?.width ?? 0;
   expect(icon).not.toBeNull();
   expect((icon?.x ?? 0) + (icon?.width ?? 0)).toBeLessThanOrEqual(width);
   expect(icon?.x ?? -1).toBeGreaterThanOrEqual(0);
+  expect(icon?.width ?? 0).toBeGreaterThanOrEqual(44);
 });

@@ -1527,6 +1527,9 @@ a {
   position: relative;
   flex-wrap: nowrap;
   justify-content: center;
+  /* As wide as the column, so the icon sits in its middle whatever .mm-map-tools aligns to. */
+  flex: none;
+  width: 48px;
 }
 
 .mm-sync__icon {
@@ -1573,8 +1576,9 @@ a {
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  color: var(--color-on-primary);
-  background: var(--color-warning);
+  /* Text on bg is 15:1 light, 14:1 dark (warning on white was 4.4:1 / 4.0:1, under 4.5:1). */
+  color: var(--color-bg);
+  background: var(--color-text);
   border: 2px solid var(--color-bg);
   border-radius: var(--radius-pill);
   box-sizing: border-box;
