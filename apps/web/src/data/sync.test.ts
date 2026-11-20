@@ -375,8 +375,9 @@ describe("sync", () => {
       { rows: [pulled("visit_notes", note("n_late", "late"))], cursor: "c9", hasMore: false },
     ];
     const { pullAll } = await import("./sync");
+    const sent = server.headers.length;
     const late = pullAll(otherTab).catch((e: unknown) => e);
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => expect(server.headers.length).toBe(sent + 1));
     expect(await forgetAccountOnDevice(userId)).toBe("removed");
     answer();
     await late;
@@ -404,7 +405,7 @@ describe("sync", () => {
       { rows: [pulled("visit_notes", note(id, "server"))], cursor: "c9", hasMore: false },
     ];
     const late = syncNow();
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
     // Another tab got the answer first, then the data was removed from the device (as
     // forgetAccountOnDevice does: every table emptied, a new removal mark).
     const otherTab = defineUserDb(userId);
@@ -429,7 +430,7 @@ describe("sync", () => {
     });
     server.failPush = () => 400;
     const late = syncNow();
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
     // Another tab got the same refusal first and set the change aside.
     const otherTab = defineUserDb(userId);
     await otherTab.outbox.clear();
@@ -438,5 +439,6 @@ describe("sync", () => {
     const result = await late;
     expect(result.rejected).toBe(0);
     expect(await db.rejected.count()).toBe(0);
+    expect(server.headers).toHaveLength(2); // the refused push, then the pull
   });
 });

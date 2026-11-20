@@ -283,6 +283,11 @@ a {
   gap: var(--space-sm);
 }
 
+/* A live region kept mounted while empty (so it announces when filled) takes no gap. */
+.mm-stack > [role="status"]:empty {
+  margin-top: calc(-1 * var(--space-sm));
+}
+
 .mm-strong {
   font-weight: 600;
 }
