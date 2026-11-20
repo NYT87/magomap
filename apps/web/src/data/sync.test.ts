@@ -572,4 +572,44 @@ describe("sync", () => {
     expect(await db.rejected.count()).toBe(0);
     expect(server.headers).toHaveLength(2); // the refused push, then the pull
   });
+
+  it("remembers a full download a failed sync left unfinished, until its last page", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    const owed = async () => (await db.meta.get("fullPull")) !== undefined;
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: true },
+    ];
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await owed()).toBe(true);
+    // Resumed from its cursor: still owed until the last page is in.
+    server.failPullAt = null;
+    server.pullPages = [{ rows: [], cursor: "f2", hasMore: false }];
+    await pullAll(db);
+    expect(await owed()).toBe(false);
+  });
+
+  it("remembers the full download a newly added list starts", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: true },
+    ];
+    // The restarted, full download fails at once.
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await db.meta.get("fullPull")).toBeDefined();
+  });
+
+  it("an ordinary pull from a cursor owes no full download", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [{ rows: [], cursor: "c1", hasMore: true }];
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
 });

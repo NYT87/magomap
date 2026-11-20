@@ -10,9 +10,19 @@ export interface SyncStatus {
   lastSyncAt?: number;
 }
 
-/** True while a sync is running: rows of a list may still be arriving. */
-export function useSyncing(): boolean {
-  return useSyncExternalStore(subscribeSync, syncState).state === "syncing";
+/**
+ * Whether a list's places may still be on their way: "downloading" while a sync runs, "waiting"
+ * when a download of everything was cut off (a failed sync) and the next sync finishes it.
+ */
+export function useListArrival(): "downloading" | "waiting" | null {
+  const syncing = useSyncExternalStore(subscribeSync, syncState).state === "syncing";
+  const owed = useLiveQuery(
+    async () => (await currentDb().meta.get("fullPull")) !== undefined,
+    [],
+    false,
+  );
+  if (syncing) return "downloading";
+  return owed ? "waiting" : null;
 }
 
 export function useSyncStatus(): SyncStatus {

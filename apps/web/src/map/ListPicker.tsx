@@ -4,7 +4,7 @@ import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { SAVED_GROUP } from "../data/queries";
-import { useSyncing } from "../data/useSyncStatus";
+import { useListArrival } from "../data/useSyncStatus";
 import { providerUi } from "../providers";
 import { useMapPrefs } from "./mapPrefs";
 
@@ -119,7 +119,7 @@ function Section({ title, ids, children }: { title: string; ids: string[]; child
 export function ListPicker({ sections }: { sections: Sections }) {
   const { t } = useTranslation();
   const { showPrevious, setShowPrevious } = useMapPrefs();
-  const syncing = useSyncing();
+  const arrival = useListArrival();
   const ids = (ls: PickerList[]) => ls.map((l) => l.list.id);
   const row = (
     { list, count, color }: PickerList,
@@ -132,8 +132,8 @@ export function ListPicker({ sections }: { sections: Sections }) {
       name={list.name}
       detail={
         // A Kakao list just gained may arrive before its places: not "0 places" while they come.
-        (count === 0 && list.provider != null && syncing
-          ? t("picker.downloading")
+        (count === 0 && list.provider != null && arrival
+          ? t(arrival === "downloading" ? "picker.downloading" : "picker.downloadWaiting")
           : t("picker.count", { count })) +
         (opts.owner && list.ownerName ? ` · ${t("picker.by", { name: list.ownerName })}` : "")
       }

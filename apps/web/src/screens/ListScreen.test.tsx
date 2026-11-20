@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { ListScreen } from "./ListScreen";
 
-const sync = vi.hoisted(() => ({ syncing: false }));
-vi.mock("../data/useSyncStatus", () => ({ useSyncing: () => sync.syncing }));
+const sync = vi.hoisted(() => ({ arrival: null as "downloading" | "waiting" | null }));
+vi.mock("../data/useSyncStatus", () => ({ useListArrival: () => sync.arrival }));
 const { openUserDb } = await import("../data/db");
 
 const kakaoList: ListRow = {
@@ -38,12 +38,19 @@ describe("ListScreen", () => {
     const db = openUserDb("list-screen");
     await db.lists.put(kakaoList);
     await db.user_lists.put(access);
-    sync.syncing = true;
+    sync.arrival = "downloading";
     const view = render(<ListScreen id="l_kakao_1" />);
     expect(await screen.findByText("Still downloading this list's places…")).toBeInTheDocument();
     expect(screen.queryByText("No places in this list yet.")).toBeNull();
     view.unmount();
-    sync.syncing = false;
+    // A sync that failed partway.
+    sync.arrival = "waiting";
+    const waiting = render(<ListScreen id="l_kakao_1" />);
+    expect(
+      await screen.findByText("This list's places will download at the next sync."),
+    ).toBeInTheDocument();
+    waiting.unmount();
+    sync.arrival = null;
     render(<ListScreen id="l_kakao_1" />);
     expect(await screen.findByText("No places in this list yet.")).toBeInTheDocument();
   });

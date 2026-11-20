@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { ListPicker, type PickerList } from "./ListPicker";
 
-const sync = vi.hoisted(() => ({ syncing: false }));
-vi.mock("../data/useSyncStatus", () => ({ useSyncing: () => sync.syncing }));
+const sync = vi.hoisted(() => ({ arrival: null as "downloading" | "waiting" | null }));
+vi.mock("../data/useSyncStatus", () => ({ useListArrival: () => sync.arrival }));
 
 import { MapPrefsProvider } from "./mapPrefs";
 
@@ -112,21 +112,26 @@ describe("ListPicker", () => {
       ...sections,
       subscribed: [{ list: list("새 리스트", "kakao"), count: 0, color: "#2464ad" }],
     };
-    const view = (syncing: boolean) => {
-      sync.syncing = syncing;
+    const view = (arrival: "downloading" | "waiting" | null) => {
+      sync.arrival = arrival;
       return render(
         <MapPrefsProvider userId="u-dl">
           <ListPicker sections={arriving} />
         </MapPrefsProvider>,
       );
     };
-    const first = view(true);
+    const first = view("downloading");
     const group = () => screen.getByRole("group", { name: "Subscribed in Kakao" });
     expect(group()).toHaveTextContent("Downloading…");
     expect(group()).not.toHaveTextContent("0 places");
     first.unmount();
-    view(false);
+    // A sync that failed partway: the list isn't empty, it just hasn't arrived yet.
+    const second = view("waiting");
+    expect(group()).toHaveTextContent("Downloads at the next sync");
+    expect(group()).not.toHaveTextContent("0 places");
+    second.unmount();
+    view(null);
     expect(group()).toHaveTextContent("0 places");
-    sync.syncing = false;
+    sync.arrival = null;
   });
 });

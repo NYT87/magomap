@@ -259,6 +259,13 @@ export async function pullAll(
         }
         if (restart) await db.meta.delete("cursor");
         else await db.meta.put({ key: "cursor", value: page.cursor });
+        // A download of everything (no cursor, or restarted for a new list) is remembered until
+        // its last page is in, so a list still arriving after a failed sync doesn't say "empty".
+        if (restart || (q === "" && page.hasMore)) {
+          await db.meta.put({ key: "fullPull", value: Date.now() });
+        } else if (!page.hasMore) {
+          await db.meta.delete("fullPull");
+        }
       },
     );
     if (restart) {
