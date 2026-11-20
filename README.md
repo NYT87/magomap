@@ -51,6 +51,8 @@ To run the API locally with sample data, see "Local development" in [docs/deploy
 
 See [docs/deploy.md](docs/deploy.md). It covers D1 or Postgres, the Kakao Developers setup, secrets, and rollback.
 
+Production is deployed only by releases: merging the Release Please PR deploys that version (see "Releases" in [docs/deploy.md](docs/deploy.md)).
+
 ## Brand
 
 The colours, type, voice and logo are in [docs/brand-guidelines.md](docs/brand-guidelines.md). The logo files and app icons are in [`assets/brand/`](assets/brand/), and the banners are in [`assets/banners/launch/`](assets/banners/launch/).

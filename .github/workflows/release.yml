@@ -1,0 +1,241 @@
+name: Release
+
+# Release Please keeps a release PR open on main. Merging it creates the release
+# (tag magomap-vX.Y.Z), and only then is that release deployed to Cloudflare.
+# A manual run (workflow_dispatch) redeploys an existing release tag, for retrying a failed deploy.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy, e.g. magomap-v0.2.0
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    # A root (".") component's outputs are top-level:
+    # https://github.com/googleapis/release-please-action/blob/45996ed1f6d02564a971a2fa1b5860e934307cf7/README.md#root-component-outputs
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      # Pinned to the commit SHA of releases at least 14 days old.
+      - name: Create or update the release PR and the release
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # PRs opened with GITHUB_TOKEN don't trigger workflows, so CI is dispatched on the release
+      # PR's branch for visibility. Skipped when a release was just created, so it can never
+      # hold back that release's deploy.
+      - name: Dispatch CI for the open release PR
+        if: ${{ steps.release.outputs.release_created != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Release Please's branch for this repo's single component "magomap" on main.
+          branch_pattern='^release-please--branches--main(--components--magomap)?$'
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(-H 'Accept: application/vnd.github+json' -H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_branch="$(curl --fail --silent --show-error "${headers[@]}" "$api/pulls?state=open&base=main&per_page=100" |
+            jq -r --arg pattern "$branch_pattern" --arg repo "$GITHUB_REPOSITORY" \
+              '[.[] | select(.head.repo.full_name == $repo and (.head.ref | test($pattern)))][0].head.ref // empty')"
+          if [ -z "$release_branch" ]; then
+            echo 'No open Release Please PR to verify.'
+            exit 0
+          fi
+
+          jq -n --arg ref "$release_branch" '{ref: $ref}' |
+            curl --fail --silent --show-error "${headers[@]}" \
+              --request POST \
+              --header 'Content-Type: application/json' \
+              --data-binary @- \
+              "$api/actions/workflows/ci.yml/dispatches"
+          echo "Dispatched CI on $release_branch."
+
+  deploy:
+    needs: release-please
+    # On push: only when Release Please has just created a release. On a manual run: always,
+    # and the first step refuses anything that isn't a released magomap tag.
+    if: >-
+      ${{ !cancelled() && (
+        (github.event_name == 'push' && needs.release-please.result == 'success' &&
+          needs.release-please.outputs.release_created == 'true') ||
+        github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: magomap
+          POSTGRES_PASSWORD: magomap
+          POSTGRES_DB: magomap_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U magomap"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      TEST_DATABASE_URL: postgres://magomap:magomap@localhost:5432/magomap_test
+      HEALTH_URL: https://magomap.jmn8718.workers.dev/api/health
+    steps:
+      - name: Resolve and guard the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ needs.release-please.outputs.tag_name }}
+          PUSH_SHA: ${{ needs.release-please.outputs.sha }}
+          PUSH_VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          tag_pattern='^magomap-v[0-9]+\.[0-9]+\.[0-9]+$'
+
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            [ "$GITHUB_REF" = refs/heads/main ] || fail "Run this workflow from main, not $GITHUB_REF."
+            tag="$INPUT_TAG"
+            [[ "$tag" =~ $tag_pattern ]] || fail "The tag must look like magomap-vX.Y.Z."
+            # The release must exist, be published, and have been created by Release Please.
+            release="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,author)" ||
+              fail "There is no release for $tag."
+            [ "$(jq -r '.tagName' <<< "$release")" = "$tag" ] || fail "The release is not tagged $tag."
+            [ "$(jq -r '.isDraft' <<< "$release")" = false ] || fail "The release for $tag is a draft."
+            [ "$(jq -r '.author.login' <<< "$release")" = 'github-actions[bot]' ] ||
+              fail "The release for $tag was not created by Release Please."
+            # The SHA is the commit the tag points to (peeling an annotated tag).
+            ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag")" || fail "The tag $tag does not exist."
+            type="$(jq -r '.object.type' <<< "$ref")"
+            sha="$(jq -r '.object.sha' <<< "$ref")"
+            if [ "$type" = tag ]; then
+              object="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq '.object')"
+              type="$(jq -r '.type' <<< "$object")"
+              sha="$(jq -r '.sha' <<< "$object")"
+            fi
+            [ "$type" = commit ] || fail "The tag $tag does not point to a commit."
+            version="${tag#magomap-v}"
+          else
+            tag="$PUSH_TAG"
+            sha="$PUSH_SHA"
+            version="$PUSH_VERSION"
+            [[ "$tag" =~ $tag_pattern ]] || fail "Release Please created an unexpected tag: $tag."
+            [ "$tag" = "magomap-v$version" ] || fail "The tag $tag does not match version $version."
+          fi
+
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "The release commit is not a full SHA: $sha."
+          # Released commits are on main.
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/${sha}...main" --jq '.status')"
+          [ "$status" = ahead ] || [ "$status" = identical ] || fail "The commit $sha is not on main."
+
+          {
+            echo "tag=$tag"
+            echo "sha=$sha"
+            echo "sha7=${sha:0:7}"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "Deploying $tag ($sha)."
+
+      # Pinned to the commit SHA of releases at least 14 days old.
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # No dependency cache in the job that holds the Cloudflare token.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Checks (the same commands as the gate and CI)
+        run: bash scripts/checks.sh
+
+      - name: Record a D1 Time Travel bookmark
+        working-directory: apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          info="$(pnpm exec wrangler d1 time-travel info magomap --env d1 --json)"
+          bookmark="$(jq -er '.bookmark' <<< "$info")"
+          {
+            echo "## D1 bookmark before $TAG"
+            echo
+            echo "\`$bookmark\` (taken $(date -u +%FT%TZ), before migrations)"
+            echo
+            echo "To restore: \`wrangler d1 time-travel restore magomap --env d1 --bookmark=$bookmark\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm db:migrate:d1 --remote
+
+      - name: Build and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: bash scripts/deploy-release.sh "$VERSION" "$SHA"
+
+      - name: Check the deployed version
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          SHA7: ${{ steps.release.outputs.sha7 }}
+        run: |
+          set -euo pipefail
+          # A new deployment can take a few seconds to reach every location.
+          health=''
+          for attempt in 1 2 3 4 5 6; do
+            health="$(curl -fsS --max-time 10 "$HEALTH_URL")" || health=''
+            if [ "$(jq -r '.commit // empty' <<< "$health" 2>/dev/null)" = "$SHA7" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 10; fi
+          done
+          {
+            echo "## Health after $TAG"
+            echo
+            echo '```json'
+            echo "${health:-(no response)}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          commit="$(jq -r '.commit // empty' <<< "$health" 2>/dev/null || true)"
+          if [ "$commit" != "$SHA7" ]; then
+            echo "::error::$HEALTH_URL reports commit '${commit}', expected $SHA7."
+            exit 1
+          fi
+          echo "$HEALTH_URL reports $SHA7."

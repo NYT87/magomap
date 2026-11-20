@@ -2,6 +2,32 @@
 
 magomap is one Cloudflare Worker that serves the API (and, once the app is built, the PWA). Its database is **D1** (SQLite) or **Postgres** through **Hyperdrive**. Choose one per deployment; the code is the same.
 
+## Releases
+
+Production changes **only when a release is made**. Pushing to `main` deploys nothing.
+
+1. Write commits as conventional commits (`feat:`, `fix:`, `docs:`, …). **Release Please** (`.github/workflows/release.yml`) keeps a release PR open on `main` with the next version and the changelog. The version is the root `package.json` version: one version for the app and the API.
+2. The workflow runs CI on that PR (PRs opened by Actions don't start CI on their own). Merge the PR when it's green.
+3. Merging creates the release, tagged `magomap-v<version>`, and the `deploy` job deploys **that** commit. In order, it:
+   - runs `scripts/checks.sh`, the same checks as CI;
+   - writes a D1 Time Travel bookmark to the job summary;
+   - applies the D1 migrations (`pnpm db:migrate:d1 --remote`);
+   - builds and deploys with `scripts/deploy-release.sh <version> <sha>`, which gives the app and the Worker the same version, commit and build time;
+   - checks that `/api/health` reports the release's commit.
+
+   Any failing step stops the deploy.
+4. Check **Account → About**: the app and server lines show the new version.
+
+**A failed deploy:** first re-run the failed job. Otherwise run the **Release** workflow by hand (Actions → Release → Run workflow, from `main`) with the tag, e.g. `magomap-v0.2.0`. It refuses anything that isn't a release created by Release Please on a commit on `main`.
+
+**Rolling back:** `npx wrangler rollback --env d1`, or the Worker's Deployments page. For the data, restore the bookmark in the job summary: `npx wrangler d1 time-travel restore magomap --env d1 --bookmark=<bookmark>`.
+
+**One-time setup (owner):**
+- GitHub → Settings → Actions → General: allow GitHub Actions to create pull requests.
+- GitHub → Settings → Environments: create `production`, limited to the `main` branch. Add the secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts edit, D1 edit) and `CLOUDFLARE_ACCOUNT_ID`.
+
+The rest of this page sets up a deployment from scratch.
+
 Requirements: Node 22, pnpm (the version in `package.json`), a Cloudflare account, and `npx wrangler login`.
 
 ## 1. Choose the database
@@ -79,12 +105,16 @@ npx wrangler secret put SIGNING_SECRET --env d1          # signs search results:
 
 Set **the same** `MAGOMAP_IMPORT_SECRET` on the kakao-list server. Generate real secrets; never reuse the values in `.dev.vars.example`.
 
-## 5. Deploy
+## 5. Emergency deploy
+
+Releases deploy themselves (see "Releases" above). Deploying by hand is **not the normal path**: only for the first deployment, an emergency, or Postgres, which CI doesn't deploy.
 
 ```bash
 pnpm deploy:d1        # builds the app, then deploys; or: pnpm deploy:postgres
-curl https://<your-domain>/api/health   # → {"ok":true,"db":"d1"}
+curl https://<your-domain>/api/health   # → {"ok":true,"db":"d1","version":"dev","commit":"unknown",…}
 ```
+
+A hand deploy reports version `dev` and commit `unknown` from the server, so it is easy to tell apart from a release.
 
 To roll back, run `npx wrangler rollback --env d1`, or use the Worker's Deployments page.
 
