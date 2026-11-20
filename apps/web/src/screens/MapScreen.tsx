@@ -50,34 +50,36 @@ export function MapScreen() {
       <MapView data={data} />
       {phoneRoot && (
         <>
-          <div className="mm-map-top">
-            <SearchBar />
-          </div>
-          <div className="mm-map-tools">
-            <SyncIndicator compact />
-            <button type="button" className="mm-fab" onClick={() => navigate("/lists")}>
-              <Layers aria-hidden size={22} strokeWidth={1.75} />
-              <span className="mm-visually-hidden">{t("map.layers")}</span>
-            </button>
-            <button type="button" className="mm-fab" onClick={locate}>
-              <LocateFixed aria-hidden size={22} strokeWidth={1.75} />
-              <span className="mm-visually-hidden">{t("map.myLocation")}</span>
-            </button>
-            <button
-              type="button"
-              className="mm-fab"
-              aria-pressed={asList}
-              onClick={() => setAsList((v) => !v)}
-            >
-              {asList ? (
-                <MapIcon aria-hidden size={22} strokeWidth={1.75} />
-              ) : (
-                <ListIcon aria-hidden size={22} strokeWidth={1.75} />
-              )}
-              <span className="mm-visually-hidden">
-                {asList ? t("map.mapView") : t("map.listView")}
-              </span>
-            </button>
+          <div className="mm-map-overlay">
+            <div className="mm-map-top">
+              <SearchBar />
+            </div>
+            <div className="mm-map-tools">
+              <SyncIndicator compact />
+              <button type="button" className="mm-fab" onClick={() => navigate("/lists")}>
+                <Layers aria-hidden size={22} strokeWidth={1.75} />
+                <span className="mm-visually-hidden">{t("map.layers")}</span>
+              </button>
+              <button type="button" className="mm-fab" onClick={locate}>
+                <LocateFixed aria-hidden size={22} strokeWidth={1.75} />
+                <span className="mm-visually-hidden">{t("map.myLocation")}</span>
+              </button>
+              <button
+                type="button"
+                className="mm-fab"
+                aria-pressed={asList}
+                onClick={() => setAsList((v) => !v)}
+              >
+                {asList ? (
+                  <MapIcon aria-hidden size={22} strokeWidth={1.75} />
+                ) : (
+                  <ListIcon aria-hidden size={22} strokeWidth={1.75} />
+                )}
+                <span className="mm-visually-hidden">
+                  {asList ? t("map.mapView") : t("map.listView")}
+                </span>
+              </button>
+            </div>
           </div>
           <div className="mm-map-notes">
             <div className="mm-map-notes__live" aria-live="polite">

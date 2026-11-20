@@ -644,27 +644,40 @@ a {
   --mm-tools-width: 64px;
 }
 
-.mm-map-top {
+/* The phone's search bar and map buttons share one column, so the buttons always start below the
+   search bar, however tall it gets with larger text. */
+.mm-map-overlay {
   position: absolute;
   top: calc(var(--space-sm) + env(safe-area-inset-top));
   left: var(--space-md);
   right: var(--space-md);
   z-index: 510;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  pointer-events: none;
+}
+
+.mm-map-top {
+  position: relative;
+  z-index: 510;
+  pointer-events: auto;
 }
 
 .mm-map-tools {
-  position: absolute;
-  top: calc(var(--space-sm) + 48px + var(--space-sm) + env(safe-area-inset-top));
-  right: var(--space-md);
   z-index: 500;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-sm);
+  align-self: flex-end;
+  pointer-events: auto;
 }
 
 .mm-shell--desktop .mm-map-tools {
+  position: absolute;
   top: var(--space-md);
+  right: var(--space-md);
 }
 
 .mm-fab {
@@ -1030,7 +1043,17 @@ a {
   gap: var(--space-sm);
 }
 
+/* The results float over the map buttons below, as they always have, instead of pushing them down. */
+.mm-map-top .mm-search {
+  position: relative;
+}
+
 .mm-map-top .mm-search__results {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  margin-top: var(--space-sm);
   max-height: 60dvh;
   overflow-y: auto;
   padding: var(--space-sm) var(--space-md);
@@ -1493,10 +1516,9 @@ a {
   min-width: 0;
 }
 
+/* A long list name wraps onto more lines; larger text must never cut it off. */
 .mm-list-row__link .mm-switch__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .mm-switch--bare {

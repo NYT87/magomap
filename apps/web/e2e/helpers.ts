@@ -45,3 +45,10 @@ export async function setRootSize(page: Page, px: number) {
     document.documentElement.style.fontSize = `${size}px`;
   }, px);
 }
+
+/** Stores the app's language choice (read at start-up), before the next page load. */
+export async function setLanguage(page: Page, lang: "en" | "ko") {
+  await page.addInitScript((value) => {
+    localStorage.setItem("mm.lang", value);
+  }, lang);
+}
