@@ -27,6 +27,8 @@ Small change to the magomap PWA (apps/web), agreed with the owner on 2026-11-20.
 
 6. **The Account card shows who you are** (owner's request, 2026-11-20). Only the name, as the card's heading ("카카오 계정 / Kakao account" when Kakao gave none). The "Kakao login connected" and "Google coming later" lines go, since Kakao is the only sign-in. "Signed in as…" goes too, because only signed-in people see Account.
 
+7. **Account actions are buttons** (owner's request, 2026-11-20). Sign out, Sign out on every device and Delete account are all outlined buttons (Delete in red), never plain text. On desktop, when the side panel has room, that group sits at the bottom of the panel; on the phone it stays in the flow.
+
 ## Non-goals
 
 - Syncing visibility between devices. It stays as today: remembered per account on each device (`mapPrefs`, localStorage).
