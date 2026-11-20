@@ -364,43 +364,67 @@ describe("Account", () => {
 
   describe("remove my data from this device", () => {
     const keys = ["mm.visibleLists.u1", "mm.showPrevious.u1", "mm.mapProvider.u1", "mm.name.u1"];
-    /** The account's database on this device: empty queues unless rows are given. */
+    const draft = { key: "new:p", visitedOn: null, body: "비밀 메모", updatedAt: 1 };
+    /** The account's database on this device, with a draft, and queues as given. */
     const seedDevice = async (rows: { outbox?: number; rejected?: number } = {}) => {
-      const db = new Dexie("magomap-u1");
-      db.version(1).stores({ outbox: "++seq", rejected: "mutationId" });
-      await db.open();
-      for (let i = 0; i < (rows.outbox ?? 0); i++) await db.table("outbox").add({ id: `o${i}` });
-      for (let i = 0; i < (rows.rejected ?? 0); i++) {
-        await db.table("rejected").add({ mutationId: `r${i}` });
+      // A fresh database each time: earlier tests leave queued and refused changes behind.
+      closeUserDb("u1");
+      await Dexie.delete("magomap-u1");
+      const db = openUserDb("u1");
+      await db.drafts.put(draft);
+      for (let i = 0; i < (rows.outbox ?? 0); i++) {
+        await db.outbox.add({
+          mutationId: `m${i}`,
+          table: "visit_notes",
+          id: `n${i}`,
+          op: "delete",
+          clientUpdatedAt: 1,
+        });
       }
-      db.close();
+      for (let i = 0; i < (rows.rejected ?? 0); i++) {
+        await db.rejected.put({
+          mutationId: `r${i}`,
+          table: "visit_notes",
+          id: `n${i}`,
+          op: "delete",
+          reason: "invalid",
+          at: 1,
+        });
+      }
       for (const k of keys) localStorage.setItem(k, "x");
       localStorage.setItem("mm.lang", "en");
     };
     const leftOnDevice = () => keys.filter((k) => localStorage.getItem(k) !== null);
+    const draftsLeft = async () => {
+      const db = openUserDb("u1");
+      const n = await db.drafts.count();
+      closeUserDb("u1");
+      return n;
+    };
+    const check = () =>
+      screen.getByRole("checkbox", { name: "Also remove my data from this device" });
 
     it("removes this account's data from the device when asked", async () => {
       await i18n.changeLanguage("en");
       await seedDevice();
+      window.history.pushState(null, "", "/account");
       const user = userEvent.setup();
       renderAccount({ unsynced: 0 });
-      await user.click(
-        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
-      );
+      await user.click(check());
       await user.click(screen.getByRole("button", { name: "Sign out" }));
-      await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+      expect(await draftsLeft()).toBe(0);
       expect(leftOnDevice()).toEqual([]);
       expect(localStorage.getItem("mm.lang")).toBe("en");
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("removed");
     });
 
     it('keeps the data when changes are unsynced, even after "Sign out anyway"', async () => {
       await i18n.changeLanguage("en");
-      await seedDevice();
+      await seedDevice({ outbox: 2 });
       const user = userEvent.setup();
       renderAccount({ unsynced: 2, syncNow: vi.fn(async () => {}) });
-      await user.click(
-        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
-      );
+      await user.click(check());
       await user.click(screen.getByRole("button", { name: "Sign out" }));
       const dialog = await screen.findByRole("alertdialog");
       expect(dialog).toHaveTextContent(
@@ -410,49 +434,8 @@ describe("Account", () => {
       await waitFor(() =>
         expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
       );
-      expect(await Dexie.exists("magomap-u1")).toBe(true);
+      expect(await draftsLeft()).toBe(1);
       expect(leftOnDevice()).toEqual(keys);
-    });
-
-    it("keeps the data by default", async () => {
-      await i18n.changeLanguage("en");
-      await seedDevice();
-      const user = userEvent.setup();
-      renderAccount({ unsynced: 0 });
-      expect(
-        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
-      ).not.toBeChecked();
-      await user.click(screen.getByRole("button", { name: "Sign out" }));
-      await waitFor(() =>
-        expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
-      );
-      expect(await Dexie.exists("magomap-u1")).toBe(true);
-    });
-
-    it("still signs out when something keeps the database open", async () => {
-      await i18n.changeLanguage("en");
-      await seedDevice();
-      // A connection that never lets go (another tab, say): the deletion has to wait for it.
-      const held = await new Promise<IDBDatabase>((ok) => {
-        const r = indexedDB.open("magomap-u1");
-        r.onsuccess = () => ok(r.result);
-      });
-      window.history.pushState(null, "", "/account");
-      const user = userEvent.setup();
-      renderAccount({ unsynced: 0 });
-      await user.click(
-        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
-      );
-      await user.click(screen.getByRole("button", { name: "Sign out" }));
-      await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 6_000 });
-      // What the device remembers for the account is gone already; the database follows,
-      // marked so it's retried, and the sign-in screen is told it's still being removed.
-      expect(leftOnDevice()).toEqual([]);
-      expect(JSON.parse(localStorage.getItem("mm.pendingRemoval") ?? "[]")).toEqual(["u1"]);
-      expect(sessionStorage.getItem("mm.removeResult")).toBe("pending");
-      held.close();
-      await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
-      await waitFor(() => expect(localStorage.getItem("mm.pendingRemoval")).toBeNull());
     });
 
     it("keeps the data when sign-out's own sync leaves a refused change", async () => {
@@ -467,14 +450,43 @@ describe("Account", () => {
         syncNow: vi.fn(async () => {}),
         countUnsynced: vi.fn(async () => 0),
       });
-      await user.click(
-        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
-      );
+      await user.click(check());
       await user.click(screen.getByRole("button", { name: "Sign out" }));
       await waitFor(() => expect(window.location.pathname).toBe("/signin"));
-      expect(await Dexie.exists("magomap-u1")).toBe(true);
+      expect(await draftsLeft()).toBe(1);
       expect(leftOnDevice()).toEqual(keys);
       expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
+    });
+
+    it("keeps the data by default", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      expect(check()).not.toBeChecked();
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
+      );
+      expect(await draftsLeft()).toBe(1);
+    });
+
+    it("signs out and removes the data even while another tab has the database open", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      // Another tab's connection: removing the data mustn't wait for it to go away.
+      const held = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1");
+        r.onsuccess = () => ok(r.result);
+      });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+      expect(await draftsLeft()).toBe(0);
+      held.close();
     });
 
     it("keeps the data when the server sign-out fails", async () => {
@@ -483,12 +495,10 @@ describe("Account", () => {
       answerOnce("/api/auth/logout", () => Promise.reject(new Error("boom")));
       const user = userEvent.setup();
       renderAccount({ unsynced: 0 });
-      await user.click(
-        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
-      );
+      await user.click(check());
       await user.click(screen.getByRole("button", { name: "Sign out" }));
       expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't reach the server/);
-      expect(await Dexie.exists("magomap-u1")).toBe(true);
+      expect(await draftsLeft()).toBe(1);
     });
   });
 });

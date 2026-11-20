@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import Dexie from "dexie";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 
@@ -30,17 +29,11 @@ describe("SignIn", () => {
     );
   });
 
-  it("finishes removing data it couldn't remove before", async () => {
+  it("says when the data was removed", async () => {
     await i18n.changeLanguage("en");
-    const db = new Dexie("magomap-u9");
-    db.version(1).stores({ outbox: "++seq" });
-    await db.open();
-    db.close();
-    localStorage.setItem("mm.pendingRemoval", JSON.stringify(["u9"]));
-    sessionStorage.setItem("mm.removeResult", "pending");
+    sessionStorage.setItem("mm.removeResult", "removed");
     render(<SignIn />);
-    expect(screen.getByRole("status")).toHaveTextContent(/still being removed/);
-    await vi.waitFor(async () => expect(await Dexie.exists("magomap-u9")).toBe(false));
-    await vi.waitFor(() => expect(localStorage.getItem("mm.pendingRemoval")).toBeNull());
+    expect(await screen.findByText("Your data was removed from this device.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Your data was removed from this device.");
   });
 });

@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { useConfig } from "../auth/useConfig";
-import { REMOVE_RESULT, retryPendingRemovals } from "../data/db";
+import { REMOVE_RESULT } from "../data/db";
 
 export function SignIn() {
   const { t } = useTranslation();
@@ -10,7 +10,8 @@ export function SignIn() {
   const [userId, setUserId] = useState("");
   const [name, setName] = useState("");
   const [failed, setFailed] = useState(false);
-  // How "remove my data" went at sign-out, shown once; a removal that didn't finish is retried.
+  // How "remove my data" went at sign-out, read once. It's put into the (already present)
+  // status region after the first render, so screen readers announce it.
   const [removal] = useState(() => {
     try {
       const result = sessionStorage.getItem(REMOVE_RESULT);
@@ -20,17 +21,11 @@ export function SignIn() {
       return null;
     }
   });
+  const [announced, setAnnounced] = useState<string | null>(null);
   useEffect(() => {
-    void retryPendingRemovals();
-  }, []);
-  const removalKey =
-    removal === "removed"
-      ? "signin.removed"
-      : removal === "kept"
-        ? "signin.removeKept"
-        : removal === "pending"
-          ? "signin.removePending"
-          : null;
+    if (removal === "removed") setAnnounced("signin.removed");
+    else if (removal === "kept") setAnnounced("signin.removeKept");
+  }, [removal]);
 
   const devLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -52,11 +47,9 @@ export function SignIn() {
         <img src="/icons/favicon.svg" alt="" width={64} height={64} className="mm-welcome__mark" />
         <h1 className="mm-welcome__title">{t("signin.title")}</h1>
         <p className="mm-welcome__lead">{t("signin.lead")}</p>
-        {removalKey && (
-          <p className="mm-note" role="status">
-            {t(removalKey)}
-          </p>
-        )}
+        <p className={announced ? "mm-note" : "mm-visually-hidden"} role="status">
+          {announced ? t(announced) : ""}
+        </p>
         <a className="mm-button mm-button--primary mm-button--wide" href="/api/auth/kakao/start">
           {t("signin.kakao")}
         </a>
