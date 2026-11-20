@@ -1,7 +1,13 @@
 import "fake-indexeddb/auto";
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
+
+// findBy*/waitFor give up after 1 s by default. A screen's first render waits on IndexedDB
+// (fake-indexeddb) and live queries, which can take longer when the gate runs on a busy machine,
+// so those waits failed at random. Waiting longer costs nothing when the element appears; a
+// test that expects something NOT to appear passes its own short `timeout`.
+configure({ asyncUtilTimeout: 5_000 });
 
 afterEach(() => {
   cleanup();
