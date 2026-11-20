@@ -2,13 +2,18 @@ import type { Env } from "../env";
 
 export class KakaoError extends Error {}
 
-/** https://developers.kakao.com/docs/latest/en/kakaologin/rest-api */
-export function authorizeUrl(env: Env, state: string): string {
+/**
+ * https://developers.kakao.com/docs/latest/en/kakaologin/rest-api
+ * `forceLogin` adds `prompt=login`: Kakao shows its login screen even when the browser is still
+ * logged in to someone's Kakao account (https://developers.kakao.com/docs/en/kakaologin/rest-api#request-code).
+ */
+export function authorizeUrl(env: Env, state: string, opts: { forceLogin?: boolean } = {}): string {
   const url = new URL("https://kauth.kakao.com/oauth/authorize");
   url.searchParams.set("client_id", env.KAKAO_REST_API_KEY);
   url.searchParams.set("redirect_uri", env.KAKAO_REDIRECT_URI);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);
+  if (opts.forceLogin) url.searchParams.set("prompt", "login");
   return url.toString();
 }
 

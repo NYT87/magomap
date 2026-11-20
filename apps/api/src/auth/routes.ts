@@ -54,7 +54,9 @@ authRoutes.get("/auth/kakao/start", (c) => {
     path: "/api/auth",
     maxAge: 600,
   });
-  return c.redirect(authorizeUrl(c.env, state), 302);
+  // "A different Kakao account": make Kakao ask, instead of reusing the browser's Kakao login.
+  const forceLogin = c.req.query("account") === "other";
+  return c.redirect(authorizeUrl(c.env, state, { forceLogin }), 302);
 });
 
 authRoutes.get("/auth/kakao/callback", async (c) => {

@@ -481,6 +481,15 @@ a {
   line-height: 1.65;
 }
 
+/* "Sign in with a different Kakao account": a quiet link under the main button. */
+.mm-welcome__alt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  text-decoration: none;
+}
+
 /* ---------- Map ---------- */
 
 .mm-mapview,

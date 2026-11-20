@@ -18,7 +18,8 @@
     "devUser": "카카오 사용자 ID",
     "devName": "닉네임",
     "devSubmit": "로그인",
-    "devFailed": "로그인하지 못했어요. ID를 확인하고 다시 시도해 주세요."
+    "devFailed": "로그인하지 못했어요. ID를 확인하고 다시 시도해 주세요.",
+    "otherAccount": "다른 카카오 계정으로 로그인"
   },
   "notInvited": {
     "title": "지금은 초대받은 분만 쓸 수 있어요",

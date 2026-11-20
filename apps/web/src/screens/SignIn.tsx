@@ -33,6 +33,10 @@ export function SignIn() {
         <a className="mm-button mm-button--primary mm-button--wide" href="/api/auth/kakao/start">
           {t("signin.kakao")}
         </a>
+        {/* Another person on this device: Kakao would otherwise reuse the browser's Kakao login. */}
+        <a className="mm-link-button mm-welcome__alt" href="/api/auth/kakao/start?account=other">
+          {t("signin.otherAccount")}
+        </a>
         {config?.devLoginEnabled && (
           <form className="mm-card mm-stack" onSubmit={devLogin}>
             <h2 className="mm-h4">{t("signin.devTitle")}</h2>

@@ -219,4 +219,32 @@ describe("dev login, health and config", () => {
       expect((await call("/api/me", patch("", { displayName: "x" }))).status).toBe(401);
     });
   });
+
+  it("start asks Kakao for a fresh login only when asked", async () => {
+    const at = async (path: string) => {
+      const res = await call(path);
+      expect(res.status).toBe(302);
+      return new URL(res.headers.get("location") ?? "");
+    };
+    const plain = await at("/api/auth/kakao/start");
+    const other = await at("/api/auth/kakao/start?account=other");
+    expect(other.searchParams.get("prompt")).toBe("login");
+    for (const key of ["client_id", "redirect_uri", "response_type"]) {
+      expect(other.searchParams.get(key)).toBe(plain.searchParams.get(key));
+    }
+    expect(other.searchParams.get("state")).toBeTruthy();
+    // Nothing else is added, and any other value means a normal sign-in.
+    expect([...other.searchParams.keys()].sort()).toEqual(
+      ["client_id", "prompt", "redirect_uri", "response_type", "state"].sort(),
+    );
+    for (const path of [
+      "/api/auth/kakao/start",
+      "/api/auth/kakao/start?account=me",
+      "/api/auth/kakao/start?account=other&prompt=none",
+    ]) {
+      const url = await at(path);
+      if (path.endsWith("prompt=none")) expect(url.searchParams.get("prompt")).toBe("login");
+      else expect(url.searchParams.has("prompt")).toBe(false);
+    }
+  });
 });
