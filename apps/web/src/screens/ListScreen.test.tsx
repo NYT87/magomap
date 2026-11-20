@@ -66,4 +66,17 @@ describe("ListScreen", () => {
     expect(await screen.findByText("No places in this list yet.")).toBeInTheDocument();
     sync.arrival = null;
   });
+
+  it("says nothing for an empty Kakao list until it knows whether places are owed", async () => {
+    await i18n.changeLanguage("en");
+    const db = openUserDb("list-screen-unknown");
+    await db.lists.put(kakaoList);
+    await db.user_lists.put(access);
+    sync.arrival = "unknown";
+    render(<ListScreen id="l_kakao_1" />);
+    expect(await screen.findByRole("heading", { name: "아내의 맛집" })).toBeInTheDocument();
+    expect(screen.queryByText("No places in this list yet.")).toBeNull();
+    expect(screen.queryByText(/download/i)).toBeNull();
+    sync.arrival = null;
+  });
 });

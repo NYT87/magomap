@@ -245,23 +245,27 @@ export async function pullAll(
     }
     let restart = false;
     // Another tab moved the cursor while this page was on its way (its own pull, or a restart for
-    // a new list): keep the rows, but pull again from where the cursor is now.
+    // a new list). The tables already hold everything up to that cursor (a cursor is only ever
+    // stored with its rows), and this page's rows may be older: drop the page, and pull again
+    // from where the cursor is now.
     let moved = false;
     await db.transaction(
       "rw",
       [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
       async () => {
         if ((await removalMark(db)) !== since) throw new Stop("needs_signin");
+        if ((await db.meta.get("cursor"))?.value !== cursor) {
+          moved = true;
+          return;
+        }
         const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
         for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
           // A local change still on its way wins over what the server had.
           if (pending.has(`${table}:${row.id}`)) continue;
-          if (mayRestart && !restart) restart = await gainsAccess(db, table, row);
+          if (mayRestart && q !== "" && !restart) restart = await gainsAccess(db, table, row);
           await db.table(table).put(row);
           pulled += 1;
         }
-        moved = !restart && (await db.meta.get("cursor"))?.value !== cursor;
-        if (moved) return;
         if (restart) await db.meta.delete("cursor");
         else await db.meta.put({ key: "cursor", value: page.cursor });
         // A download of everything (no cursor, or restarted for a new list) is remembered until

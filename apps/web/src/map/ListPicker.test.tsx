@@ -136,6 +136,8 @@ describe("ListPicker", () => {
     const third = view("unknown");
     expect(group()).not.toHaveTextContent("0 places");
     expect(group()).not.toHaveTextContent("Downloads at the next sync");
+    expect(group()).toHaveTextContent("by 지은");
+    expect(group()).not.toHaveTextContent("· ");
     third.unmount();
     view(null);
     expect(group()).toHaveTextContent("0 places");

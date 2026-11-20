@@ -662,4 +662,29 @@ describe("sync", () => {
     expect((await db.meta.get("cursor"))?.value).toBe("f1");
     expect(await db.meta.get("fullPull")).toBeUndefined();
   });
+
+  it("drops a page another tab overtook, keeping the newer rows it stored", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [pulled("visit_notes", note("n1", "old", 5))], cursor: "c1", hasMore: false },
+      { rows: [], cursor: "c6", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab pulled further meanwhile and stored the note's newer version.
+    await db.visit_notes.put(note("n1", "new", 9));
+    await db.meta.put({ key: "cursor", value: "c5" });
+    server.pullGate = null;
+    answer();
+    await late;
+    expect((await db.visit_notes.get("n1"))?.body).toBe("new");
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull?cursor=c5"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("c6");
+  });
 });
