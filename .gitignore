@@ -12,3 +12,6 @@ graft/
 # Local env files (secrets) and editor swap files
 .env*.local
 *.swp
+
+# Git worktrees made by Claude Code
+.claude/worktrees/
