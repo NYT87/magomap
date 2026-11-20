@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
+import { MAP_CHOICES, type MapChoice } from "./providerChoice";
 
 interface MapPrefs {
   /** Lists (and the saved group) the user turned off; everything else shows. */
@@ -6,6 +7,12 @@ interface MapPrefs {
   setVisible: (ids: string[], visible: boolean) => void;
   showPrevious: boolean;
   setShowPrevious: (on: boolean) => void;
+  /** Which map to show: Automatic (by where the map is), Kakao or OpenStreetMap. */
+  mapChoice: MapChoice;
+  setMapChoice: (choice: MapChoice) => void;
+  /** Whether Kakao Map loaded on this page; null until the map has tried. Not stored. */
+  kakaoAvailable: boolean | null;
+  setKakaoAvailable: (available: boolean) => void;
 }
 
 const Ctx = createContext<MapPrefs | null>(null);
@@ -25,7 +32,7 @@ const write = (key: string, value: string) => {
   }
 };
 
-/** Which lists show on the map, and previous locations; remembered per account. */
+/** Which lists show on the map, previous locations and which map; remembered per account. */
 export function MapPrefsProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const listsKey = `mm.visibleLists.${userId}`;
   const prevKey = `mm.showPrevious.${userId}`;
@@ -37,6 +44,19 @@ export function MapPrefsProvider({ userId, children }: { userId: string; childre
     }
   });
   const [showPrevious, setPrev] = useState(() => read(prevKey) !== "0");
+  const choiceKey = `mm.mapProvider.${userId}`;
+  const [mapChoice, setChoice] = useState<MapChoice>(() => {
+    const stored = read(choiceKey);
+    return MAP_CHOICES.find((c) => c === stored) ?? "auto";
+  });
+  const [kakaoAvailable, setKakaoAvailable] = useState<boolean | null>(null);
+  const setMapChoice = useCallback(
+    (choice: MapChoice) => {
+      setChoice(choice);
+      write(choiceKey, choice);
+    },
+    [choiceKey],
+  );
 
   const setVisible = useCallback(
     (ids: string[], visible: boolean) => {
@@ -60,8 +80,17 @@ export function MapPrefsProvider({ userId, children }: { userId: string; childre
     [prevKey],
   );
   const value = useMemo(
-    () => ({ hidden, setVisible, showPrevious, setShowPrevious }),
-    [hidden, setVisible, showPrevious, setShowPrevious],
+    () => ({
+      hidden,
+      setVisible,
+      showPrevious,
+      setShowPrevious,
+      mapChoice,
+      setMapChoice,
+      kakaoAvailable,
+      setKakaoAvailable,
+    }),
+    [hidden, setVisible, showPrevious, setShowPrevious, mapChoice, setMapChoice, kakaoAvailable],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

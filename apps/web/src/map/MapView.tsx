@@ -1,22 +1,29 @@
 import type { PlaceLocationRow, PlaceRow } from "@magomap/domain";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
 import { preloadLeaflet } from "./leafletAdapter";
-import { loadMapAdapter } from "./loadMapAdapter";
+import { createAdapter, loadKakaoSdk } from "./loadMapAdapter";
 import { DEFAULT_VIEW, type MapAdapter } from "./MapAdapter";
 import { useMapStage } from "./MapStage";
+import { useMapPrefs } from "./mapPrefs";
 import { PreviousLocationCard } from "./PreviousLocationCard";
+import { providerFor } from "./providerChoice";
+import { swapAdapter } from "./swapAdapter";
 import type { useMapData } from "./useMapData";
 
 type Data = NonNullable<ReturnType<typeof useMapData>>;
 
-/** The map itself: loads Kakao or Leaflet once, then follows the markers. */
+/**
+ * The map itself: Kakao Map or OpenStreetMap, chosen by the Map setting and, on Automatic, by
+ * where the map is. It switches in place when that answer changes, then follows the markers.
+ */
 export function MapView({ data }: { data: Data | null }) {
   const { t } = useTranslation();
   const config = useConfig();
   const stage = useMapStage();
+  const { mapChoice, setKakaoAvailable } = useMapPrefs();
   const [, navigate] = useLocation();
   const el = useRef<HTMLDivElement>(null);
   const [adapter, setAdapter] = useState<MapAdapter | null>(null);
@@ -24,11 +31,14 @@ export function MapView({ data }: { data: Data | null }) {
   const [previous, setPrevious] = useState<{ location: PlaceLocationRow; place: PlaceRow } | null>(
     null,
   );
+  const choice = useRef(mapChoice);
+  choice.current = mapChoice;
+  const kakaoReady = useRef(false);
 
-  // Without a Kakao key the map is Leaflet: start its download now, not after config and data.
+  // When the map will be Leaflet, start its download now, not after config and data.
   useEffect(() => {
-    if (!config?.kakaoJavascriptKey) void preloadLeaflet();
-  }, [config?.kakaoJavascriptKey]);
+    if (!config?.kakaoJavascriptKey || mapChoice === "osm") void preloadLeaflet();
+  }, [config?.kakaoJavascriptKey, mapChoice]);
 
   // Load once: with the config if it arrives quickly, otherwise as if there were no Kakao key.
   const loading = useRef(false);
@@ -37,8 +47,11 @@ export function MapView({ data }: { data: Data | null }) {
     const start = (c: typeof config) => {
       if (loading.current) return;
       loading.current = true;
-      void loadMapAdapter(c ?? { kakaoJavascriptKey: null, devLoginEnabled: false }).then((a) => {
+      void loadKakaoSdk(c?.kakaoJavascriptKey ?? null).then((ready) => {
+        kakaoReady.current = ready;
+        setKakaoAvailable(ready);
         if (!el.current) return;
+        const a = createAdapter(providerFor(choice.current, DEFAULT_VIEW.center, null, ready));
         a.mount(el.current, DEFAULT_VIEW);
         stage.map.current = a;
         setAdapter(a);
@@ -49,7 +62,33 @@ export function MapView({ data }: { data: Data | null }) {
       const timer = setTimeout(() => start(null), 1_500);
       return () => clearTimeout(timer);
     }
-  }, [config, stage.map]);
+  }, [config, stage.map, setKakaoAvailable]);
+
+  // Ask again which map fits (after a move, or a new setting); switch in place if it changed.
+  const reconsider = useCallback(() => {
+    const current = stage.map.current;
+    if (!current || !el.current) return;
+    const want = providerFor(
+      choice.current,
+      current.getCenter(),
+      current.provider,
+      kakaoReady.current,
+    );
+    if (want === current.provider) return;
+    const next = createAdapter(want);
+    swapAdapter(current, next, el.current);
+    stage.map.current = next;
+    setAdapter(next);
+  }, [stage.map]);
+
+  useEffect(() => {
+    adapter?.onViewChange(reconsider);
+  }, [adapter, reconsider]);
+
+  useEffect(() => {
+    void mapChoice;
+    reconsider();
+  }, [mapChoice, reconsider]);
 
   useEffect(() => () => adapter?.destroy(), [adapter]);
 
@@ -80,9 +119,13 @@ export function MapView({ data }: { data: Data | null }) {
     }
   }, [adapter, data, stage.searchMarkers]);
 
+  // Looking at one place: bring it close, not just to the middle of the country. Once per place:
+  // a map switch must not pull the view back (that would switch again, and again).
+  const focused = useRef<typeof stage.focus>(null);
   useEffect(() => {
-    // Looking at one place: bring it close, not just to the middle of the country.
-    if (adapter && stage.focus) adapter.fitTo([stage.focus]);
+    if (!adapter || !stage.focus || focused.current === stage.focus) return;
+    focused.current = stage.focus;
+    adapter.fitTo([stage.focus]);
   }, [adapter, stage.focus]);
 
   const providerName =

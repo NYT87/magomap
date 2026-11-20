@@ -1,6 +1,6 @@
 import type { Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
@@ -10,6 +10,8 @@ import { closeUserDb, dbName, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
+import { useMapPrefs } from "../map/mapPrefs";
+import type { MapChoice } from "../map/providerChoice";
 
 type Dialog =
   | null
@@ -18,6 +20,8 @@ type Dialog =
 
 export function Account({ me }: { me: Me }) {
   const { t, i18n } = useTranslation();
+  const { mapChoice, setMapChoice, kakaoAvailable } = useMapPrefs();
+  const mapHintId = useId();
   const sync = useSyncControls();
   const [, navigate] = useLocation();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -111,6 +115,23 @@ export function Account({ me }: { me: Me }) {
             </option>
           </select>
         </label>
+        <label className="mm-field">
+          <span className="mm-field__label">{t("account.map")}</span>
+          <select
+            className="mm-input"
+            value={mapChoice}
+            aria-describedby={mapHintId}
+            onChange={(e) => setMapChoice(e.target.value as MapChoice)}
+          >
+            <option value="auto">{t("account.mapAuto")}</option>
+            <option value="kakao">{t("account.mapKakao")}</option>
+            <option value="osm">{t("account.mapOsm")}</option>
+          </select>
+        </label>
+        <p className="mm-muted" id={mapHintId}>
+          {t("account.mapHint")}
+        </p>
+        {kakaoAvailable === false && <p className="mm-note">{t("account.mapKakaoUnavailable")}</p>}
       </section>
 
       <section className="mm-stack mm-account-actions">

@@ -47,7 +47,13 @@
     "deleteUnsynced_one": "아직 보내지 못한 변경 {{count}}개도 함께 사라져요.",
     "deleteUnsynced_other": "아직 보내지 못한 변경 {{count}}개도 함께 사라져요.",
     "signOutOffline": "온라인일 때 로그아웃할 수 있어요. 메모는 이 휴대폰에 안전하게 남아 있어요.",
-    "unnamed": "카카오 계정"
+    "unnamed": "카카오 계정",
+    "map": "지도",
+    "mapAuto": "자동",
+    "mapKakao": "카카오맵",
+    "mapOsm": "OpenStreetMap",
+    "mapHint": "자동은 한국에서는 카카오맵을, 다른 곳에서는 OpenStreetMap을 써요.",
+    "mapKakaoUnavailable": "지금은 카카오맵을 쓸 수 없어서 OpenStreetMap을 보여 줘요."
   },
   "map": {
     "providerKakao": "카카오맵",

@@ -18,6 +18,11 @@ export function createLeafletAdapter(): MapAdapter {
   let loose: Leaflet.LayerGroup | null = null;
   let me: Leaflet.Marker | null = null;
   let select: (id: string) => void = () => {};
+  let viewChange: () => void = () => {};
+  let zoom = 10;
+  let destroyed = false;
+  let host: HTMLElement | null = null;
+  let myLoc: LatLng | null = null;
   let pending: MapMarker[] | null = null;
   let pendingFit: LatLng[] | null = null;
   let center: LatLng = { lat: 0, lng: 0 };
@@ -72,10 +77,22 @@ export function createLeafletAdapter(): MapAdapter {
     addTiles();
   };
 
+  const drawMe = (p: LatLng) => {
+    if (!map || !L) return;
+    me?.remove();
+    me = L.marker([p.lat, p.lng], {
+      interactive: false,
+      keyboard: false,
+      icon: L.divIcon({ className: "", html: '<span class="mm-me"></span>', iconSize: [18, 18] }),
+    }).addTo(map);
+  };
+
   return {
     provider: "leaflet",
     mount(el, view) {
+      host = el;
       center = view.center;
+      zoom = view.zoom;
       void (async () => {
         const mod = await preloadLeaflet();
         L = ((mod as { default?: typeof Leaflet }).default ?? mod) as typeof Leaflet;
@@ -83,6 +100,8 @@ export function createLeafletAdapter(): MapAdapter {
         await import("leaflet.markercluster");
         await import("leaflet/dist/leaflet.css");
         await import("leaflet.markercluster/dist/MarkerCluster.css");
+        // Replaced by another map while Leaflet was still loading: don't draw into its place.
+        if (destroyed) return;
         // Phones pinch to zoom; desktop gets the buttons, away from the search bar.
         const desktop = window.matchMedia("(min-width: 768px)").matches;
         // maxZoom here: the clusters need it before the (deferred) tile layer brings one.
@@ -91,6 +110,8 @@ export function createLeafletAdapter(): MapAdapter {
           view.zoom,
         );
         if (desktop) L.control.zoom({ position: "bottomright" }).addTo(map);
+        // "moveend" fires once a drag, zoom or fit has finished.
+        map.on("moveend", () => viewChange());
         tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           crossOrigin: true,
@@ -104,8 +125,12 @@ export function createLeafletAdapter(): MapAdapter {
         map.addLayer(loose);
         if (pending) draw(pending);
         pending = null;
-        if (pendingFit) fitView(pendingFit);
+        if (myLoc) drawMe(myLoc);
+        // Cleared before fitting: the fit fires "moveend" at once, and a switch it triggers
+        // must not see this fit as still waiting (it would be done twice).
+        const fit = pendingFit;
         pendingFit = null;
+        if (fit) fitView(fit);
       })();
     },
     setMarkers: draw,
@@ -120,23 +145,43 @@ export function createLeafletAdapter(): MapAdapter {
       const c = map.getCenter();
       return { lat: c.lat, lng: c.lng };
     },
+    getZoom() {
+      return map ? map.getZoom() : zoom;
+    },
     onSelect(cb) {
       select = cb;
     },
-    showMyLocation(p) {
-      if (!map || !L) return;
-      me?.remove();
-      me = L.marker([p.lat, p.lng], {
-        interactive: false,
-        keyboard: false,
-        icon: L.divIcon({ className: "", html: '<span class="mm-me"></span>', iconSize: [18, 18] }),
-      }).addTo(map);
-      map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
+    onViewChange(cb) {
+      viewChange = cb;
+    },
+    showMyLocation(p, opts = {}) {
+      myLoc = p;
+      if (!map || !L) {
+        // Still loading: the dot is drawn on mount, and the move waits with the other fits.
+        if (opts.recenter !== false) pendingFit = [p];
+        return;
+      }
+      drawMe(p);
+      if (opts.recenter !== false) map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
+    },
+    pendingFit() {
+      return pendingFit;
+    },
+    myLocation() {
+      return myLoc;
     },
     destroy() {
+      destroyed = true;
       clearTimeout(tileTimer);
+      viewChange = () => {};
       map?.remove();
       map = null;
+      // Leaflet leaves its classes and leftovers on the container: clear them for the next map.
+      if (host) {
+        host.classList.remove(...[...host.classList].filter((c) => c.startsWith("leaflet-")));
+        host.replaceChildren();
+        host = null;
+      }
     },
   };
 }

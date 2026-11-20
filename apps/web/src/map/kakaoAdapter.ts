@@ -29,6 +29,7 @@ interface KakaoMaps {
     xAnchor?: number;
     map?: unknown;
   }) => { setMap(m: unknown): void };
+  event: { addListener(target: unknown, type: string, cb: () => void): void };
   MarkerClusterer: new (opts: {
     map: unknown;
     averageCenter?: boolean;
@@ -39,7 +40,9 @@ interface KakaoMaps {
 export const kakaoMaps = () => (window as unknown as { kakao: { maps: KakaoMaps } }).kakao.maps;
 
 /** Leaflet-style zoom (0–19) to Kakao level (1 is closest, 14 farthest). */
-const toLevel = (zoom: number) => Math.min(14, Math.max(1, 20 - zoom));
+export const kakaoLevel = (zoom: number) => Math.min(14, Math.max(1, 20 - zoom));
+/** Kakao level back to Leaflet-style zoom. */
+export const zoomFromKakaoLevel = (level: number) => 20 - level;
 
 export function createKakaoAdapter(): MapAdapter {
   const k = kakaoMaps();
@@ -48,6 +51,9 @@ export function createKakaoAdapter(): MapAdapter {
   let loose: { setMap(m: unknown): void }[] = [];
   let me: { setMap(m: unknown): void } | null = null;
   let select: (id: string) => void = () => {};
+  let viewChange: () => void = () => {};
+  let host: HTMLElement | null = null;
+  let myLoc: LatLng | null = null;
 
   const overlay = (m: MapMarker) => {
     const el = document.createElement("button");
@@ -66,11 +72,14 @@ export function createKakaoAdapter(): MapAdapter {
   return {
     provider: "kakao",
     mount(el, view) {
+      host = el;
       map = new k.Map(el, {
         center: new k.LatLng(view.center.lat, view.center.lng),
-        level: toLevel(view.zoom),
+        level: kakaoLevel(view.zoom),
       });
       cluster = new k.MarkerClusterer({ map, averageCenter: true, minLevel: 7 });
+      // "idle" fires once the map has stopped moving, not while dragging.
+      k.event.addListener(map, "idle", () => viewChange());
     },
     setMarkers(markers) {
       if (!map || !cluster) return;
@@ -106,20 +115,38 @@ export function createKakaoAdapter(): MapAdapter {
       const c = map?.getCenter();
       return c ? { lat: c.getLat(), lng: c.getLng() } : { lat: 0, lng: 0 };
     },
+    getZoom() {
+      return map ? zoomFromKakaoLevel(map.getLevel()) : 10;
+    },
     onSelect(cb) {
       select = cb;
     },
-    showMyLocation(p) {
+    onViewChange(cb) {
+      viewChange = cb;
+    },
+    showMyLocation(p, opts = {}) {
+      myLoc = p;
       if (!map) return;
       me?.setMap(null);
       const dot = document.createElement("span");
       dot.className = "mm-me";
       me = new k.CustomOverlay({ position: new k.LatLng(p.lat, p.lng), content: dot, map });
-      map.panTo(new k.LatLng(p.lat, p.lng));
+      if (opts.recenter !== false) map.panTo(new k.LatLng(p.lat, p.lng));
+    },
+    pendingFit() {
+      // Kakao draws as soon as it's mounted: nothing ever waits.
+      return null;
+    },
+    myLocation() {
+      return myLoc;
     },
     destroy() {
       cluster?.clear();
       map = null;
+      viewChange = () => {};
+      // Kakao leaves its own elements behind: clear them so another map can mount here.
+      host?.replaceChildren();
+      host = null;
     },
   };
 }

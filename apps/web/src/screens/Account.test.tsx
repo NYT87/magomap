@@ -1,5 +1,5 @@
 import type { Me } from "@magomap/domain";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import "../i18n";
 import { NetworkError } from "../api/client";
 import { SyncContext, type SyncControls } from "../data/SyncContext";
 import i18n from "../i18n";
+import { MapPrefsProvider } from "../map/mapPrefs";
 import { Account } from "./Account";
 
 const { closeUserDb, openDbOrNull, openUserDb } = await import("../data/db");
@@ -43,9 +44,11 @@ function renderAccount(sync: Partial<SyncControls> = {}, who: Me = me) {
     ...sync,
   };
   render(
-    <SyncContext.Provider value={controls}>
-      <Account me={who} />
-    </SyncContext.Provider>,
+    <MapPrefsProvider userId={who.userId}>
+      <SyncContext.Provider value={controls}>
+        <Account me={who} />
+      </SyncContext.Provider>
+    </MapPrefsProvider>,
   );
   return controls;
 }
@@ -255,5 +258,21 @@ describe("Account", () => {
       expect(b.className).toMatch(/mm-button--(secondary|danger-outline)/);
       expect(b.className).not.toMatch(/tertiary|danger-text/);
     }
+  });
+
+  it("offers the map choice, Automatic by default, and remembers it", async () => {
+    await i18n.changeLanguage("en");
+    localStorage.removeItem("mm.mapProvider.u1");
+    const user = userEvent.setup();
+    renderAccount();
+    const map = screen.getByRole("combobox", { name: "Map" });
+    expect(map).toHaveValue("auto");
+    expect(
+      screen.getByText("Automatic uses Kakao Map in Korea and OpenStreetMap elsewhere."),
+    ).toBeInTheDocument();
+    await user.selectOptions(map, "osm");
+    cleanup();
+    renderAccount();
+    expect(screen.getByRole("combobox", { name: "Map" })).toHaveValue("osm");
   });
 });

@@ -47,7 +47,13 @@
     "deleteUnsynced_one": "{{count}} change on this phone hasn't been sent yet and will be lost too.",
     "deleteUnsynced_other": "{{count}} changes on this phone haven't been sent yet and will be lost too.",
     "signOutOffline": "You can sign out once you're online. Your notes are safe on this phone.",
-    "unnamed": "Kakao account"
+    "unnamed": "Kakao account",
+    "map": "Map",
+    "mapAuto": "Automatic",
+    "mapKakao": "Kakao Map",
+    "mapOsm": "OpenStreetMap",
+    "mapHint": "Automatic uses Kakao Map in Korea and OpenStreetMap elsewhere.",
+    "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap."
   },
   "map": {
     "providerKakao": "Kakao Map",
