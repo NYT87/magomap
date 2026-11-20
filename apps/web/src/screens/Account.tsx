@@ -13,6 +13,7 @@ import {
   openDbOrNull,
   REMOVE_RESULT,
 } from "../data/db";
+import { accountDeviceKeys } from "../data/deviceKeys";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
@@ -57,6 +58,8 @@ export function Account({ me }: { me: Me }) {
     else if (wasEditing.current) editNameButton.current?.focus();
     wasEditing.current = editingName;
   }, [editingName]);
+  // The limit counts characters as the server does (an emoji is one, not two).
+  const nameTooLong = Array.from(nameDraft.trim()).length > LIMITS.nickname;
   const saveName = async () => {
     setSavingName(true);
     setNameError(false);
@@ -137,6 +140,13 @@ export function Account({ me }: { me: Me }) {
       // Close this account's database first, so nothing (a sync, a live query) recreates it.
       closeUserDb(me.userId);
       await Dexie.delete(dbName(me.userId));
+      for (const key of accountDeviceKeys(me.userId)) {
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          // storage blocked: nothing was stored
+        }
+      }
       // If another account opened meanwhile (even during the deletion), it stays on its own page.
       if (openDbOrNull() === null) leave();
     } catch {
@@ -164,10 +174,8 @@ export function Account({ me }: { me: Me }) {
               <input
                 className="mm-input"
                 value={nameDraft}
-                // The limit counts characters as the server does (an emoji is one, not two).
-                onChange={(e) =>
-                  setNameDraft(Array.from(e.target.value).slice(0, LIMITS.nickname).join(""))
-                }
+                // Not cut while typing (that breaks Korean input mid-syllable): Save waits instead.
+                onChange={(e) => setNameDraft(e.target.value)}
                 aria-describedby={nameError ? nameErrorId : undefined}
                 ref={nameInput}
               />
@@ -178,7 +186,11 @@ export function Account({ me }: { me: Me }) {
               </p>
             )}
             <div className="mm-editor__actions">
-              <button type="submit" className="mm-button mm-button--primary" disabled={savingName}>
+              <button
+                type="submit"
+                className="mm-button mm-button--primary"
+                disabled={savingName || nameTooLong}
+              >
                 {t("account.save")}
               </button>
               <button

@@ -117,6 +117,9 @@ async function applyResults(
       for (const r of res.results) {
         const e = byId.get(r.mutationId);
         if (!e || e.seq === undefined) continue;
+        // Already settled elsewhere (another tab got its answer first, and the data may have
+        // been removed since): a late answer changes nothing.
+        if ((await db.outbox.get(e.seq))?.mutationId !== e.mutationId) continue;
         if (r.status === "rejected" && r.reason === "clock_ahead") {
           // Kept unchanged: accepted once real time catches up with the stamp.
           t.clockAhead = true;
@@ -171,7 +174,9 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
       if (entries.length === 1) {
         const e = entries[0] as OutboxEntry;
         await db.transaction("rw", db.outbox, db.rejected, db.user_places, async () => {
-          if (e.seq !== undefined) await db.outbox.delete(e.seq);
+          if (e.seq === undefined || (await db.outbox.get(e.seq))?.mutationId !== e.mutationId)
+            return;
+          await db.outbox.delete(e.seq);
           await db.rejected.put({ ...e, reason: "invalid", at: Date.now() });
           if (e.table === "places") await db.user_places.delete(userPlaceRowId(e.id));
         });

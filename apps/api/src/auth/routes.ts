@@ -8,6 +8,7 @@ import {
   setDisplayName,
 } from "@magomap/db/stores/users";
 import { isStorableText, LIMITS, type Me } from "@magomap/domain";
+import { usableNickname } from "@magomap/domain/providers/kakao";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -86,7 +87,7 @@ authRoutes.post("/auth/dev", async (c) => {
     .object({ kakaoUserId: z.string().min(1).max(100), nickname: z.string().max(100).optional() })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid" }, 400);
-  await signIn(c, body.data.kakaoUserId, body.data.nickname ?? null);
+  await signIn(c, body.data.kakaoUserId, usableNickname(body.data.nickname) ?? null);
   return c.json({ ok: true });
 });
 

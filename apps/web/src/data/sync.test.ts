@@ -372,4 +372,30 @@ describe("sync", () => {
     otherTab.close();
     expect(db.hasBeenClosed()).toBe(true);
   });
+
+  it("ignores a late push answer for a change another tab already settled", async () => {
+    const userId = `s${n}`;
+    const db = open();
+    const id = await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    let answer = () => {};
+    server.pushGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.result = (m) => ({
+      mutationId: m.mutationId,
+      status: "ignored_stale",
+      row: note(id, "server"),
+    });
+    const late = syncNow();
+    await new Promise((r) => setTimeout(r, 20));
+    // Another tab got the answer first, then the data was removed from the device.
+    const otherTab = defineUserDb(userId);
+    await otherTab.transaction("rw", otherTab.tables, async () => {
+      await Promise.all(otherTab.tables.map((table) => table.clear()));
+    });
+    otherTab.close();
+    answer();
+    await late;
+    expect(await db.visit_notes.count()).toBe(0);
+  });
 });
