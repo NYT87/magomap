@@ -1283,6 +1283,67 @@ a {
   font-size: 12px;
 }
 
+/* Kakao notes on a place: each note its own card, quoted under its list's Kakao colour. */
+.mm-kakao-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mm-kakao-notes__title {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mm-kakao-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  min-width: 0;
+}
+
+.mm-kakao-note__from {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.mm-kakao-note__list {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.mm-kakao-note__text {
+  padding-inline-start: var(--space-sm);
+  color: var(--color-text);
+  font-size: 16px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-inline-start: 3px solid var(--note-color, var(--color-border));
+}
+
+.mm-kakao-note__hint {
+  font-size: 13px;
+}
+
+/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue. */
+@media (prefers-color-scheme: dark) {
+  .mm-kakao-note__text {
+    border-inline-start-color: color-mix(
+      in srgb,
+      var(--note-color, var(--color-border)) 75%,
+      #ffffff
+    );
+  }
+}
+
 .mm-inline-form {
   display: flex;
   gap: var(--space-sm);

@@ -95,16 +95,23 @@ export async function seed(db: MagomapDexie) {
     list("own-b", "가 볼 곳", null),
     list("l_kakao_1", "제주 카페", "kakao"),
     list("l_kakao_2", "아내의 맛집", "kakao"),
+    list("l_kakao_3", "가을 산책", "kakao"),
   ]);
   await db.user_lists.bulkPut([
     access("own-a", "owner"),
     access("own-b", "owner"),
     access("l_kakao_1", "owner"),
     access("l_kakao_2", "follower"),
+    access("l_kakao_3", "owner"),
   ]);
   await db.list_items.bulkPut([
     member("li_own-a", "own-a"),
     member("i_kakao_1_10", "l_kakao_1", { providerNote: "창가 자리", providerColor: "01" }),
-    member("i_kakao_2_20", "l_kakao_2", { removedAtProvider: 5 }),
+    member("i_kakao_2_20", "l_kakao_2", { removedAtProvider: 5, providerNote: LONG_NOTE }),
+    // The same note in a second list: shown once, naming both lists.
+    member("i_kakao_3_30", "l_kakao_3", { providerNote: " 창가 자리 ", providerColor: "04" }),
   ]);
 }
+
+/** A note with a 120-character link, which must wrap inside its card on a phone. */
+export const LONG_NOTE = `예약 필수 https://place.map.kakao.com/${"a".repeat(120 - "https://place.map.kakao.com/".length)}`;

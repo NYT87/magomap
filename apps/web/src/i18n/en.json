@@ -157,7 +157,10 @@
     "deleteNote": "Delete note from {{date}}",
     "editLink": "Edit link {{name}}",
     "deleteLink": "Delete link {{name}}",
-    "newTab": "(opens in a new tab)"
+    "newTab": "(opens in a new tab)",
+    "kakaoNotes": "Kakao notes",
+    "kakaoNoteReadOnly": "Change it in Kakao Map.",
+    "removedSuffix": "(Removed from Kakao)"
   },
   "import": {
     "title": "Import from kakao-list",
