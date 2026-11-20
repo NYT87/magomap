@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { forEachDialect } from "../testing/dbs";
-import { importListChunk, startImportRun } from "./importRuns";
+import { completeImportRun, finishImportList, importListChunk, startImportRun } from "./importRuns";
 import { note, ownList, push, searchedPlace, uid } from "./testkit";
 import {
   createSession,
@@ -185,7 +185,13 @@ forEachDialect("users store", (makeDb) => {
     const db = await makeDb();
     const { userId } = await findOrCreateUserByIdentity(db, "kakao", "1", null, now);
     const lists = [{ externalId: "1", name: "리스트", followed: false, itemCount: 1 }];
-    const opts = { provider: "kakao", complete: true, subscriptionKnown: true, lists };
+    const opts = {
+      provider: "kakao",
+      source: "kakao_list" as const,
+      complete: true,
+      subscriptionKnown: true,
+      lists,
+    };
     const { runId } = await startImportRun(
       db,
       userId,
@@ -199,6 +205,37 @@ forEachDialect("users store", (makeDb) => {
     expect(await pages()).toHaveLength(1);
     await deleteAccount(db, userId);
     expect(await pages()).toHaveLength(0);
+  });
+
+  it("deletes the account's provider snapshot times", async () => {
+    const db = await makeDb();
+    const { userId } = await findOrCreateUserByIdentity(db, "kakao", "1", null, now);
+    const { runId } = await startImportRun(
+      db,
+      userId,
+      {
+        provider: "kakao",
+        source: "kakao_list",
+        complete: true,
+        subscriptionKnown: true,
+        importedAt: new Date(now).toISOString(),
+        lists: [{ externalId: "1", name: "리스트", followed: false, itemCount: 1 }],
+      },
+      now,
+    );
+    const place = { externalId: "10", placeExternalId: "A", title: "카페", position: 0 };
+    await importListChunk(db, userId, runId, "1", 0, [place], now);
+    await finishImportList(db, userId, runId, "1", now);
+    await completeImportRun(db, userId, runId, now);
+    const snapshots = () =>
+      db.kysely
+        .selectFrom("user_provider_snapshots")
+        .selectAll()
+        .where("user_id", "=", userId)
+        .execute();
+    expect(await snapshots()).toHaveLength(1);
+    await deleteAccount(db, userId);
+    expect(await snapshots()).toHaveLength(0);
   });
 });
 

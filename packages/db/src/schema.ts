@@ -1,6 +1,8 @@
 // Kysely schema, generated once from the table list in plan 01b. snake_case like the SQL.
 // Shared tables have no user_id. Timestamps are epoch ms; booleans are 0/1 integers.
 
+import type { Generated } from "kysely";
+
 export interface UsersTable {
   id: string;
   display_name: string | null;
@@ -40,6 +42,15 @@ export interface ImportRunsTable {
   snapshot_at: number;
   summary_json: string | null;
   error: string | null;
+  /** `kakao_list` (server-fetched) or `kakao_map` (a direct Kakao Map upload); defaults to `kakao_list`. */
+  source: Generated<string>;
+}
+
+/** A user's newest complete import snapshot per provider; older imports don't change their access. */
+export interface UserProviderSnapshotsTable {
+  user_id: string;
+  provider: string;
+  snapshot_at: number;
 }
 
 export interface ImportRunListsTable {
@@ -215,6 +226,7 @@ export interface Database {
   import_runs: ImportRunsTable;
   import_run_lists: ImportRunListsTable;
   import_run_pages: ImportRunPagesTable;
+  user_provider_snapshots: UserProviderSnapshotsTable;
   sync_state: SyncStateTable;
   places: PlacesTable;
   place_sources: PlaceSourcesTable;

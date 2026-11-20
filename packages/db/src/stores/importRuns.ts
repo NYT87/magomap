@@ -158,6 +158,23 @@ function saveState(
 const isNewer = (snapshotAt: number, row: Row | undefined) =>
   !row || row.provider_snapshot_at == null || snapshotAt >= Number(row.provider_snapshot_at);
 
+/** Where a run's snapshot came from: kakao-list (server-fetched) or a direct Kakao Map upload. */
+export type ImportSource = "kakao_list" | "kakao_map";
+
+/**
+ * True when the user already completed an import of a newer snapshot from this provider (from
+ * either source). Such an older run never changes the user's list roles or personal removals.
+ */
+async function olderForUser(db: Db, userId: string, provider: string, snapshotAt: number) {
+  const row = await db.kysely
+    .selectFrom("user_provider_snapshots")
+    .select("snapshot_at")
+    .where("user_id", "=", userId)
+    .where("provider", "=", provider)
+    .executeTakeFirst();
+  return row !== undefined && snapshotAt < Number(row.snapshot_at);
+}
+
 const same = (a: Row, b: Row) => Object.keys(b).every((k) => k === "seq" || a[k] === b[k]);
 
 export async function startImportRun(
@@ -165,6 +182,7 @@ export async function startImportRun(
   userId: string,
   opts: {
     provider: string;
+    source: ImportSource;
     complete: boolean;
     subscriptionKnown: boolean;
     importedAt: string;
@@ -236,8 +254,8 @@ export async function startImportRun(
           .where(ctx.guard),
         {
           compile: () =>
-            sql`INSERT INTO import_runs (user_id, id, provider, started_at, finished_at, status, complete, subscription_known, snapshot_at, summary_json, error)
-            SELECT ${userId}, ${runId}, ${opts.provider}, ${now}, NULL, 'running', ${opts.complete ? 1 : 0},
+            sql`INSERT INTO import_runs (user_id, id, provider, source, started_at, finished_at, status, complete, subscription_known, snapshot_at, summary_json, error)
+            SELECT ${userId}, ${runId}, ${opts.provider}, ${opts.source}, ${now}, NULL, 'running', ${opts.complete ? 1 : 0},
               ${opts.subscriptionKnown ? 1 : 0}, ${Number.isFinite(snapshotAt) ? snapshotAt : now}, ${summary}, NULL
             WHERE ${ctx.guard}`.compile(db.kysely),
         },
@@ -329,7 +347,7 @@ async function decideChunk(
     .filter((i) => i.localNote?.trim())
     .map((i) => importedNoteRowId(placeIdOf(i), listId));
 
-  const [lists, places, members, notes, myLists, myPlaces, validUntil, listSnapshots] =
+  const [lists, places, members, notes, myLists, myPlaces, validUntil, listSnapshots, older] =
     await Promise.all([
       readByIds(db, userId, "lists", [listId]),
       readByIds(db, userId, "places", placeIds),
@@ -339,6 +357,7 @@ async function decideChunk(
       readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
       latestValidUntil(db, placeIds),
       newestListSnapshot(db, placeIds),
+      olderForUser(db, userId, provider, snapshotAt),
     ]);
 
   const writes = new Map<SyncTable, Map<string, Row>>();
@@ -406,7 +425,11 @@ async function decideChunk(
       : (access?.role ?? "follower");
   // Gaining the list only writes this row: the user's device then pulls everything again once.
   const gainsList = !access || access.removed_at != null || access.deleted_at != null;
-  if (gainsList || access.role !== role) {
+  // A snapshot older than the user's newest one only grants a list they never had: it can't
+  // swap their role or bring back a list they removed since.
+  const writesAccess = older ? !access : gainsList || access.role !== role;
+  const grants = writesAccess && gainsList;
+  if (writesAccess) {
     write("user_lists", {
       user_id: userId,
       id: accessId,
@@ -602,7 +625,7 @@ async function decideChunk(
 
   // A list the user is gaining brings everything in its full pull; otherwise a newly saved place
   // that no list the user already has shows (the older-snapshot notes path) is re-stamped.
-  if (!gainsList && savedExisting.length > 0) {
+  if (!grants && savedExisting.length > 0) {
     const listed = new Set(
       (
         await db.kysely
@@ -755,6 +778,7 @@ export async function completeImportRun(
       const statements: Statement[] = [];
       let removed = 0;
       if (run.complete === 1) {
+        const older = await olderForUser(db, userId, run.provider, snapshotAt);
         const keep = new Set(progress.map((p) => providerListRowId(run.provider, p.external_id)));
         const mine = await db.kysely
           .selectFrom("user_lists")
@@ -792,8 +816,11 @@ export async function completeImportRun(
         }
         const missing = absent.filter((m) => m.removed_at_provider == null);
         const everyone = missing.filter(authoritative).map((m) => m.list_id);
-        const justMe = missing.filter((m) => !everyone.includes(m.list_id)).map((m) => m.access_id);
-        removed = missing.length;
+        // A snapshot older than the user's newest one never removes lists for them personally.
+        const justMe = older
+          ? []
+          : missing.filter((m) => !everyone.includes(m.list_id)).map((m) => m.access_id);
+        removed = everyone.length + justMe.length;
         if (everyone.length > 0) {
           statements.push(
             db.kysely
@@ -818,6 +845,20 @@ export async function completeImportRun(
               .where(ctx.guard),
           );
         }
+        // The user's newest complete snapshot from this provider (never lowered).
+        statements.push(
+          ...bulkUpsertQuery(
+            db,
+            "user_provider_snapshots",
+            [{ user_id: userId, provider: run.provider, snapshot_at: snapshotAt }],
+            {
+              conflict: ["user_id", "provider"],
+              update: ["snapshot_at"],
+              where: sql<boolean>`excluded.snapshot_at > user_provider_snapshots.snapshot_at`,
+              guard: ctx.guard,
+            },
+          ),
+        );
       }
       const summary = add(state.summary, { listsRemoved: removed });
       statements.push(
@@ -903,8 +944,23 @@ export async function importedSnapshot(
     .selectFrom("import_runs")
     .select("id")
     .where("user_id", "=", userId)
+    .where("source", "=", "kakao_list")
     .where("status", "=", "completed")
     .where("snapshot_at", "=", snapshotAt)
+    .limit(1)
+    .executeTakeFirst();
+  return row !== undefined;
+}
+
+/** True when the user completed a complete import from kakao-list. */
+export async function migratedFromKakaoList(db: Db, userId: string): Promise<boolean> {
+  const row = await db.kysely
+    .selectFrom("import_runs")
+    .select("id")
+    .where("user_id", "=", userId)
+    .where("source", "=", "kakao_list")
+    .where("status", "=", "completed")
+    .where("complete", "=", 1)
     .limit(1)
     .executeTakeFirst();
   return row !== undefined;

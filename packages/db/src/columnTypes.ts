@@ -41,6 +41,12 @@ export const COLUMN_TYPES: {
     snapshot_at: "bigint",
     summary_json: "text",
     error: "text",
+    source: "text",
+  },
+  user_provider_snapshots: {
+    user_id: "text",
+    provider: "text",
+    snapshot_at: "bigint",
   },
   import_run_lists: {
     user_id: "text",

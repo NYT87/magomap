@@ -48,6 +48,7 @@ const start = (db: Db, user: string, lists: { externalId: string; itemCount: num
     user,
     {
       provider: "kakao",
+      source: "kakao_list",
       complete: true,
       subscriptionKnown: true,
       importedAt: new Date(T0 + at).toISOString(),
@@ -146,6 +147,7 @@ forEachDialect("import integrity", (makeDb) => {
       WIFE,
       {
         provider: "kakao",
+        source: "kakao_list",
         complete: true,
         subscriptionKnown: true,
         importedAt: new Date(T0).toISOString(),

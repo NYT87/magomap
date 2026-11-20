@@ -135,6 +135,7 @@ const USER_TABLES = [
   "import_runs",
   "import_run_pages",
   "import_run_lists",
+  "user_provider_snapshots",
 ] as const satisfies readonly (keyof Database)[];
 
 /**

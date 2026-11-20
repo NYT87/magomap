@@ -121,7 +121,7 @@ importRoutes.post("/import/runs", (c) =>
       started = await startImportRun(
         c.var.db,
         c.var.userId,
-        { ...snapshot, provider: KAKAO, lists: snapshot.lists },
+        { ...snapshot, provider: KAKAO, source: "kakao_list", lists: snapshot.lists },
         Date.now(),
       );
     } catch (error) {

@@ -250,6 +250,7 @@ forEachDialect("shared review fixes", (makeDb) => {
         WIFE,
         {
           provider: "kakao",
+          source: "kakao_list",
           complete: true,
           subscriptionKnown: true,
           importedAt: at(10 * 86_400_000),
@@ -264,6 +265,7 @@ forEachDialect("shared review fixes", (makeDb) => {
         WIFE,
         {
           provider: "kakao",
+          source: "kakao_list",
           complete: true,
           subscriptionKnown: true,
           importedAt: "not a date",
