@@ -26,6 +26,8 @@ Production changes **only when a release is made**. Pushing to `main` deploys no
 
 **Rolling back:** `npx wrangler rollback --env d1`, or the Worker's Deployments page. For the data, restore the bookmark in the job summary: `npx wrangler d1 time-travel restore magomap --env d1 --bookmark=<bookmark>`.
 
+**Adding another component (e.g. a browser extension in `apps/extension`):** the `magomap` component covers the whole repo (path `.`), so without a change every extension commit would also bump magomap's version and redeploy the Worker. In `release-please-config.json`, add `"exclude-paths": ["apps/extension"]` to the `.` package, and add `"apps/extension": { "release-type": "node", "component": "extension" }` with `"apps/extension": "0.1.0"` in `.release-please-manifest.json`. It then gets its own version, `apps/extension/CHANGELOG.md` and `extension-v…` tags. The `deploy` job only runs for `magomap-v…` tags, so an extension release never deploys the Worker.
+
 **One-time setup (owner):**
 - GitHub → Settings → Actions → General: allow GitHub Actions to create pull requests.
 - GitHub → Settings → Environments: create `production`, limited to the `main` branch. Add the secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts edit, D1 edit) and `CLOUDFLARE_ACCOUNT_ID`.

@@ -75,12 +75,14 @@ jobs:
 
   deploy:
     needs: release-please
-    # On push: only when Release Please has just created a release. On a manual run: always,
-    # and the first step refuses anything that isn't a released magomap tag.
+    # On push: only when Release Please has just created a magomap release (tag magomap-v…), so
+    # a release of any other component added later (e.g. an extension) is skipped, not failed.
+    # On a manual run: always, and the first step refuses anything that isn't a released magomap tag.
     if: >-
       ${{ !cancelled() && (
         (github.event_name == 'push' && needs.release-please.result == 'success' &&
-          needs.release-please.outputs.release_created == 'true') ||
+          needs.release-please.outputs.release_created == 'true' &&
+          startsWith(needs.release-please.outputs.tag_name, 'magomap-v')) ||
         github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     environment: production
