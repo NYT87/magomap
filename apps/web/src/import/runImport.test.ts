@@ -171,6 +171,18 @@ describe("runImport", () => {
       expect(sync).toHaveBeenCalledTimes(1);
     });
 
+    it("finishes a list whose pages were all sent before it stopped", async () => {
+      server([{ externalId: "B", itemCount: 1200 }], undefined, [
+        { externalId: "B", pagesDone: 3, finished: false },
+      ]);
+      await runImport(() => {}, { resumeRunId: "r1" });
+      expect(api.mock.calls.map((c) => c[0])).toEqual([
+        "/api/import/runs/r1/resume",
+        "/api/import/runs/r1/lists/B/finish",
+        "/api/import/runs/r1/complete",
+      ]);
+    });
+
     it("counts progress from the lists already done", async () => {
       server(lists, undefined, done);
       const progress = vi.fn();

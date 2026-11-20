@@ -85,7 +85,9 @@ export async function runImport(
     onProgress({ listIndex, listCount: run.lists.length });
     const at = `${base}/lists/${encodeURIComponent(list.externalId)}`;
     try {
-      for (let page = list.pagesDone; ; page++) {
+      // A list stopped after its last page only needs its finish call.
+      const pageCount = Math.max(1, Math.ceil(list.itemCount / 500));
+      for (let page = list.pagesDone; page < pageCount; page++) {
         const res = await post<{ done: boolean }>(account, `${at}/pages/${page}`);
         if (res.done) break;
       }
