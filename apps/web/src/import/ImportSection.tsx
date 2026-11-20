@@ -1,6 +1,6 @@
 import type { ImportStatus, ImportSummary } from "@magomap/domain";
 import type { TFunction } from "i18next";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { formatDate } from "../i18n";
@@ -50,6 +50,7 @@ export function ImportSection() {
   const online = useOnline();
   const [state, setState] = useState<State>({ kind: "idle" });
   const [status, setStatus] = useState<ImportStatus | null>(null);
+  const region = useRef<HTMLDivElement>(null);
   const [freshStart, setFreshStart] = useState(false);
 
   const readStatus = () => apiFetch<ImportStatus>("/api/import/status").then(setStatus, () => {});
@@ -77,6 +78,8 @@ export function ImportSection() {
     } finally {
       release();
       await readStatus();
+      // The buttons change when an import ends; keep keyboard focus in the section.
+      region.current?.focus({ preventScroll: true });
     }
   };
 
@@ -94,49 +97,22 @@ export function ImportSection() {
       </h2>
       <p className="mm-muted">{t("import.lead")}</p>
       {!online && <p className="mm-note">{t("import.offline")}</p>}
-      {upToDate && syncedAt !== null && (
-        <p className="mm-note">{t("import.upToDate", { date: formatDate(syncedAt) })}</p>
-      )}
-      {!upToDate && stopped && state.kind === "idle" && (
-        <p className="mm-note">
-          {newer && syncedAt !== null
-            ? t("import.stoppedNewer", { date: formatDate(syncedAt) })
-            : t("import.stopped", {
-                done: stopped.progress?.listsDone ?? 0,
-                total: stopped.progress?.listCount ?? 0,
-              })}
-        </p>
-      )}
-      {resumable ? (
-        <>
-          <button
-            type="button"
-            className="mm-button mm-button--primary"
-            disabled={!online || running}
-            onClick={() => void start(stopped.runId)}
-          >
-            {t("import.continue")}
-          </button>
-          <button
-            type="button"
-            className="mm-button mm-button--secondary"
-            disabled={!online || running}
-            onClick={() => void start()}
-          >
-            {t("import.startOver")}
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          className="mm-button mm-button--primary"
-          disabled={!online || running || upToDate}
-          onClick={() => void start()}
-        >
-          {state.kind === "done" ? t("import.again") : t("import.start")}
-        </button>
-      )}
-      <div aria-live="polite" className="mm-stack">
+      <div aria-live="polite" className="mm-stack" ref={region} tabIndex={-1}>
+        {state.kind === "idle" && upToDate && syncedAt !== null && (
+          <p className="mm-note">{t("import.upToDate", { date: formatDate(syncedAt) })}</p>
+        )}
+        {state.kind === "idle" && !upToDate && stopped && (
+          <p className="mm-note">
+            {newer && syncedAt !== null
+              ? t("import.stoppedNewer", { date: formatDate(syncedAt) })
+              : stopped.progress
+                ? t("import.stopped", {
+                    done: stopped.progress.listsDone,
+                    total: stopped.progress.listCount,
+                  })
+                : t("import.stoppedNoCount")}
+          </p>
+        )}
         {running && (
           <>
             <p>
@@ -165,6 +141,29 @@ export function ImportSection() {
           </p>
         )}
       </div>
+      <button
+        key="primary"
+        type="button"
+        className="mm-button mm-button--primary"
+        disabled={!online || running || upToDate}
+        onClick={() => void start(resumable ? stopped.runId : undefined)}
+      >
+        {resumable
+          ? t("import.continue")
+          : state.kind === "done"
+            ? t("import.again")
+            : t("import.start")}
+      </button>
+      {resumable && (
+        <button
+          type="button"
+          className="mm-button mm-button--secondary"
+          disabled={!online || running}
+          onClick={() => void start()}
+        >
+          {t("import.startOver")}
+        </button>
+      )}
       {last && !stopped && state.kind !== "done" && (
         <div>
           {last.status === "completed" && last.finishedAt ? (

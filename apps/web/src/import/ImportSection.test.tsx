@@ -59,7 +59,7 @@ describe("ImportSection", () => {
     runImport.mockResolvedValue({});
     render(<ImportSection />);
     expect(
-      await screen.findByText("The last import stopped at 12 of 30 lists."),
+      await screen.findByText("The last import stopped at 12 of 30 lists. Nothing was removed."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start over" })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "Continue import" }));
@@ -122,5 +122,38 @@ describe("ImportSection", () => {
     await userEvent.click(button);
     expect(await screen.findByText(/Up to date with your kakao-list sync/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("doesn't invent a count when the run has no progress", async () => {
+    status({ latest: run({ progress: undefined }), sourceSnapshotAt: SNAP, upToDate: false });
+    render(<ImportSection />);
+    expect(
+      await screen.findByText("The last import stopped. Nothing was removed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/0 of 0/)).toBeNull();
+  });
+
+  it("keeps keyboard focus inside the section after an import ends", async () => {
+    status({ latest: run(), sourceSnapshotAt: SNAP, upToDate: false });
+    runImport.mockResolvedValue({});
+    const { container } = render(<ImportSection />);
+    const button = await screen.findByRole("button", { name: "Continue import" });
+    button.focus();
+    await userEvent.click(button);
+    await screen.findByText("Import finished");
+    await waitFor(() => expect(container.contains(document.activeElement)).toBe(true));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("announces the stopped and up-to-date notes in the polite live region", async () => {
+    status({ latest: run(), sourceSnapshotAt: SNAP, upToDate: false });
+    const first = render(<ImportSection />);
+    const note = await screen.findByText(/The last import stopped at 12 of 30/);
+    expect(note.closest("[aria-live='polite']")).not.toBeNull();
+    first.unmount();
+    status({ latest: null, sourceSnapshotAt: SNAP, upToDate: true });
+    render(<ImportSection />);
+    const upToDate = await screen.findByText(/Up to date with your kakao-list sync/);
+    expect(upToDate.closest("[aria-live='polite']")).not.toBeNull();
   });
 });
