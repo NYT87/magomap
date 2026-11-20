@@ -58,7 +58,11 @@ npx wrangler d1 create magomap --location apac
 
 #### Watching D1 writes
 
-The Free plan allows 100,000 rows written a day, and Cloudflare emails when 90% of it is used. The daily count is in the dashboard under **D1 → magomap → Metrics**. An import only writes what changed: one unchanged import should now cost a few hundred rows. A list or place someone newly gains is not re-written for them; their device pulls everything again once instead.
+The Free plan allows 100,000 rows written a day, and Cloudflare emails when 90% of it is used (the owner got that email on 2026-11-20). The daily count is in the dashboard under **D1 → magomap → Metrics**.
+
+An import only writes what changed. An unchanged re-import costs tens of rows per list: in the tests, an unchanged re-import of 2 lists in 3 pages wrote 31 rows.
+
+When someone gains a list (first import, a list followed, a list restored), the server no longer re-writes the shared rows. The phone downloads everything again once, which costs rows read and data use, not rows written. That happens once per sync that brings a new list.
 
 ### Option B: Postgres with Hyperdrive
 
