@@ -129,6 +129,24 @@ Deprecating kakao-list itself is the owner's call in that repo.
 - Shared-places addendum, trust rules: an **allowlisted user's extension upload** is an accepted import source, alongside server-fetched imports.
 - Plan 03's go-live gates G1/G2 move into phase 0 here. Its Task 4 (deploy and set `KAKAO_LIST_URL`) still applies, for the migration import.
 
+## Settled after the builder check (designer's calls, open to correction)
+
+- **Mapping parity with kakao-list wins over this document's summary.** While both sources run, the raw adapter must give exactly the ids and fields kakao-list's deployed mapping gives (extractor `normalizeFavoriteItem` + server `magomapIntegration.ts`), including its fallbacks:
+  - item id `seq ?? key ?? "<folder>-<index>"`;
+  - list description from the first favourite's `display2`;
+  - "Saved place N" titles;
+  - place key only for `type ∈ {"PLACE"}` (deployed `MAGOMAP_PLACE_TYPES`), and for favourites with no `type`.
+
+  A parity test runs the same raw fixture through both mappings: kakao-list's code, copied as a test fixture, and the new adapter. It asserts identical external ids, titles, place ids and coordinates. Any rule above that disagrees with kakao-list yields to kakao-list.
+- **If phase 0's `seq` check shows owner and follower see different `seq`s**, this project stops before phase 1, and the owner decides on re-keying memberships as a separate change. Re-keying already affects the kakao-list import too, so it isn't this project's scope.
+- **`importRuns` may change** to honour "newer snapshot wins" per user:
+  - Record each user's latest provider snapshot time.
+  - An import older than it still adds that user's places and kakao-list local notes, but never changes their `user_lists` role or personal removals (`removed_at`).
+  - This closes today's gap in `completeImportRun`'s per-user removal, where the migration import, usually older than her last direct sync, could otherwise un-follow lists or swap roles. It's a schema change on both dialects.
+- **Own Kakao Map account not identifiable.** If a read's unflagged folders have no `kakao_map_user_id`, or more than one, the sync stops with nothing written (`kakao_account_unclear`, "magomap couldn't tell which lists are yours"). It never guesses.
+  - Phase 0 adds a step: record whether her `kakao_map_user_id` equals her Kakao Login id. If it does, the binding uses it directly, and the unclear case can fall back to it.
+- **Local development:** uploads are allowed when `ALLOWED_KAKAO_USER_IDS` is empty **only** in the local dev environment (an explicit dev flag), never in deployed ones.
+
 ## Left to the builder
 
 - How the extension id is configured in the web app (build-time constant per environment is fine).
