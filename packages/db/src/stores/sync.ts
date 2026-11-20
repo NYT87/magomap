@@ -129,9 +129,11 @@ export async function latestValidUntil(db: Db, placeIds: Iterable<string>) {
 }
 
 /**
- * Each place's newest `lists.provider_snapshot_at` over the lists holding it at the provider.
+ * Each place's newest `lists.provider_snapshot_at` over the lists that hold or held it.
  * An import leaves unchanged places alone, so a list's snapshot is what vouches for its places:
- * an older observation of a place never wins over a newer list that still holds it.
+ * an older observation of a place never wins over a newer list that confirmed it. A membership
+ * removed at the provider still counts: its list's snapshot is at least the removal's, which is
+ * at least the last confirmation, so it can only over-protect, never let older data win.
  */
 export async function newestListSnapshot(db: Db, placeIds: string[]) {
   const list = [...new Set(placeIds)];
@@ -142,14 +144,13 @@ export async function newestListSnapshot(db: Db, placeIds: string[]) {
     .innerJoin("lists", "lists.id", "list_items.list_id")
     .select(["list_items.place_id", sql<number | null>`max(lists.provider_snapshot_at)`.as("at")])
     .where(inJson(db, "list_items.place_id", list))
-    .where("list_items.removed_at_provider", "is", null)
     .groupBy("list_items.place_id")
     .execute();
   for (const r of rows) if (r.at != null) out.set(r.place_id, Number(r.at));
   return out;
 }
 
-/** A place's snapshot: its own, or a newer one of a list that holds it. */
+/** A place's snapshot: its own, or a newer one of a list that holds or held it. */
 export function placeSnapshot(place: Row, listSnapshots: Map<string, number>): number | null {
   const own = place.provider_snapshot_at == null ? null : Number(place.provider_snapshot_at);
   const list = listSnapshots.get(String(place.id));

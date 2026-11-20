@@ -308,6 +308,42 @@ forEachDialect("import (shared)", (makeDb) => {
     ]);
   });
 
+  it("keeps a place a newer list confirmed after that list dropped it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 4000, snapshotMs: 4000 });
+    await runImport(db, ME, [list("2", [item("20", "A", { lat: NORTH(0) })])], {
+      at: T0 + 5000,
+      snapshotMs: 2000,
+    });
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
+  it("keeps a place from a search older than a list that confirmed it and then dropped it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 4000, snapshotMs: 4000 });
+    await push(
+      db,
+      ME,
+      [up("places", searchedPlace("A", { lat: NORTH(0), signedAt: T0 + 2000 }), T0 + 5000)],
+      T0 + 5000,
+    );
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
   it("keeps a place from a search older than the import that last confirmed it", async () => {
     const db = await setup(makeDb);
     const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
