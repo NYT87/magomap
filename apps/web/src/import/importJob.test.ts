@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runImport = vi.fn();
-vi.mock("./runImport", () => ({ runImport: (...args: unknown[]) => runImport(...args) }));
+vi.mock("./runImport", async (original) => ({
+  ...(await original<typeof import("./runImport")>()),
+  runImport: (...args: unknown[]) => runImport(...args),
+}));
 const release = vi.fn();
 const holdScreenOn = vi.fn(() => release);
 vi.mock("./wakeLock", () => ({ holdScreenOn: () => holdScreenOn() }));
 const { openUserDb } = await import("../data/db");
+const { ME_CHANGED } = await import("../auth/useMe");
+const { ImportError } = await import("./runImport");
 const { currentImportJob, forgetImportJob, startImportJob, subscribeImportJob } = await import(
   "./importJob"
 );
@@ -90,5 +95,24 @@ describe("importJob", () => {
     expect(currentImportJob()).toBeNull();
     openUserDb("B");
     expect(currentImportJob()).toBe(b);
+  });
+
+  it("asks again who is signed in when an import ends, so a filled nickname shows", async () => {
+    const changed = vi.fn();
+    window.addEventListener(ME_CHANGED, changed);
+    try {
+      runImport.mockResolvedValueOnce({ placesAdded: 1 });
+      await startImportJob().promise;
+      expect(changed).toHaveBeenCalledTimes(1);
+      runImport.mockRejectedValueOnce(new ImportError("start", "up_to_date"));
+      await startImportJob().promise.catch(() => {});
+      expect(changed).toHaveBeenCalledTimes(2);
+      // Signed out: the import says so; nothing sends the open screen to sign-in.
+      runImport.mockRejectedValueOnce(new ImportError("list", "signed_out"));
+      await startImportJob().promise.catch(() => {});
+      expect(changed).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener(ME_CHANGED, changed);
+    }
   });
 });

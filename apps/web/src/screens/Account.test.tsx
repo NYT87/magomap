@@ -291,6 +291,319 @@ describe("Account", () => {
     renderAccount();
     expect(screen.getByRole("combobox", { name: "Map" })).toHaveValue("osm");
   });
+
+  describe("nickname", () => {
+    const setOnline = (on: boolean) =>
+      Object.defineProperty(navigator, "onLine", { value: on, configurable: true });
+
+    it("edits the nickname", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const field = screen.getByRole("textbox", { name: "Nickname" });
+      expect(field).toHaveValue("지은");
+      await user.clear(field);
+      await user.type(field, "민수");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith(
+          "/api/me",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ displayName: "민수" }),
+          }),
+        ),
+      );
+      await waitFor(() => expect(screen.queryByRole("textbox", { name: "Nickname" })).toBeNull());
+    });
+
+    it("Cancel keeps the name", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.type(screen.getByRole("textbox", { name: "Nickname" }), "x");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("textbox", { name: "Nickname" })).toBeNull();
+      expect(screen.getByRole("heading", { level: 2, name: "지은" })).toBeInTheDocument();
+      expect(apiFetch).not.toHaveBeenCalledWith("/api/me", expect.anything());
+    });
+
+    it("counts the nickname's limit in characters, emoji included", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const field = screen.getByRole("textbox", { name: "Nickname" });
+      await user.clear(field);
+      await user.type(field, "🌸".repeat(41));
+      // Not cut while typing (Korean input), but Save waits until it fits, and says why.
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+      expect(field).toHaveAccessibleDescription("Up to 40 characters.");
+      await user.type(field, "{Enter}");
+      expect(apiFetch).not.toHaveBeenCalledWith("/api/me", expect.anything());
+      await user.type(field, "{Backspace}{Backspace}");
+      expect(Array.from((field as HTMLInputElement).value)).toHaveLength(40);
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+
+    it("gives focus back to Edit name when the editor closes", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.getByRole("button", { name: "Edit name" })).toHaveFocus();
+    });
+
+    it("Edit is off offline", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(false);
+      try {
+        renderAccount();
+        expect(screen.getByRole("button", { name: "Edit name" })).toBeDisabled();
+      } finally {
+        setOnline(true);
+      }
+    });
+
+    it("says so when the name can't be saved", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      answerOnce("/api/me", () => Promise.reject(new NetworkError()));
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't reach the server/);
+      expect(screen.getByRole("textbox", { name: "Nickname" })).toBeInTheDocument();
+    });
+  });
+
+  describe("remove my data from this device", () => {
+    const keys = ["mm.visibleLists.u1", "mm.showPrevious.u1", "mm.mapProvider.u1", "mm.name.u1"];
+    const draft = { key: "new:p", visitedOn: null, body: "비밀 메모", updatedAt: 1 };
+    /** The account's database on this device, with a draft, and queues as given. */
+    const seedDevice = async (rows: { outbox?: number; rejected?: number } = {}) => {
+      // A fresh database each time: earlier tests leave queued and refused changes behind.
+      closeUserDb("u1");
+      await Dexie.delete("magomap-u1");
+      const db = openUserDb("u1");
+      await db.drafts.put(draft);
+      for (let i = 0; i < (rows.outbox ?? 0); i++) {
+        await db.outbox.add({
+          mutationId: `m${i}`,
+          table: "visit_notes",
+          id: `n${i}`,
+          op: "delete",
+          clientUpdatedAt: 1,
+        });
+      }
+      for (let i = 0; i < (rows.rejected ?? 0); i++) {
+        await db.rejected.put({
+          mutationId: `r${i}`,
+          table: "visit_notes",
+          id: `n${i}`,
+          op: "delete",
+          reason: "invalid",
+          at: 1,
+        });
+      }
+      for (const k of keys) localStorage.setItem(k, "x");
+      localStorage.setItem("mm.lang", "en");
+    };
+    const leftOnDevice = () => keys.filter((k) => localStorage.getItem(k) !== null);
+    const draftsLeft = async () => {
+      const db = openUserDb("u1");
+      const n = await db.drafts.count();
+      closeUserDb("u1");
+      return n;
+    };
+    const check = () =>
+      screen.getByRole("checkbox", { name: "Also remove my data from this device" });
+
+    it("removes this account's data from the device when asked", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+      expect(await draftsLeft()).toBe(0);
+      expect(leftOnDevice()).toEqual([]);
+      expect(localStorage.getItem("mm.lang")).toBe("en");
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("removed");
+    });
+
+    it('keeps the data when changes are unsynced, even after "Sign out anyway"', async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice({ outbox: 2 });
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 2, syncNow: vi.fn(async () => {}) });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(dialog).toHaveTextContent(
+        "Your unsynced changes will stay on this device, so its data won't be removed.",
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out anyway" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
+      );
+      expect(await draftsLeft()).toBe(1);
+      expect(leftOnDevice()).toEqual(keys);
+    });
+
+    it("keeps the data when sign-out's own sync leaves a refused change", async () => {
+      await i18n.changeLanguage("en");
+      // The note was pending; the sync refused it, so it moved to "couldn't be saved".
+      await seedDevice({ rejected: 1 });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({
+        unsynced: 1,
+        rejected: 0,
+        syncNow: vi.fn(async () => {}),
+        countUnsynced: vi.fn(async () => 0),
+      });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+      expect(await draftsLeft()).toBe(1);
+      expect(leftOnDevice()).toEqual(keys);
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
+    });
+
+    it("keeps the data by default", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      expect(check()).not.toBeChecked();
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
+      );
+      expect(await draftsLeft()).toBe(1);
+    });
+
+    it("signs out and removes the data even while another tab has the database open", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      // Another tab's connection: removing the data mustn't wait for it to go away.
+      const held = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1");
+        r.onsuccess = () => ok(r.result);
+      });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+      expect(await draftsLeft()).toBe(0);
+      held.close();
+    });
+
+    it("never waits for long on a database another tab holds at an older version", async () => {
+      await i18n.changeLanguage("en");
+      closeUserDb("u1");
+      await Dexie.delete("magomap-u1");
+      // An older version of the database, held open by a connection that never lets go: opening
+      // it with today's tables would wait for that connection forever.
+      const held = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("drafts", { keyPath: "key" });
+        r.onsuccess = () => ok(r.result);
+      });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 8_000 });
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
+      held.close();
+    });
+
+    /** Another tab's write that holds the account's drafts table until `release()` is called. */
+    const holdWrite = async () => {
+      const db = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1");
+        r.onsuccess = () => ok(r.result);
+      });
+      let held = true;
+      const tx = db.transaction("drafts", "readwrite");
+      const store = tx.objectStore("drafts");
+      // Keep the transaction alive with one small request after another.
+      const keepAlive = () => {
+        if (!held) return;
+        store.get("none").onsuccess = keepAlive;
+      };
+      keepAlive();
+      const done = new Promise<void>((ok) => {
+        tx.oncomplete = () => ok();
+      });
+      return async () => {
+        held = false;
+        await done;
+        db.close();
+      };
+    };
+
+    it("never clears the data later after saying it was kept", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const release = await holdWrite();
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 8_000 });
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
+      await release();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await draftsLeft()).toBe(1);
+    });
+
+    it("leaves another account that opened during the wait alone", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const release = await holdWrite();
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      // Another tab signs in as someone else while the removal waits.
+      const other = openUserDb("u2");
+      await new Promise((r) => setTimeout(r, 4_500));
+      expect(window.location.pathname).toBe("/account");
+      expect(openDbOrNull()).toBe(other);
+      await release();
+    });
+
+    it("keeps the data when the server sign-out fails", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      answerOnce("/api/auth/logout", () => Promise.reject(new Error("boom")));
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't reach the server/);
+      expect(await draftsLeft()).toBe(1);
+    });
+  });
+
   describe("theme", () => {
     beforeEach(() => {
       localStorage.removeItem("mm.theme");

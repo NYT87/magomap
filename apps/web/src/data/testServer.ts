@@ -18,6 +18,8 @@ export interface FakeServer {
   failCode: string;
   /** When set, each push waits for it before answering (a slow network). */
   pushGate: Promise<void> | null;
+  /** When set, each pull waits for it before answering. */
+  pullGate: Promise<void> | null;
   /** Headers of every request, in order. */
   headers: Headers[];
   fetch: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -34,6 +36,7 @@ export function fakeServer(): FakeServer {
     pullStatus: null,
     failCode: "x",
     pushGate: null,
+    pullGate: null,
     headers: [],
     fetch: async <T>(path: string, init?: RequestInit): Promise<T> => {
       server.headers.push(new Headers(init?.headers));
@@ -50,6 +53,7 @@ export function fakeServer(): FakeServer {
       if (path.startsWith("/api/sync/pull")) {
         server.pulls.push(path);
         if (server.pulls.length === server.failPullAt) throw new NetworkError();
+        if (server.pullGate) await server.pullGate;
         if (server.pullStatus === 401) throw new UnauthorizedError();
         const page = server.pullPages.shift() ?? { rows: [], cursor: "c-end", hasMore: false };
         return page as T;

@@ -5,8 +5,10 @@ import {
   deleteSession,
   findOrCreateUserByIdentity,
   resolveSession,
+  setDisplayName,
 } from "@magomap/db/stores/users";
-import type { Me } from "@magomap/domain";
+import { isStorableText, LIMITS, type Me } from "@magomap/domain";
+import { usableNickname } from "@magomap/domain/providers/kakao";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -53,7 +55,9 @@ authRoutes.get("/auth/kakao/start", (c) => {
     path: "/api/auth",
     maxAge: 600,
   });
-  return c.redirect(authorizeUrl(c.env, state), 302);
+  // "A different Kakao account": make Kakao ask, instead of reusing the browser's Kakao login.
+  const forceLogin = c.req.query("account") === "other";
+  return c.redirect(authorizeUrl(c.env, state, { forceLogin }), 302);
 });
 
 authRoutes.get("/auth/kakao/callback", async (c) => {
@@ -72,7 +76,8 @@ authRoutes.get("/auth/kakao/callback", async (c) => {
     throw error;
   }
   if (!isAllowed(c.env, kakao.kakaoUserId)) return c.redirect("/not-invited", 302);
-  await signIn(c, kakao.kakaoUserId, kakao.nickname);
+  // magomap never takes Kakao's nickname: the name starts empty (filled by an import or typed).
+  await signIn(c, kakao.kakaoUserId, null);
   return c.redirect("/", 302);
 });
 
@@ -82,11 +87,12 @@ authRoutes.post("/auth/dev", async (c) => {
     .object({ kakaoUserId: z.string().min(1).max(100), nickname: z.string().max(100).optional() })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid" }, 400);
-  await signIn(c, body.data.kakaoUserId, body.data.nickname ?? null);
+  await signIn(c, body.data.kakaoUserId, usableNickname(body.data.nickname) ?? null);
   return c.json({ ok: true });
 });
 
-authRoutes.get("/me", requireSession, async (c) => {
+/** The signed-in account, as /api/me answers it. */
+async function meOf(c: Context<AppEnv>): Promise<Me> {
   const user = await c.var.db.kysely
     .selectFrom("users")
     .select("display_name")
@@ -97,12 +103,27 @@ authRoutes.get("/me", requireSession, async (c) => {
     .select("provider")
     .where("user_id", "=", c.var.userId)
     .execute();
-  const me: Me = {
+  return {
     userId: c.var.userId,
     displayName: user?.display_name ?? null,
     identities: identities.map((i) => ({ provider: i.provider as "kakao" | "google" })),
   };
-  return c.json(me);
+}
+
+authRoutes.get("/me", requireSession, async (c) => c.json(await meOf(c)));
+
+/** Edits the account's name; empty (or only spaces) clears it, so the next import may fill it. */
+authRoutes.patch("/me", requireUser, async (c) => {
+  const body = z
+    .object({ displayName: z.string() })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "invalid" }, 400);
+  const name = body.data.displayName.trim();
+  if (Array.from(name).length > LIMITS.nickname || !isStorableText(name)) {
+    return c.json({ error: "invalid" }, 400);
+  }
+  await setDisplayName(c.var.db, c.var.userId, name || null);
+  return c.json(await meOf(c));
 });
 
 authRoutes.post("/auth/logout", async (c) => {

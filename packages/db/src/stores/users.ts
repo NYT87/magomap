@@ -39,6 +39,25 @@ export async function findOrCreateUserByIdentity(
   return { userId, created: true };
 }
 
+/** Fills the account's name only while it's empty: a name already set (typed or filled) stays. */
+export async function fillDisplayName(db: Db, userId: string, name: string): Promise<void> {
+  await db.kysely
+    .updateTable("users")
+    .set({ display_name: name })
+    .where("id", "=", userId)
+    .where("display_name", "is", null)
+    .execute();
+}
+
+/** Sets the account's name, or clears it (null) so the next import may fill it again. */
+export async function setDisplayName(db: Db, userId: string, name: string | null): Promise<void> {
+  await db.kysely
+    .updateTable("users")
+    .set({ display_name: name })
+    .where("id", "=", userId)
+    .execute();
+}
+
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);

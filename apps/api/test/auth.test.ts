@@ -72,8 +72,9 @@ describe("Kakao sign-in", () => {
       headers: { cookie: `mm_session=${cookieFrom(res, "mm_session")}` },
     });
     expect(me.status).toBe(200);
+    // Kakao sent a nickname, but magomap never takes it: the name starts empty.
     expect(await me.json()).toMatchObject({
-      displayName: "지은",
+      displayName: null,
       identities: [{ provider: "kakao" }],
     });
   });
@@ -189,5 +190,61 @@ describe("dev login, health and config", () => {
       kakaoJavascriptKey: null,
       devLoginEnabled: false,
     });
+  });
+
+  describe("PATCH /api/me", () => {
+    const patch = (cookie: string, body: unknown) => ({
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(body),
+    });
+
+    it("saves a trimmed name and answers the account", async () => {
+      const cookie = await devLogin("111");
+      const res = await call("/api/me", patch(cookie, { displayName: "  지은  " }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ displayName: "지은" });
+    });
+
+    it("refuses a name over 40 characters, or one that can't be stored", async () => {
+      const cookie = await devLogin("111");
+      for (const displayName of ["가".repeat(41), "a\u0000b", 5]) {
+        const res = await call("/api/me", patch(cookie, { displayName }));
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "invalid" });
+      }
+    });
+
+    it("needs a session", async () => {
+      expect((await call("/api/me", patch("", { displayName: "x" }))).status).toBe(401);
+    });
+  });
+
+  it("start asks Kakao for a fresh login only when asked", async () => {
+    const at = async (path: string) => {
+      const res = await call(path);
+      expect(res.status).toBe(302);
+      return new URL(res.headers.get("location") ?? "");
+    };
+    const plain = await at("/api/auth/kakao/start");
+    const other = await at("/api/auth/kakao/start?account=other");
+    expect(other.searchParams.get("prompt")).toBe("login");
+    for (const key of ["client_id", "redirect_uri", "response_type"]) {
+      expect(other.searchParams.get(key)).toBe(plain.searchParams.get(key));
+    }
+    expect(other.searchParams.get("state")).toBeTruthy();
+    // Nothing else is added, and any other value means a normal sign-in.
+    expect([...other.searchParams.keys()].sort()).toEqual(
+      ["client_id", "prompt", "redirect_uri", "response_type", "state"].sort(),
+    );
+    for (const path of [
+      "/api/auth/kakao/start",
+      "/api/auth/kakao/start?account=me",
+      "/api/auth/kakao/start?account=other&prompt=none",
+    ]) {
+      const url = await at(path);
+      if (path.endsWith("prompt=none")) expect(url.searchParams.get("prompt")).toBe("login");
+      else expect(url.searchParams.has("prompt")).toBe(false);
+    }
   });
 });

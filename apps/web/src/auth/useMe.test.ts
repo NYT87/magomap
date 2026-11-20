@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACCOUNT_CHANGED } from "../api/client";
-import { useMe } from "./useMe";
+import { accountName, notifyMeChanged, storedMe, useMe } from "./useMe";
 
 const me = (userId: string) => ({ userId, displayName: userId });
 
@@ -69,5 +69,39 @@ describe("useMe", () => {
     });
     expect(result.current.me?.userId).toBe("b");
     expect(JSON.parse(localStorage.getItem("mm.me") ?? "{}").userId).toBe("b");
+  });
+
+  it("remembers each account's name, even after the session ends", async () => {
+    const answers: (() => Response)[] = [
+      () => new Response(JSON.stringify({ userId: "u1", displayName: "지은" }), { status: 200 }),
+      () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }),
+      () => new Response(JSON.stringify({ userId: "u1", displayName: null }), { status: 200 }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => (answers.shift() as () => Response)()),
+    );
+    const { result } = renderHook(() => useMe());
+    await waitFor(() => expect(result.current.me?.displayName).toBe("지은"));
+    expect(accountName("u1")).toBe("지은");
+    act(() => {
+      window.dispatchEvent(new Event(ACCOUNT_CHANGED));
+    });
+    await waitFor(() => expect(result.current.me).toBeNull());
+    expect(storedMe()).toBeNull();
+    expect(accountName("u1")).toBe("지은");
+    act(() => {
+      window.dispatchEvent(new Event(ACCOUNT_CHANGED));
+    });
+    await waitFor(() => expect(result.current.me?.userId).toBe("u1"));
+    expect(accountName("u1")).toBeNull();
+  });
+
+  it("asks again when the account's details changed", async () => {
+    serve(["a", "b"]);
+    const { result } = renderHook(() => useMe());
+    await waitFor(() => expect(result.current.me?.userId).toBe("a"));
+    act(() => notifyMeChanged());
+    await waitFor(() => expect(result.current.me?.userId).toBe("b"));
   });
 });

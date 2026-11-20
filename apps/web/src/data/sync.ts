@@ -124,6 +124,9 @@ async function applyResults(
       for (const r of res.results) {
         const e = byId.get(r.mutationId);
         if (!e || e.seq === undefined) continue;
+        // Already settled elsewhere (another tab got its answer first, and the data may have
+        // been removed since): a late answer changes nothing.
+        if ((await db.outbox.get(e.seq))?.mutationId !== e.mutationId) continue;
         if (r.status === "rejected" && r.reason === "clock_ahead") {
           // Kept unchanged: accepted once real time catches up with the stamp.
           t.clockAhead = true;
@@ -177,13 +180,25 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
     if (error instanceof ApiError && (error.status === 400 || error.status === 413)) {
       if (entries.length === 1) {
         const e = entries[0] as OutboxEntry;
-        await db.transaction("rw", db.outbox, db.rejected, db.user_places, async () => {
-          if (e.seq !== undefined) await db.outbox.delete(e.seq);
-          await db.rejected.put({ ...e, reason: "invalid", at: Date.now() });
-          if (e.table === "places") await db.user_places.delete(userPlaceRowId(e.id));
-        });
-        t.rejected += 1;
-        t.repull = true;
+        const setAside = await db.transaction(
+          "rw",
+          db.outbox,
+          db.rejected,
+          db.user_places,
+          async () => {
+            // Already settled elsewhere: nothing to set aside, nothing to count.
+            if (e.seq === undefined || (await db.outbox.get(e.seq))?.mutationId !== e.mutationId)
+              return false;
+            await db.outbox.delete(e.seq);
+            await db.rejected.put({ ...e, reason: "invalid", at: Date.now() });
+            if (e.table === "places") await db.user_places.delete(userPlaceRowId(e.id));
+            return true;
+          },
+        );
+        if (setAside) {
+          t.rejected += 1;
+          t.repull = true;
+        }
         return;
       }
       const half = Math.ceil(entries.length / 2);
@@ -198,15 +213,26 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
 
 // ---------- pull ----------
 
+/** The account's removal mark: it changes each time its data is removed from this device. */
+const removalMark = async (db: MagomapDexie) => (await db.meta.get("removal"))?.value;
+
 /**
  * Pulls every page; each page's rows and its cursor are stored together. A list this device
  * didn't have may hold shared rows written long before its cursor (the server doesn't re-stamp
  * them). So when a pull that started from a cursor brings one in, that page drops the
  * cursor instead of storing it, and the pull goes on from the start, once. An interruption then
  * resumes the full pull rather than forgetting it was needed.
+ *
+ * `from.removal` is the removal mark seen when the sync started (by default, the mark now).
  */
-export async function pullAll(db: MagomapDexie): Promise<number> {
+export async function pullAll(
+  db: MagomapDexie,
+  from?: { removal: string | number | undefined },
+): Promise<number> {
   let pulled = 0;
+  // The account's data removed from this device meanwhile (sign-out in another tab): what comes
+  // back from the server is dropped, never written over the emptied tables.
+  const since = from ? from.removal : await removalMark(db);
   let mayRestart = typeof (await db.meta.get("cursor"))?.value === "string";
   for (;;) {
     const cursor = (await db.meta.get("cursor"))?.value;
@@ -222,6 +248,7 @@ export async function pullAll(db: MagomapDexie): Promise<number> {
       "rw",
       [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
       async () => {
+        if ((await removalMark(db)) !== since) throw new Stop("needs_signin");
         const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
         for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
           // A local change still on its way wins over what the server had.
@@ -276,9 +303,12 @@ async function run(
   report("syncing");
   const t: PushTally = { pushed: 0, rejected: 0, clockAhead: false, repull: false };
   try {
+    // A removal (another tab) during the push leaves nothing for the pull to refill.
+    const removal = await removalMark(db);
     const entries = await db.outbox.orderBy("seq").toArray();
     for (const batch of batches(entries)) await pushBatch(db, batch, t);
     await db.transaction("rw", db.meta, async () => {
+      if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
       // After a refusal, the server's copies come back in full, replacing refused local edits.
       if (t.repull) await db.meta.delete("cursor");
       // An app from before PULL_EPOCH may have been given a list without pulling its older rows:
@@ -288,9 +318,12 @@ async function run(
         await db.meta.put({ key: "pullEpoch", value: PULL_EPOCH });
       }
     });
-    const pulled = await pullAll(db);
+    const pulled = await pullAll(db, { removal });
     const now = Date.now();
-    await db.meta.put({ key: "lastSyncAt", value: now });
+    await db.transaction("rw", db.meta, async () => {
+      if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
+      await db.meta.put({ key: "lastSyncAt", value: now });
+    });
     const to = t.clockAhead ? "clock_ahead" : "idle";
     report(to, now);
     return { result: { pushed: t.pushed, pulled, rejected: t.rejected }, to };

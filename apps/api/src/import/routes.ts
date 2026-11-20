@@ -15,6 +15,7 @@ import {
   runSnapshot,
   startImportRun,
 } from "@magomap/db/stores/importRuns";
+import { fillDisplayName } from "@magomap/db/stores/users";
 import { LIMITS } from "@magomap/domain";
 import {
   KAKAO,
@@ -107,6 +108,11 @@ async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
 importRoutes.post("/import/runs", (c) =>
   handled(c, async () => {
     const snapshot = await currentSnapshot(c);
+    // The account's name, only while it's empty; done first, so neither an up-to-date snapshot
+    // nor a stopped import delays it.
+    if (snapshot.ownerNickname) {
+      await fillDisplayName(c.var.db, c.var.userId, snapshot.ownerNickname);
+    }
     // Checked before startImportRun so refusing doesn't supersede an open run.
     if (await importedSnapshot(c.var.db, c.var.userId, Date.parse(snapshot.importedAt)))
       throw new UpToDateError();

@@ -8,7 +8,7 @@ import {
   importContractSchema,
 } from "../importContract";
 import { LIMITS } from "../limits";
-import { position, storableText } from "../sync";
+import { isStorableText, position, storableText } from "../sync";
 
 export const KAKAO = "kakao";
 
@@ -131,6 +131,8 @@ export const kakaoListsSchema = z.object({
   importedAt: required(40),
   complete: z.boolean(),
   subscriptionKnown: z.boolean().optional(),
+  // Checked by hand, not by the schema: a nickname we can't use must never fail the import.
+  ownerNickname: z.unknown().optional(),
   lists: z
     .array(kakaoListSummary)
     .max(LIMITS.importLists)
@@ -153,13 +155,22 @@ export type KakaoLists = z.infer<typeof kakaoListsSchema>;
 export type KakaoItems = z.infer<typeof kakaoItemsSchema>;
 
 /** `kakaoUserId` is the importing user's own Kakao Login id (it keys their folder 0). */
+/** A nickname we can store: trimmed and cut to the limit; undefined when there's none. */
+export function usableNickname(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = Array.from(value.trim()).slice(0, LIMITS.nickname).join("").trim();
+  return name && isStorableText(name) ? name : undefined;
+}
+
 export function kakaoListsToImport(raw: unknown, kakaoUserId: string): ImportListsSnapshot {
   const c = kakaoListsSchema.parse(raw);
+  const ownerNickname = usableNickname(c.ownerNickname);
   return {
     provider: KAKAO,
     importedAt: c.importedAt,
     complete: c.complete,
     subscriptionKnown: c.subscriptionKnown ?? false,
+    ...(ownerNickname ? { ownerNickname } : {}),
     lists: c.lists.map((l) =>
       defined({
         externalId: kakaoListExternalId(l.kakaoFolderId, kakaoUserId),

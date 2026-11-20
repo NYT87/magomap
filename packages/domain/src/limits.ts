@@ -11,6 +11,8 @@ export const LIMITS = {
   importChunkItems: 500,
   importListItems: 5_000,
   importLists: 500,
+  /** An account's nickname, in characters. */
+  nickname: 40,
 } as const;
 
 /** A device clock may run ahead; client times further ahead of the server than this are refused (clock_ahead). */

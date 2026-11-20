@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
+import { deviceKeys } from "../data/deviceKeys";
 import { MAP_CHOICES, type MapChoice } from "./providerChoice";
 
 interface MapPrefs {
@@ -34,8 +35,8 @@ const write = (key: string, value: string) => {
 
 /** Which lists show on the map, previous locations and which map; remembered per account. */
 export function MapPrefsProvider({ userId, children }: { userId: string; children: ReactNode }) {
-  const listsKey = `mm.visibleLists.${userId}`;
-  const prevKey = `mm.showPrevious.${userId}`;
+  const listsKey = deviceKeys.visibleLists(userId);
+  const prevKey = deviceKeys.showPrevious(userId);
   const [hidden, setHidden] = useState<Set<string>>(() => {
     try {
       return new Set((JSON.parse(read(listsKey) ?? "{}") as { hidden?: string[] }).hidden ?? []);
@@ -44,7 +45,7 @@ export function MapPrefsProvider({ userId, children }: { userId: string; childre
     }
   });
   const [showPrevious, setPrev] = useState(() => read(prevKey) !== "0");
-  const choiceKey = `mm.mapProvider.${userId}`;
+  const choiceKey = deviceKeys.mapProvider(userId);
   const [mapChoice, setChoice] = useState<MapChoice>(() => {
     const stored = read(choiceKey);
     return MAP_CHOICES.find((c) => c === stored) ?? "auto";

@@ -18,7 +18,10 @@
     "devUser": "Kakao user id",
     "devName": "Nickname",
     "devSubmit": "Sign in",
-    "devFailed": "Couldn't sign in. Check the user id and try again."
+    "devFailed": "Couldn't sign in. Check the user id and try again.",
+    "otherAccount": "Sign in with a different Kakao account",
+    "removed": "Your data was removed from this device.",
+    "removeKept": "Your data was kept on this device: some changes hadn't reached the server, or it couldn't be checked."
   },
   "notInvited": {
     "title": "This map is invite-only for now",
@@ -57,7 +60,13 @@
     "mapKakao": "Kakao Map",
     "mapOsm": "OpenStreetMap",
     "mapHint": "Automatic uses Kakao Map in Korea and OpenStreetMap elsewhere.",
-    "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap."
+    "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap.",
+    "editName": "Edit name",
+    "nameLabel": "Nickname",
+    "nameTooLong": "Up to {{max}} characters.",
+    "save": "Save",
+    "removeData": "Also remove my data from this device",
+    "removeDataKept": "Your unsynced changes will stay on this device, so its data won't be removed."
   },
   "about": {
     "title": "About",
@@ -263,7 +272,10 @@
     "copy": "Copy text",
     "copied": "Copied",
     "dismiss": "Done",
-    "dismissHint": "Removes it from this list. Copy the text first if you need it."
+    "dismissHint": "Removes it from this list. Copy the text first if you need it.",
+    "needsSigninAsNone": "Sign in again as {{name}} to keep syncing",
+    "needsSigninAs_one": "Sign in again as {{name}} to save {{count}} change",
+    "needsSigninAs_other": "Sign in again as {{name}} to save {{count}} changes"
   },
   "crash": {
     "title": "Something went wrong on this screen",

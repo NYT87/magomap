@@ -1,15 +1,23 @@
-import type { Me } from "@magomap/domain";
+import { LIMITS, type Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
-import { forgetMe } from "../auth/useMe";
+import { forgetMe, notifyMeChanged } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { closeUserDb, dbName, openDbOrNull } from "../data/db";
+import {
+  closeUserDb,
+  dbName,
+  forgetAccountOnDevice,
+  openDbOrNull,
+  REMOVE_RESULT,
+} from "../data/db";
+import { accountDeviceKeys } from "../data/deviceKeys";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
+import { useOnline } from "../import/useOnline";
 import { useLayout } from "../layout/useLayout";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
@@ -39,10 +47,49 @@ export function Account({ me }: { me: Me }) {
   // Every request here acts for the account this screen shows, never one opened meanwhile.
   const forMe = (method: string) => ({ method, headers: { [ACCOUNT_HEADER]: me.userId } });
 
+  // The nickname: shown as the card's heading, edited in place.
+  const online = useOnline();
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState(false);
+  const nameErrorId = useId();
+  const nameLongId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  const editNameButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  // Opening the editor focuses its field; closing it (Save or Cancel) gives focus back to Edit.
+  useEffect(() => {
+    if (editingName) nameInput.current?.focus();
+    else if (wasEditing.current) editNameButton.current?.focus();
+    wasEditing.current = editingName;
+  }, [editingName]);
+  // The limit counts characters as the server does (an emoji is one, not two).
+  const nameTooLong = Array.from(nameDraft.trim()).length > LIMITS.nickname;
+  const saveName = async () => {
+    setSavingName(true);
+    setNameError(false);
+    try {
+      await apiFetch("/api/me", {
+        ...forMe("PATCH"),
+        body: JSON.stringify({ displayName: nameDraft }),
+      });
+      setEditingName(false);
+      notifyMeChanged();
+    } catch {
+      setNameError(true);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const leave = () => {
     forgetMe();
     navigate("/signin");
   };
+
+  // "Also remove my data from this device": off by default, never remembered.
+  const [removeData, setRemoveData] = useState(false);
 
   const signOut = async (everywhere: boolean, force = false) => {
     setError(null);
@@ -69,8 +116,21 @@ export function Account({ me }: { me: Me }) {
     try {
       setBusy(true);
       await apiFetch(everywhere ? "/api/auth/logout-all" : "/api/auth/logout", forMe("POST"));
-      // The local database is kept: unsynced changes go out at the next sign-in here.
-      if (!switched()) leave();
+      if (switched()) return;
+      // Removed only when everything reached the server ("Sign out anyway" keeps unsynced data).
+      // Otherwise the local database is kept: unsynced changes go out at the next sign-in here.
+      if (removeData && !force) {
+        // The sign-in screen says how it went (removed, or kept).
+        const result = await forgetAccountOnDevice(me.userId);
+        // Another account opened while the removal waited (another tab signed in): leave it be.
+        if (switched()) return;
+        try {
+          sessionStorage.setItem(REMOVE_RESULT, result);
+        } catch {
+          // storage blocked: no message
+        }
+      }
+      leave();
     } catch (e) {
       setError(e instanceof NetworkError ? t("account.signOutOffline") : t("account.failed"));
     } finally {
@@ -83,6 +143,14 @@ export function Account({ me }: { me: Me }) {
     setBusy(true);
     try {
       await apiFetch("/api/account", forMe("DELETE"));
+      // The account is gone: so is what the device remembers for it (its name included).
+      for (const key of accountDeviceKeys(me.userId)) {
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          // storage blocked: nothing was stored
+        }
+      }
       // Close this account's database first, so nothing (a sync, a live query) recreates it.
       closeUserDb(me.userId);
       await Dexie.delete(dbName(me.userId));
@@ -99,8 +167,75 @@ export function Account({ me }: { me: Me }) {
     <div className="mm-screen mm-account">
       {layout === "desktop" && <h1 className="mm-screen__title">{t("account.title")}</h1>}
       {/* Only signed-in people see Account: the card just says who it is. */}
-      <section className="mm-card">
-        <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
+      <section className="mm-card mm-stack">
+        {editingName ? (
+          <form
+            className="mm-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (nameTooLong || savingName) return;
+              void saveName();
+            }}
+          >
+            <label className="mm-field">
+              <span className="mm-field__label">{t("account.nameLabel")}</span>
+              <input
+                className="mm-input"
+                value={nameDraft}
+                // Not cut while typing (that breaks Korean input mid-syllable): Save waits instead.
+                onChange={(e) => setNameDraft(e.target.value)}
+                aria-describedby={
+                  [nameTooLong && nameLongId, nameError && nameErrorId].filter(Boolean).join(" ") ||
+                  undefined
+                }
+                aria-invalid={nameTooLong || undefined}
+                ref={nameInput}
+              />
+            </label>
+            {/* Always there, so a screen reader announces the limit the moment it's passed. */}
+            <p className={nameTooLong ? "mm-note" : undefined} id={nameLongId} role="status">
+              {nameTooLong ? t("account.nameTooLong", { max: LIMITS.nickname }) : ""}
+            </p>
+            {nameError && (
+              <p className="mm-error" role="alert" id={nameErrorId}>
+                {t("account.failed")}
+              </p>
+            )}
+            <div className="mm-editor__actions">
+              <button
+                type="submit"
+                className="mm-button mm-button--primary"
+                disabled={savingName || nameTooLong}
+              >
+                {t("account.save")}
+              </button>
+              <button
+                type="button"
+                className="mm-button mm-button--secondary"
+                onClick={() => setEditingName(false)}
+              >
+                {t("account.cancel")}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="mm-section__head">
+            <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
+            <button
+              ref={editNameButton}
+              type="button"
+              className="mm-button mm-button--secondary"
+              disabled={!online}
+              onClick={() => {
+                setNameDraft(me.displayName ?? "");
+                setNameError(false);
+                setEditingName(true);
+              }}
+            >
+              {t("account.editName")}
+            </button>
+          </div>
+        )}
       </section>
 
       <ImportSection />
@@ -157,6 +292,15 @@ export function Account({ me }: { me: Me }) {
       <AboutSection />
 
       <section className="mm-stack mm-account-actions">
+        <label className="mm-check">
+          <input
+            type="checkbox"
+            checked={removeData}
+            disabled={busy}
+            onChange={(e) => setRemoveData(e.target.checked)}
+          />
+          <span>{t("account.removeData")}</span>
+        </label>
         <button
           type="button"
           className="mm-button mm-button--secondary mm-button--wide"
@@ -220,6 +364,7 @@ export function Account({ me }: { me: Me }) {
         >
           {dialog.count > 0 && <p>{t("account.unsyncedBody", { count: dialog.count })}</p>}
           {dialog.rejected > 0 && <p>{t("account.rejectedNote", { count: dialog.rejected })}</p>}
+          {removeData && <p>{t("account.removeDataKept")}</p>}
         </ConfirmDialog>
       )}
 

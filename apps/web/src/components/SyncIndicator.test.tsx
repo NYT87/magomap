@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeUserDb, openUserDb } from "../data/db";
 import type { SyncStatus } from "../data/useSyncStatus";
 import i18n from "../i18n";
 import { SyncIndicator } from "./SyncIndicator";
@@ -158,5 +159,25 @@ describe("SyncIndicator", () => {
     const { container } = render(<SyncIndicator />);
     expect(container.querySelector(".mm-sync__pill")).toHaveTextContent("Synced");
     expect(container.querySelector(".mm-sync__icon")).toBeNull();
+  });
+});
+
+describe("SyncIndicator, signing in again", () => {
+  beforeEach(() => {
+    status.current = { state: "needs_signin", unsynced: 0, rejected: 0 };
+  });
+  afterEach(() => closeUserDb());
+
+  it("names the account when signing in again", () => {
+    openUserDb("si-named");
+    localStorage.setItem("mm.name.si-named", "지은");
+    render(<SyncIndicator />);
+    expect(screen.getAllByText("Sign in again as 지은 to keep syncing").length).toBeGreaterThan(0);
+  });
+
+  it("says plainly to sign in again when the account has no name", () => {
+    openUserDb("si-plain");
+    render(<SyncIndicator />);
+    expect(screen.getAllByText("Sign in again to keep syncing").length).toBeGreaterThan(0);
   });
 });

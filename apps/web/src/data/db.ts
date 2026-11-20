@@ -15,6 +15,7 @@ import type {
 } from "@magomap/domain";
 import Dexie, { type EntityTable } from "dexie";
 import { ACCOUNT_CHANGED, setRequestAccount } from "../api/client";
+import { accountDeviceKeys } from "./deviceKeys";
 
 export interface OutboxEntry {
   seq?: number;
@@ -44,7 +45,8 @@ export interface Draft {
 }
 
 export interface MetaEntry {
-  key: "cursor" | "lastSyncAt" | "pullEpoch";
+  /** "removal": changes each time the account's data is removed from this device. */
+  key: "cursor" | "lastSyncAt" | "pullEpoch" | "removal";
   value: string | number;
 }
 
@@ -91,18 +93,8 @@ export function subscribeDbReplacements(fn: () => void): () => void {
   return () => replacedListeners.delete(fn);
 }
 
-/** One instance per account, so coming back to an account finds its running work again. */
-const instances = new Map<string, MagomapDexie>();
-
-/** Opens (and makes current) this account's own database: data, outbox and drafts. */
-export function openUserDb(userId: string): MagomapDexie {
-  const known = instances.get(dbName(userId));
-  // A closed instance (deleted elsewhere, or closed on purpose) is replaced by a fresh one.
-  if (known && !known.hasBeenClosed()) {
-    current = known;
-    setRequestAccount(userId);
-    return known;
-  }
+/** An account's database: its tables (not opened yet). Exported for tests only. */
+export function defineUserDb(userId: string): MagomapDexie {
   const db = new Dexie(dbName(userId)) as MagomapDexie;
   db.version(1).stores({
     places: "id",
@@ -119,6 +111,22 @@ export function openUserDb(userId: string): MagomapDexie {
     drafts: "key",
     meta: "key",
   });
+  return db;
+}
+
+/** One instance per account, so coming back to an account finds its running work again. */
+const instances = new Map<string, MagomapDexie>();
+
+/** Opens (and makes current) this account's own database: data, outbox and drafts. */
+export function openUserDb(userId: string): MagomapDexie {
+  const known = instances.get(dbName(userId));
+  // A closed instance (deleted elsewhere, or closed on purpose) is replaced by a fresh one.
+  if (known && !known.hasBeenClosed()) {
+    current = known;
+    setRequestAccount(userId);
+    return known;
+  }
+  const db = defineUserDb(userId);
   // Another tab deleted (or upgraded) this database: close for good, so no late write here
   // recreates it, and ask again who is signed in.
   db.on("versionchange", () => {
@@ -161,4 +169,71 @@ export function closeUserDb(userId?: string) {
     current = null;
     setRequestAccount(null);
   }
+}
+
+/** Where sign-out leaves the removal's outcome for the sign-in screen to show. */
+export const REMOVE_RESULT = "mm.removeResult";
+
+/** How removing an account's data from this device ended. */
+export type RemovalResult = "removed" | "kept";
+
+/**
+ * Removes an account's data from this device, unless something hasn't reached the server.
+ *
+ * One read-write transaction over every table checks the unsent and refused queues and, only if
+ * both are empty, empties every table. The browser runs it atomically and in order with any other
+ * tab's writes, so a change written elsewhere can't slip in between the check and the clearing.
+ * The (now empty) database itself stays: deleting the file can wait on other tabs indefinitely.
+ * The same transaction leaves a new removal mark: a pull another tab started earlier compares it
+ * before writing what it fetched, and drops it instead of bringing the data back.
+ * - "kept": something is unsent or refused, or the database couldn't be read; nothing is removed.
+ * - "removed": every table is empty (but for the mark), and what the device remembers for the
+ *   account is gone.
+ */
+export async function forgetAccountOnDevice(userId: string): Promise<RemovalResult> {
+  const known = instances.get(dbName(userId));
+  const db = known && !known.hasBeenClosed() ? known : defineUserDb(userId);
+  let kept: boolean;
+  // Sign-out doesn't wait long for the tables: another tab's write, or an older version of the
+  // database held open, can hold them. Giving up cancels the clearing for good: the transaction
+  // checks this flag once it has the tables, and aborts instead of clearing.
+  let cancelled = false;
+  let clearingStarted = false;
+  try {
+    const clearing = db.transaction("rw", db.tables, async () => {
+      if ((await db.outbox.count()) > 0 || (await db.rejected.count()) > 0) return true;
+      if (cancelled) throw new Error("removal cancelled");
+      clearingStarted = true;
+      await Promise.all(db.tables.map((table) => table.clear()));
+      await db.meta.put({ key: "removal", value: crypto.randomUUID() });
+      return false;
+    });
+    clearing.catch(() => {});
+    const timedOut = new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), 4_000),
+    );
+    const outcome = await Promise.race([clearing, timedOut]);
+    if (outcome !== "timeout") kept = outcome;
+    // Already clearing: it finishes in a moment, so report what really happened.
+    else if (clearingStarted) kept = await clearing;
+    else {
+      cancelled = true;
+      kept = true;
+    }
+  } catch {
+    // Couldn't read it: keep everything rather than guess.
+    kept = true;
+  } finally {
+    if (db !== known) db.close();
+  }
+  if (kept) return "kept";
+  for (const key of accountDeviceKeys(userId)) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // storage blocked: nothing was stored
+    }
+  }
+  closeUserDb(userId);
+  return "removed";
 }

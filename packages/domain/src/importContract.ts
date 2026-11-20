@@ -100,6 +100,8 @@ export interface ImportListsSnapshot {
   importedAt: string;
   complete: boolean;
   subscriptionKnown: boolean;
+  /** The account's own nickname at the provider, when it sent one we can use. */
+  ownerNickname?: string;
   lists: ImportListSummary[];
 }
 

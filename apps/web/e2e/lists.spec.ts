@@ -62,7 +62,7 @@ test("the account actions are outlined buttons, at the bottom of the panel on de
   if (info.project.name === "desktop") {
     // With room to spare: a window tall enough for all of Account (without room, the panel
     // scrolls and the buttons simply follow the content).
-    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.setViewportSize({ width: 1440, height: 1400 });
     const body = await page.locator(".mm-panel__body").boundingBox();
     const box = await page.getByRole("button", { name: "Delete account" }).boundingBox();
     expect(body && box).toBeTruthy();

@@ -8,7 +8,7 @@ vi.mock("../api/client", async (orig) => {
   const actual = await orig<typeof import("../api/client")>();
   return { ...actual, apiFetch: (path: string, init?: RequestInit) => server.fetch(path, init) };
 });
-const { closeUserDb, openUserDb } = await import("./db");
+const { closeUserDb, defineUserDb, forgetAccountOnDevice, openUserDb } = await import("./db");
 const { addVisitNote, editVisitNote } = await import("./writes");
 const { startSyncTriggers, syncNow, syncState } = await import("./sync");
 
@@ -25,6 +25,7 @@ beforeEach(() => {
   server.failCode = "x";
   server.headers = [];
   server.pushGate = null;
+  server.pullGate = null;
 });
 const open = () => openUserDb(`s${n}`);
 const note = (id: string, body: string, updatedAt = 5): VisitNoteRow => ({
@@ -306,10 +307,23 @@ describe("sync", () => {
     const stop = startSyncTriggers();
     try {
       window.dispatchEvent(new Event("online"));
-      await vi.waitFor(() => expect(syncState().state).toBe("offline"));
+      // The first try failed and its retry is waiting (the state may still say "offline" from
+      // an earlier test, so it can't tell).
+      const failedTries = async (count: number) =>
+        vi.waitFor(() => {
+          expect(pushes).toBe(count);
+          expect(vi.getTimerCount()).toBe(1);
+        });
+      await failedTries(1);
       // One chain: the first try, then retries 5 s, 30 s and 2 min apart.
-      await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000 + 1_000);
-      expect(pushes).toBe(4);
+      for (const [wait, count] of [
+        [5_000, 2],
+        [30_000, 3],
+        [120_000, 4],
+      ] as const) {
+        await vi.advanceTimersByTimeAsync(wait);
+        await failedTries(count);
+      }
     } finally {
       stop();
       vi.useRealTimers();
@@ -474,5 +488,88 @@ describe("sync", () => {
     ];
     await pullAll(db);
     expect(server.pulls).toEqual(["/api/sync/pull"]);
+  });
+
+  it("never brings removed data back with a pull another tab started before the removal", async () => {
+    const userId = `s${n}`;
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    await syncNow();
+    // Another tab: its own connection, with a pull on its way.
+    const otherTab = defineUserDb(userId);
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [pulled("visit_notes", note("n_late", "late"))], cursor: "c9", hasMore: false },
+    ];
+    const { pullAll } = await import("./sync");
+    const sent = server.headers.length;
+    const late = pullAll(otherTab).catch((e: unknown) => e);
+    await vi.waitFor(() => expect(server.headers.length).toBe(sent + 1));
+    expect(await forgetAccountOnDevice(userId)).toBe("removed");
+    answer();
+    await late;
+    expect(await otherTab.visit_notes.count()).toBe(0);
+    expect(await otherTab.meta.get("cursor")).toBeUndefined();
+    otherTab.close();
+    expect(db.hasBeenClosed()).toBe(true);
+  });
+
+  it("ignores a late push answer for a change another tab already settled", async () => {
+    const userId = `s${n}`;
+    const db = open();
+    const id = await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    let answer = () => {};
+    server.pushGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.result = (m) => ({
+      mutationId: m.mutationId,
+      status: "ignored_stale",
+      row: note(id, "server"),
+    });
+    // The pull that follows the push would bring the note back too.
+    server.pullPages = [
+      { rows: [pulled("visit_notes", note(id, "server"))], cursor: "c9", hasMore: false },
+    ];
+    const late = syncNow();
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
+    // Another tab got the answer first, then the data was removed from the device (as
+    // forgetAccountOnDevice does: every table emptied, a new removal mark).
+    const otherTab = defineUserDb(userId);
+    await otherTab.transaction("rw", otherTab.tables, async () => {
+      await Promise.all(otherTab.tables.map((table) => table.clear()));
+      await otherTab.meta.put({ key: "removal", value: "r1" });
+    });
+    otherTab.close();
+    answer();
+    await late;
+    expect(await db.visit_notes.count()).toBe(0);
+    // Nothing but the removal mark is written back.
+    expect(await db.meta.toArray()).toEqual([{ key: "removal", value: "r1" }]);
+  });
+
+  it("counts no refusal for a refused change another tab already set aside", async () => {
+    const userId = `s${n}`;
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    let answer = () => {};
+    server.pushGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.failPush = () => 400;
+    const late = syncNow();
+    await vi.waitFor(() => expect(server.headers.length).toBe(1));
+    // Another tab got the same refusal first and set the change aside.
+    const otherTab = defineUserDb(userId);
+    await otherTab.outbox.clear();
+    otherTab.close();
+    answer();
+    const result = await late;
+    expect(result.rejected).toBe(0);
+    expect(await db.rejected.count()).toBe(0);
+    expect(server.headers).toHaveLength(2); // the refused push, then the pull
   });
 });

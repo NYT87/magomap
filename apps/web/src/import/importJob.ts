@@ -2,8 +2,9 @@
 // make a running import look stopped, and the screen stays awake until the import really ends.
 // One job per account, so signing in as someone else never shows (or blocks on) another's import.
 import type { ImportSummary } from "@magomap/domain";
+import { notifyMeChanged } from "../auth/useMe";
 import { dbUserId, openDbOrNull } from "../data/db";
-import { runImport } from "./runImport";
+import { ImportError, runImport } from "./runImport";
 import { holdScreenOn } from "./wakeLock";
 
 export interface ImportJob {
@@ -57,6 +58,7 @@ export function startImportJob(resumeRunId?: string): ImportJob {
   let freshStart = false;
   // Deferred a tick so the job is published before runImport can report anything.
   const promise = Promise.resolve().then(async () => {
+    let signedOut = false;
     try {
       const summary = await runImport(
         ({ listIndex, listCount }) => patch(account, { current: listIndex + 1, total: listCount }),
@@ -71,9 +73,16 @@ export function startImportJob(resumeRunId?: string): ImportJob {
         },
       );
       return { summary, freshStart };
+    } catch (error) {
+      signedOut = error instanceof ImportError && error.code === "signed_out";
+      throw error;
     } finally {
       release();
       publish(account, null);
+      // An import may have filled an empty nickname (even one that stopped, or was refused as
+      // up to date): show it now. Not when signed out: asking again would leave whatever screen
+      // is open for the sign-in page, instead of the import saying so.
+      if (!signedOut) notifyMeChanged();
     }
   });
   const started: ImportJob = {

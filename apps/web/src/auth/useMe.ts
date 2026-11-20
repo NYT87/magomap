@@ -1,6 +1,7 @@
 import type { Me } from "@magomap/domain";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ACCOUNT_CHANGED, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
+import { deviceKeys } from "../data/deviceKeys";
 
 const KEY = "mm.me";
 
@@ -13,6 +14,32 @@ export function storedMe(): Me | null {
   }
 }
 
+/** Fired when the signed-in account's details changed (a new name), so useMe asks again. */
+export const ME_CHANGED = "mm:me-changed";
+export const notifyMeChanged = () => window.dispatchEvent(new Event(ME_CHANGED));
+
+/** Where this device keeps an account's name, so it can be named after its session ends. */
+export const accountNameKey = deviceKeys.name;
+
+/** The name of the account whose data this device holds, if it has one. */
+export function accountName(userId: string): string | null {
+  try {
+    return localStorage.getItem(accountNameKey(userId));
+  } catch {
+    return null;
+  }
+}
+
+function rememberName(me: Me) {
+  try {
+    if (me.displayName) localStorage.setItem(accountNameKey(me.userId), me.displayName);
+    else localStorage.removeItem(accountNameKey(me.userId));
+  } catch {
+    // storage blocked
+  }
+}
+
+/** Forgets who is signed in (the per-account name stays, for "Sign in again as …"). */
 export function forgetMe() {
   try {
     localStorage.removeItem(KEY);
@@ -47,6 +74,7 @@ export function useMe(): {
         } catch {
           // storage blocked
         }
+        rememberName(me);
         setState({ me, loading: false, offline: false });
       })
       .catch((error) => {
@@ -67,10 +95,12 @@ export function useMe(): {
       if (e.key === KEY || e.key === null) refresh();
     };
     window.addEventListener(ACCOUNT_CHANGED, refresh);
+    window.addEventListener(ME_CHANGED, refresh);
     window.addEventListener("storage", onStorage);
     return () => {
       live.current = false;
       window.removeEventListener(ACCOUNT_CHANGED, refresh);
+      window.removeEventListener(ME_CHANGED, refresh);
       window.removeEventListener("storage", onStorage);
     };
   }, [refresh]);

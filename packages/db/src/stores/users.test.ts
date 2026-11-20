@@ -7,8 +7,10 @@ import {
   deleteAccount,
   deleteAllSessions,
   deleteSession,
+  fillDisplayName,
   findOrCreateUserByIdentity,
   resolveSession,
+  setDisplayName,
 } from "./users";
 
 const DAY = 86_400_000;
@@ -22,6 +24,34 @@ forEachDialect("users store", (makeDb) => {
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.userId).toBe(first.userId);
+  });
+
+  it("fillDisplayName fills an empty name only", async () => {
+    const db = await makeDb();
+    const empty = await findOrCreateUserByIdentity(db, "kakao", "n1", null, now);
+    const named = await findOrCreateUserByIdentity(db, "kakao", "n2", "Jose", now);
+    await fillDisplayName(db, empty.userId, "지은");
+    await fillDisplayName(db, named.userId, "지은");
+    const names = await db.kysely
+      .selectFrom("users")
+      .select(["id", "display_name"])
+      .where("id", "in", [empty.userId, named.userId])
+      .execute();
+    const byId = new Map(names.map((u) => [u.id, u.display_name]));
+    expect(byId.get(empty.userId)).toBe("지은");
+    expect(byId.get(named.userId)).toBe("Jose");
+  });
+
+  it("setDisplayName sets or clears the name", async () => {
+    const db = await makeDb();
+    const u = await findOrCreateUserByIdentity(db, "kakao", "n3", "Jose", now);
+    await setDisplayName(db, u.userId, null);
+    const row = await db.kysely
+      .selectFrom("users")
+      .select("display_name")
+      .where("id", "=", u.userId)
+      .executeTakeFirst();
+    expect(row?.display_name).toBeNull();
   });
 
   it("gives a different identity its own user", async () => {
