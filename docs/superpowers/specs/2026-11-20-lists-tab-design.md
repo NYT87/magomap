@@ -1,4 +1,4 @@
-# One Lists tab, and "Import from kakao-list" — short design
+# One Lists tab, and import from kakao-list in Account — short design
 
 Small change to the magomap PWA (apps/web), agreed with the owner on 2026-11-20.
 
@@ -7,6 +7,7 @@ Small change to the magomap PWA (apps/web), agreed with the owner on 2026-11-20.
 - **Import wording.** magomap never talks to Kakao directly: it reads what the kakao-list extension synced to the kakao-list server. Saying "Import from Kakao" hides the step she must do first (sync in the extension).
 - **Lists.** Today the map has a list picker (switches: which lists show on the map) and the Lists tab is a separate browser (rows that open a list). They show the same lists twice. The owner wants one place: the Lists tab, where a switch toggles a list on the map and tapping the row opens it.
 - **Empty sections.** The owner has no lists made in magomap, yet "My lists" still shows a heading with nothing under it.
+- **Import isn't a daily action.** It has its own tab today; the owner wants it as a section of the Account screen instead.
 
 ## Goals
 
@@ -21,6 +22,8 @@ Small change to the magomap PWA (apps/web), agreed with the owner on 2026-11-20.
    - **phone:** the map's lists button navigates to the Lists tab instead of opening a sheet;
    - **desktop:** the side panel's home view keeps search and "places in view", without switches; the Lists tab opens in the same panel, with the map still beside it.
 4. A section (My lists, Kakao lists, Subscribed in Kakao) shows **only when it has at least one row** (the "Saved, not in a list" row counts for My lists). With no rows anywhere, the screen shows the existing hint. The **New list** button stays at the top of the screen.
+
+5. **Import moves into Account.** The Import tab goes away (the tabs become Map, Lists, Account). The Account screen gets an **"kakao-list에서 가져오기 / Import from kakao-list"** section with everything the Import screen has today: the lead, the offline note, the start/again button, progress, the summary, errors and the last import.
 
 ## Non-goals
 
@@ -45,6 +48,7 @@ Small change to the magomap PWA (apps/web), agreed with the owner on 2026-11-20.
 - Row layout: swatch, name, count (and "by owner" on followed lists), chevron, then the switch at the end. The switch's accessible name is the list's name ("Show B2I on the map" style label), state announced as on/off.
 - Phone map: the lists button keeps its place and icon, but goes to `/lists`.
 - Desktop home panel: search + missing-location note + places in view.
+- (Owner's request, mid-planning.) Import section placement and links — my calls: the section sits right after the signed-in card, before language; the old `/import` address redirects to `/account` so old links still land on it; the hints that say "import your Kakao lists" (empty map, empty Lists) say where it is now: "…from kakao-list in Account". The window title loses the Import entry.
 - Empty sections hidden per goal 4.
 
 ## Left to the builder
