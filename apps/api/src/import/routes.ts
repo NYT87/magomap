@@ -6,10 +6,12 @@ import {
   finishImportList,
   ImportConflictError,
   ImportIncompleteError,
+  importedSnapshot,
   importListChunk,
   latestImportRun,
   RunClosedError,
   RunNotFoundError,
+  runProgress,
   runSnapshot,
   startImportRun,
 } from "@magomap/db/stores/importRuns";
@@ -31,6 +33,8 @@ importRoutes.use("/import/*", requireUser);
 const PAGE = LIMITS.importChunkItems;
 
 class SnapshotChangedError extends Error {}
+
+class UpToDateError extends Error {}
 
 class UpstreamError extends Error {
   constructor(readonly code: "no_snapshot" | "kakao_list_unavailable") {
@@ -95,6 +99,7 @@ async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
     if (error instanceof RunClosedError) return c.json({ error: "run_closed" }, 409);
     if (error instanceof ImportConflictError) return c.json({ error: "list_conflict" }, 409);
     if (error instanceof SnapshotChangedError) return c.json({ error: "snapshot_changed" }, 409);
+    if (error instanceof UpToDateError) return c.json({ error: "up_to_date" }, 409);
     if (error instanceof ImportIncompleteError) return c.json({ error: "incomplete" }, 409);
     throw error;
   }
@@ -102,18 +107,15 @@ async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
 
 importRoutes.post("/import/runs", (c) =>
   handled(c, async () => {
-    let snapshot: ReturnType<typeof kakaoListsToImport>;
-    try {
-      const kakaoUserId = await kakaoIdentity(c);
-      snapshot = kakaoListsToImport(await fromKakaoList(c, kakaoUserId, "/lists"), kakaoUserId);
-    } catch (error) {
-      if (error instanceof UpstreamError) throw error;
-      throw new UpstreamError("kakao_list_unavailable");
-    }
-    // The account's name, only while it's empty; done now, so a stopped import doesn't delay it.
+    const snapshot = await currentSnapshot(c);
+    // The account's name, only while it's empty; done first, so neither an up-to-date snapshot
+    // nor a stopped import delays it.
     if (snapshot.ownerNickname) {
       await fillDisplayName(c.var.db, c.var.userId, snapshot.ownerNickname);
     }
+    // Checked before startImportRun so refusing doesn't supersede an open run.
+    if (await importedSnapshot(c.var.db, c.var.userId, Date.parse(snapshot.importedAt)))
+      throw new UpToDateError();
     let started: { runId: string };
     try {
       started = await startImportRun(
@@ -136,6 +138,46 @@ importRoutes.post("/import/runs", (c) =>
         itemCount: l.itemCount,
       })),
     };
+  }),
+);
+
+/** kakao-list's current sync for the caller; every failure becomes an UpstreamError. */
+async function currentSnapshot(c: Context<AppEnv>): Promise<ReturnType<typeof kakaoListsToImport>> {
+  let snapshot: ReturnType<typeof kakaoListsToImport>;
+  try {
+    const kakaoUserId = await kakaoIdentity(c);
+    snapshot = kakaoListsToImport(await fromKakaoList(c, kakaoUserId, "/lists"), kakaoUserId);
+  } catch (error) {
+    if (error instanceof UpstreamError) throw error;
+    throw new UpstreamError("kakao_list_unavailable");
+  }
+  // An unreadable date would reach the database as NaN.
+  if (!Number.isFinite(Date.parse(snapshot.importedAt)))
+    throw new UpstreamError("kakao_list_unavailable");
+  return snapshot;
+}
+
+importRoutes.get("/import/status", async (c) => {
+  const latest = await latestImportRun(c.var.db, c.var.userId);
+  let sourceSnapshotAt: number | null = null;
+  let source: "ok" | "no_snapshot" | "unavailable" = "ok";
+  try {
+    sourceSnapshotAt = Date.parse((await currentSnapshot(c)).importedAt);
+  } catch (error) {
+    if (!(error instanceof UpstreamError)) throw error;
+    source = error.code === "no_snapshot" ? "no_snapshot" : "unavailable";
+  }
+  const upToDate =
+    sourceSnapshotAt !== null && (await importedSnapshot(c.var.db, c.var.userId, sourceSnapshotAt));
+  return c.json({ latest, sourceSnapshotAt, upToDate, source });
+});
+
+importRoutes.post("/import/runs/:runId/resume", (c) =>
+  handled(c, async () => {
+    const run = await runProgress(c.var.db, c.var.userId, c.req.param("runId"));
+    const snapshot = await currentSnapshot(c);
+    if (Date.parse(snapshot.importedAt) !== run.snapshotAt) throw new SnapshotChangedError();
+    return { runId: c.req.param("runId"), lists: run.lists };
   }),
 );
 

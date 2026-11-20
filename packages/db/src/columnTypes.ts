@@ -55,10 +55,12 @@ export const COLUMN_TYPES: {
     pages_done: "integer",
     finished: "integer",
   },
-  import_seen: {
+  import_run_pages: {
     user_id: "text",
     run_id: "text",
-    list_item_id: "text",
+    external_id: "text",
+    page: "integer",
+    item_ids: "text",
   },
   sync_state: {
     id: "integer",

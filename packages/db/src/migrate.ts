@@ -14,9 +14,13 @@ export function splitStatements(source: string): string[] {
 /**
  * Applies `<dir>/*.sql` files not yet recorded in `_migrations`, in name order.
  * Node only (reads files). On D1, `wrangler d1 migrations apply` is used instead.
- * Returns the names applied.
+ * Returns the names applied. `through` stops after that file (tests that start from an older schema).
  */
-export async function migrate(db: Db, dir: string): Promise<string[]> {
+export async function migrate(
+  db: Db,
+  dir: string,
+  opts: { through?: string } = {},
+): Promise<string[]> {
   await sql`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at BIGINT NOT NULL)`.execute(
     db.kysely,
   );
@@ -25,7 +29,10 @@ export async function migrate(db: Db, dir: string): Promise<string[]> {
       (r) => r.name,
     ),
   );
-  const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
+  const files = (await readdir(dir))
+    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => opts.through === undefined || f <= opts.through)
+    .sort();
   const applied: string[] = [];
   for (const file of files) {
     if (done.has(file)) continue;

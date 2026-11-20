@@ -102,7 +102,8 @@ describe("UpdateBanner", () => {
     expect(screen.queryByText("A new version is ready")).toBeNull();
     expect(sw.updateServiceWorker).not.toHaveBeenCalled();
     expect(document.body).not.toHaveFocus();
-    expect(screen.getByRole("status")).toHaveFocus();
+    // Focus rests on the banner's slot, which holds the live region.
+    expect(screen.getByRole("status").closest(".mm-update-slot")).toHaveFocus();
   });
 
   it("an update found within the first 3 s applies at once, without a banner", async () => {
@@ -189,5 +190,61 @@ describe("UpdateBanner", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Later" }));
     await userEvent.click(screen.getByRole("button", { name: "Update" }));
     expect(sw.updateServiceWorker).toHaveBeenCalledWith(true);
+  });
+
+  it("only the message is in the live region, not the buttons", async () => {
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("");
+    await found();
+    expect(status).toHaveTextContent("A new version is ready");
+    expect(status.querySelector("button")).toBeNull();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+  });
+
+  it("Update says it is updating, and a second tap does nothing", async () => {
+    let finish: () => void = () => {};
+    const off = registerBeforeUpdate(() => new Promise<void>((resolve) => (finish = resolve)));
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
+    await found();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Update" }));
+    const busy = screen.getByRole("button", { name: "Updating…" });
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Updating…");
+    await user.click(busy);
+    await act(async () => finish());
+    expect(sw.updateServiceWorker).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it("Update becomes available again if no reload follows", async () => {
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
+    await found();
+    // Only timers: faking performance.now too would make this look like a cold start.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await act(async () => {
+      screen.getByRole("button", { name: "Update" }).click();
+    });
+    expect(screen.getByRole("button", { name: "Updating…" })).toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(10_001);
+    });
+    expect(screen.getByRole("button", { name: "Update" })).not.toHaveAttribute("aria-disabled");
   });
 });

@@ -1,5 +1,5 @@
 import type { Me } from "@magomap/domain";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { NetworkError } from "../api/client";
 import { SyncContext, type SyncControls } from "../data/SyncContext";
 import i18n from "../i18n";
 import { MapPrefsProvider } from "../map/mapPrefs";
+import { setViewportWidth } from "../test/setup";
 import { Account } from "./Account";
 
 const { closeUserDb, openDbOrNull, openUserDb } = await import("../data/db");
@@ -31,7 +32,11 @@ function answerOnce(path: string, answer: () => Promise<unknown>) {
 }
 
 beforeEach(() => {
-  vi.mocked(apiFetch).mockImplementation(async () => ({}));
+  vi.mocked(apiFetch).mockImplementation(async (p: string) =>
+    p === "/api/import/status"
+      ? { latest: null, sourceSnapshotAt: null, upToDate: false, source: "ok" }
+      : {},
+  );
 });
 
 const me = { userId: "u1", displayName: "지은", identities: [{ provider: "kakao" as const }] };
@@ -62,6 +67,17 @@ async function makeDb() {
 }
 
 describe("Account", () => {
+  it("shows its title in the page on desktop, and leaves it to the header on phones", async () => {
+    await i18n.changeLanguage("en");
+    setViewportWidth(1440);
+    renderAccount();
+    expect(screen.getByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument();
+    cleanup();
+    setViewportWidth(390);
+    renderAccount();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+  });
+
   it("deletes the account only after the shown word is typed", async () => {
     await i18n.changeLanguage("en");
     await makeDb();
@@ -585,6 +601,50 @@ describe("Account", () => {
       await user.click(screen.getByRole("button", { name: "Sign out" }));
       expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't reach the server/);
       expect(await draftsLeft()).toBe(1);
+    });
+  });
+
+  describe("theme", () => {
+    beforeEach(() => {
+      localStorage.removeItem("mm.theme");
+      delete document.documentElement.dataset.theme;
+    });
+
+    it("chooses the theme", async () => {
+      await i18n.changeLanguage("en");
+      const user = userEvent.setup();
+      renderAccount();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Dark");
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(localStorage.getItem("mm.theme")).toBe("dark");
+    });
+
+    it("shows the saved choice", async () => {
+      await i18n.changeLanguage("en");
+      localStorage.setItem("mm.theme", "light");
+      renderAccount();
+      expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("light");
+    });
+
+    it("follows a change made in another tab", async () => {
+      await i18n.changeLanguage("en");
+      renderAccount();
+      const theme = screen.getByRole("combobox", { name: "Theme" });
+      expect(theme).toHaveValue("system");
+      localStorage.setItem("mm.theme", "dark");
+      act(() => {
+        window.dispatchEvent(new StorageEvent("storage", { key: "mm.theme", newValue: "dark" }));
+      });
+      expect(theme).toHaveValue("dark");
+    });
+
+    it("defaults to the device", async () => {
+      await i18n.changeLanguage("en");
+      renderAccount();
+      const theme = screen.getByRole("combobox", { name: "Theme" });
+      expect(theme).toHaveValue("system");
+      expect(screen.getByRole("option", { name: "Same as this device" })).toBeInTheDocument();
+      expect(theme).toHaveDisplayValue("Same as this device");
     });
   });
 });

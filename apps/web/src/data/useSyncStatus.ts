@@ -10,6 +10,11 @@ export interface SyncStatus {
   lastSyncAt?: number;
 }
 
+/** True while a sync is running: rows of a list may still be arriving. */
+export function useSyncing(): boolean {
+  return useSyncExternalStore(subscribeSync, syncState).state === "syncing";
+}
+
 export function useSyncStatus(): SyncStatus {
   const s = useSyncExternalStore(subscribeSync, syncState);
   const counts = useLiveQuery(

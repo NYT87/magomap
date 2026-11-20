@@ -1,9 +1,13 @@
 import type { ListRow } from "@magomap/domain";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { ListPicker, type PickerList } from "./ListPicker";
+
+const sync = vi.hoisted(() => ({ syncing: false }));
+vi.mock("../data/useSyncStatus", () => ({ useSyncing: () => sync.syncing }));
+
 import { MapPrefsProvider } from "./mapPrefs";
 
 const list = (id: string, provider: string | null): ListRow => ({
@@ -100,5 +104,29 @@ describe("ListPicker", () => {
     );
     expect(screen.queryAllByRole("group")).toHaveLength(0);
     expect(screen.getByText(/from kakao-list in Account/)).toBeInTheDocument();
+  });
+
+  it("says a Kakao list without places yet is still downloading while a sync runs", async () => {
+    await i18n.changeLanguage("en");
+    const arriving = {
+      ...sections,
+      subscribed: [{ list: list("새 리스트", "kakao"), count: 0, color: "#2464ad" }],
+    };
+    const view = (syncing: boolean) => {
+      sync.syncing = syncing;
+      return render(
+        <MapPrefsProvider userId="u-dl">
+          <ListPicker sections={arriving} />
+        </MapPrefsProvider>,
+      );
+    };
+    const first = view(true);
+    const group = () => screen.getByRole("group", { name: "Subscribed in Kakao" });
+    expect(group()).toHaveTextContent("Downloading…");
+    expect(group()).not.toHaveTextContent("0 places");
+    first.unmount();
+    view(false);
+    expect(group()).toHaveTextContent("0 places");
+    sync.syncing = false;
   });
 });

@@ -38,6 +38,32 @@ export interface ImportRunInfo {
   startedAt: number;
   finishedAt: number | null;
   summary: ImportSummary | null;
+  /** The kakao-list sync (epoch ms) the run was read from. */
+  snapshotAt: number;
+  /** Only on a running run. */
+  progress?: { listsDone: number; listCount: number };
+}
+
+export interface ImportStatus {
+  latest: ImportRunInfo | null;
+  /** kakao-list's current sync for this account; null when it has none or couldn't be reached. */
+  sourceSnapshotAt: number | null;
+  upToDate: boolean;
+  /** Why `sourceSnapshotAt` is null: kakao-list has no snapshot for this account, or couldn't be read. */
+  source: "ok" | "no_snapshot" | "unavailable";
+}
+
+export interface ResumeList {
+  externalId: string;
+  name: string;
+  itemCount: number;
+  pagesDone: number;
+  finished: boolean;
+}
+
+export interface ResumeRun {
+  runId: string;
+  lists: ResumeList[];
 }
 
 export type ApiErrorCode =
@@ -53,4 +79,5 @@ export type ApiErrorCode =
   | "busy"
   | "not_found"
   | "invalid"
-  | "account_mismatch";
+  | "account_mismatch"
+  | "up_to_date";

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { forEachDialect } from "../testing/dbs";
+import { importListChunk, startImportRun } from "./importRuns";
 import { note, ownList, push, searchedPlace, uid } from "./testkit";
 import {
   createSession,
@@ -178,6 +179,26 @@ forEachDialect("users store", (makeDb) => {
         .execute(),
     ).toHaveLength(1);
     expect(await db.kysely.selectFrom("places").selectAll().execute()).toHaveLength(1);
+  });
+
+  it("deletes the pages of an import the account had running", async () => {
+    const db = await makeDb();
+    const { userId } = await findOrCreateUserByIdentity(db, "kakao", "1", null, now);
+    const lists = [{ externalId: "1", name: "리스트", followed: false, itemCount: 1 }];
+    const opts = { provider: "kakao", complete: true, subscriptionKnown: true, lists };
+    const { runId } = await startImportRun(
+      db,
+      userId,
+      { ...opts, importedAt: new Date(now).toISOString() },
+      now,
+    );
+    const place = { externalId: "10", placeExternalId: "A", title: "카페", position: 0 };
+    await importListChunk(db, userId, runId, "1", 0, [place], now);
+    const pages = () =>
+      db.kysely.selectFrom("import_run_pages").selectAll().where("user_id", "=", userId).execute();
+    expect(await pages()).toHaveLength(1);
+    await deleteAccount(db, userId);
+    expect(await pages()).toHaveLength(0);
   });
 });
 

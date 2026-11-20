@@ -8,14 +8,15 @@ Production changes **only when a release is made**. Pushing to `main` deploys no
 
 1. Write commits as conventional commits (`feat:`, `fix:`, `docs:`, …). **Release Please** (`.github/workflows/release.yml`) keeps a release PR open on `main` with the next version and the changelog. The version is the root `package.json` version: one version for the app and the API.
 2. The workflow runs CI on that PR (PRs opened by Actions don't start CI on their own). Merge the PR when it's green.
-3. Merging creates the release, tagged `magomap-v<version>`, and the `deploy` job deploys **that** commit. In order, it:
-   - runs `scripts/checks.sh`, the same checks as CI;
-   - writes a D1 Time Travel bookmark to the job summary;
-   - applies the D1 migrations (`pnpm db:migrate:d1 --remote`);
-   - builds and deploys with `scripts/deploy-release.sh <version> <sha>`, which gives the app and the Worker the same version, commit and build time;
-   - checks that `/api/health` reports the release's commit.
+3. Merging creates the release, tagged `magomap-v<version>`, and **that** commit is deployed in two jobs:
+   - **`build`** (no secrets, no environment) runs `scripts/checks.sh`, the same checks as CI, then builds the web app with `scripts/deploy-release.sh build <version> <sha>` and keeps it as an artifact.
+   - **`deploy`** (the `production` environment, which holds the Cloudflare token) runs no tests or build. It:
+     - writes a D1 Time Travel bookmark to the job summary;
+     - applies the D1 migrations (`pnpm db:migrate:d1 --remote`);
+     - deploys the built app with `scripts/deploy-release.sh deploy <version> <sha> <built-at>`, so the app and the Worker get the same version, commit and build time;
+     - checks that `/api/health` reports the release's commit.
 
-   Any failing step stops the deploy.
+   Any failing step stops the deploy. Repository code never runs in the job that holds the Cloudflare token.
 4. Check **Account → About**: the app and server lines show the new version.
 
 **The D1 bookmark:** the job summary says when the bookmark was taken. On a re-run of the job (after migrations already ran), the new bookmark is *not* a pre-migration one: use the bookmark from the first attempt's summary to go back to before the migrations.
@@ -54,6 +55,16 @@ npx wrangler d1 create magomap --location apac
   ```
 
 - Turn on point-in-time recovery: D1 Time Travel is on by default; check the retention in the dashboard.
+
+#### Watching D1 writes
+
+The Free plan allows 100,000 rows written a day, and Cloudflare emails when 90% of it is used (the owner got that email on 2026-11-20). The daily count is in the dashboard under **D1 → magomap → Metrics**.
+
+An import only writes what changed. An unchanged re-import costs tens of rows per list: in the tests, an unchanged re-import of 2 lists in 3 pages wrote 31 rows. That figure is the statements' `numAffectedRows`, so it is a lower bound: D1 also bills a write for each index entry a changed row updates (for example the `seq` indexes), so the dashboard can show more.
+
+When someone gains a list (first import, a list followed, a list restored), the server no longer re-writes the shared rows. That phone downloads everything again once, which costs rows read and data use, not rows written. It happens only on a sync that brings that phone a new or restored list; adding places to a list it already has does not trigger it. A place someone saves that none of their lists shows still re-writes that one place's few shared rows.
+
+Each phone also downloads everything once after updating to the app version that brought this change, because an older version never did that download when it gained a list.
 
 ### Option B: Postgres with Hyperdrive
 

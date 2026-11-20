@@ -31,6 +31,10 @@
   "account": {
     "title": "Account",
     "language": "Language",
+    "theme": "Theme",
+    "themeSystem": "Same as this device",
+    "themeLight": "Light",
+    "themeDark": "Dark",
     "signOut": "Sign out",
     "signOutEverywhere": "Sign out on every device",
     "unsyncedTitle": "Some notes haven't reached the server yet",
@@ -104,6 +108,7 @@
     "showPrevious": "Show previous locations",
     "count_one": "{{count}} place",
     "count_other": "{{count}} places",
+    "downloading": "Downloading…",
     "by": "by {{name}}",
     "hint": "Your Kakao lists show up here after you import them from kakao-list in Account.",
     "toggle": "Show {{name}} on the map"
@@ -197,12 +202,19 @@
     "nothingChanged": "Everything was already up to date.",
     "last": "Last import: {{date}}",
     "lastFailed": "The last import didn't finish. Nothing was removed.",
+    "continue": "Continue import",
+    "startOver": "Start over",
+    "stopped": "The last import stopped at {{done}} of {{total}} lists. Nothing was removed.",
+    "stoppedNewer": "The last import stopped, and kakao-list has a newer sync from {{date}}. Nothing was removed.",
+    "upToDate": "Up to date with your kakao-list sync of {{date}}. Sync in the kakao-list extension to import again.",
+    "freshStart": "kakao-list has a newer sync, so the import started again from the beginning.",
     "errNoSnapshot": "kakao-list has nothing for your Kakao account yet. Open the kakao-list extension, import your Kakao Map lists there, then try again.",
     "errUnavailable": "Couldn't reach kakao-list right now. Try again in a little while.",
     "errChanged": "Your lists changed in kakao-list while importing. Start the import again.",
     "errOffline": "The connection dropped. Nothing was removed, so you can start again when you're back online.",
     "errSignedOut": "Your session ended. Sign in again, then import.",
-    "errOther": "The import stopped partway. Nothing was removed. Try again."
+    "errOther": "The import stopped partway. Nothing was removed. Try again.",
+    "stoppedNoCount": "The last import stopped. Nothing was removed."
   },
   "lists": {
     "title": "Lists",
@@ -218,6 +230,7 @@
     "deleteBody": "The list goes away, but its places are kept, with their notes and links.",
     "readOnly": "From Kakao, read-only. Change it in Kakao Map, then import again.",
     "empty": "No places in this list yet.",
+    "downloading": "Still downloading this list's places…",
     "removed": "Removed from Kakao",
     "notFound": "This list isn't on this device.",
     "colors": {
@@ -232,6 +245,8 @@
     }
   },
   "sync": {
+    "title": "Sync",
+    "signIn": "Sign in again",
     "synced": "Synced",
     "syncing": "Syncing…",
     "offline": "Offline",
@@ -242,6 +257,8 @@
     "needsSigninNone": "Sign in again to keep syncing",
     "error": "Can't reach the server — retrying",
     "clockAhead": "Your phone's clock is ahead — changes are saved here and will sync once it's corrected",
+    "waiting_one": "{{count}} change waiting to sync",
+    "waiting_other": "{{count}} changes waiting to sync",
     "rejected_one": "{{count}} change couldn't be saved",
     "rejected_other": "{{count}} changes couldn't be saved",
     "rejectedTitle": "Changes that couldn't be saved",
@@ -268,6 +285,7 @@
   "update": {
     "ready": "A new version is ready",
     "now": "Update",
-    "later": "Later"
+    "later": "Later",
+    "updating": "Updating…"
   }
 }

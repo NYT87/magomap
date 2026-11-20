@@ -37,6 +37,9 @@
   --color-on-primary: #ffffff;
   --color-success: #2e7d4f;
   --color-warning: #a86a12;
+  /* Warning as a fill under 11px text (the sync count): #ffffff on it is 5.1:1. */
+  --color-warning-fill: #9a6110;
+  --color-on-warning: #ffffff;
   --color-error: #b3261e;
   --color-info: #2f6fa3;
   --color-danger-bg: #b3261e;
@@ -75,24 +78,81 @@
   --shadow: 0 1px 2px rgba(30, 35, 33, 0.06), 0 4px 16px rgba(30, 35, 33, 0.08);
 }
 
+/* Dark values: the one copy of each. The two rules below only map them onto the live tokens
+   (CSS cannot join a media query and an attribute selector in one rule). The dark bar colour
+   is --dark-color-bg: keep src/theme.ts and the inline script in index.html in step
+   (theme.test.ts fails if they drift). */
+:root {
+  --dark-color-pine: #6fc2a8;
+  --dark-color-pine-deep: #8fd3bd;
+  --dark-color-clay: #e38b5e;
+  --dark-color-river: #7db3e0;
+  --dark-color-bg: #141816;
+  --dark-color-surface: #1d2220;
+  --dark-color-text: #e8e4dc;
+  --dark-color-text-secondary: #a7afa9;
+  --dark-color-border: #2e3532;
+  --dark-color-on-primary: #141816;
+  /* The sync count's warning fill in dark: #141816 on it is 7.9:1. */
+  --dark-color-warning-fill: #e0a03a;
+  --dark-color-on-warning: #141816;
+  --dark-color-info: #7db3e0;
+  /* Not in the guidelines: #b3261e is too dark on Night Background (2.6:1); this is 9.6:1. */
+  --dark-color-error: #f2b8b5;
+  --dark-color-danger-bg: #f2b8b5;
+  --dark-color-on-danger: #141816;
+  --dark-color-scrim: rgba(0, 0, 0, 0.55);
+  --dark-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --dark-kakao-note-lighten: 25%;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-pine: var(--dark-color-pine);
+  --color-pine-deep: var(--dark-color-pine-deep);
+  --color-clay: var(--dark-color-clay);
+  --color-river: var(--dark-color-river);
+  --color-bg: var(--dark-color-bg);
+  --color-surface: var(--dark-color-surface);
+  --color-text: var(--dark-color-text);
+  --color-text-secondary: var(--dark-color-text-secondary);
+  --color-border: var(--dark-color-border);
+  --color-on-primary: var(--dark-color-on-primary);
+  --color-warning-fill: var(--dark-color-warning-fill);
+  --color-on-warning: var(--dark-color-on-warning);
+  --color-info: var(--dark-color-info);
+  --color-error: var(--dark-color-error);
+  --color-danger-bg: var(--dark-color-danger-bg);
+  --color-on-danger: var(--dark-color-on-danger);
+  --color-scrim: var(--dark-color-scrim);
+  --shadow: var(--dark-shadow);
+  --kakao-note-lighten: var(--dark-kakao-note-lighten);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
-    --color-pine: #6fc2a8;
-    --color-pine-deep: #8fd3bd;
-    --color-clay: #e38b5e;
-    --color-river: #7db3e0;
-    --color-bg: #141816;
-    --color-surface: #1d2220;
-    --color-text: #e8e4dc;
-    --color-text-secondary: #a7afa9;
-    --color-border: #2e3532;
-    --color-on-primary: #141816;
-    --color-info: #7db3e0;
-    /* Not in the guidelines: #b3261e is too dark on Night Background (2.6:1); this is 9.6:1. */
-    --color-error: #f2b8b5;
-    --color-danger-bg: #f2b8b5;
-    --color-on-danger: #141816;
-    --color-scrim: rgba(0, 0, 0, 0.55);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  :root:not([data-theme="light"]) {
+    --color-pine: var(--dark-color-pine);
+    --color-pine-deep: var(--dark-color-pine-deep);
+    --color-clay: var(--dark-color-clay);
+    --color-river: var(--dark-color-river);
+    --color-bg: var(--dark-color-bg);
+    --color-surface: var(--dark-color-surface);
+    --color-text: var(--dark-color-text);
+    --color-text-secondary: var(--dark-color-text-secondary);
+    --color-border: var(--dark-color-border);
+    --color-on-primary: var(--dark-color-on-primary);
+    --color-warning-fill: var(--dark-color-warning-fill);
+    --color-on-warning: var(--dark-color-on-warning);
+    --color-info: var(--dark-color-info);
+    --color-error: var(--dark-color-error);
+    --color-danger-bg: var(--dark-color-danger-bg);
+    --color-on-danger: var(--dark-color-on-danger);
+    --color-scrim: var(--dark-color-scrim);
+    --shadow: var(--dark-shadow);
+    --kakao-note-lighten: var(--dark-kakao-note-lighten);
   }
 }

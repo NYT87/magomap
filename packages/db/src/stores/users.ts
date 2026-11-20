@@ -133,7 +133,7 @@ const USER_TABLES = [
   "links",
   "tombstones",
   "import_runs",
-  "import_seen",
+  "import_run_pages",
   "import_run_lists",
 ] as const satisfies readonly (keyof Database)[];
 

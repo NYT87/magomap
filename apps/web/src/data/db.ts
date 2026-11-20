@@ -46,7 +46,7 @@ export interface Draft {
 
 export interface MetaEntry {
   /** "removal": changes each time the account's data is removed from this device. */
-  key: "cursor" | "lastSyncAt" | "removal";
+  key: "cursor" | "lastSyncAt" | "pullEpoch" | "removal";
   value: string | number;
 }
 

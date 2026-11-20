@@ -15,7 +15,10 @@ export type Statement = Compilable<unknown>;
 export interface Db {
   kysely: Kysely<Database>;
   dialect: "sqlite" | "postgres";
-  /** Runs all queries all-or-nothing: a D1 batch, or a transaction elsewhere. */
+  /**
+   * Runs all queries all-or-nothing: a D1 batch, or a transaction elsewhere.
+   * Every result carries `numAffectedRows`: the rows that statement inserted, updated or deleted.
+   */
   atomic(queries: Statement[]): Promise<QueryResult<unknown>[]>;
   /** Releases connections; a no-op for D1. */
   close(): Promise<void>;

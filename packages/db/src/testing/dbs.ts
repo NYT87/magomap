@@ -18,11 +18,19 @@ export function requirePostgresInCi(env: Record<string, string | undefined>): vo
   }
 }
 
+/** Which migrations `makeDb` applies: all of them, or only up to and including `through`. */
+export interface MakeDbOptions {
+  through?: string;
+}
+
 /**
  * Runs `fn` against in-memory SQLite, and against Postgres when TEST_DATABASE_URL is set
  * (a fresh schema per database). Each `makeDb()` returns a migrated, empty database.
  */
-export function forEachDialect(name: string, fn: (makeDb: () => Promise<Db>) => void): void {
+export function forEachDialect(
+  name: string,
+  fn: (makeDb: (opts?: MakeDbOptions) => Promise<Db>) => void,
+): void {
   requirePostgresInCi(process.env);
   const open: Db[] = [];
   afterEach(async () => {
@@ -30,24 +38,24 @@ export function forEachDialect(name: string, fn: (makeDb: () => Promise<Db>) => 
   });
 
   describe(`${name} [sqlite]`, () => {
-    fn(async () => {
+    fn(async (opts = {}) => {
       const db = dbFromSqliteFile(":memory:");
       open.push(db);
-      await migrate(db, migrationsDir("sqlite"));
+      await migrate(db, migrationsDir("sqlite"), opts);
       return db;
     });
   });
 
   const url = process.env.TEST_DATABASE_URL;
   describe.runIf(Boolean(url))(`${name} [postgres]`, () => {
-    fn(async () => {
+    fn(async (opts = {}) => {
       const schema = `t_${randomBytes(6).toString("hex")}`;
       const admin = dbFromPostgres(url as string);
       await sql.raw(`CREATE SCHEMA ${schema}`).execute(admin.kysely);
       await admin.close();
       const db = dbFromPostgres(url as string, { searchPath: schema });
       open.push(db);
-      await migrate(db, migrationsDir("postgres"));
+      await migrate(db, migrationsDir("postgres"), opts);
       return db;
     });
   });

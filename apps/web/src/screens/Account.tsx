@@ -1,6 +1,6 @@
 import { LIMITS, type Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
@@ -18,8 +18,10 @@ import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
 import { useOnline } from "../import/useOnline";
+import { useLayout } from "../layout/useLayout";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
+import { onThemeChange, setTheme, storedTheme, type ThemeChoice } from "../theme";
 import { AboutSection } from "./AboutSection";
 
 type Dialog =
@@ -29,10 +31,13 @@ type Dialog =
 
 export function Account({ me }: { me: Me }) {
   const { t, i18n } = useTranslation();
+  const layout = useLayout();
   const { mapChoice, setMapChoice, kakaoAvailable } = useMapPrefs();
   const mapHintId = useId();
   const sync = useSyncControls();
   const [, navigate] = useLocation();
+  // Follows this tab and other tabs (followTheme applies the change itself).
+  const theme = useSyncExternalStore(onThemeChange, storedTheme);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -160,7 +165,7 @@ export function Account({ me }: { me: Me }) {
 
   return (
     <div className="mm-screen mm-account">
-      <h1 className="mm-screen__title">{t("account.title")}</h1>
+      {layout === "desktop" && <h1 className="mm-screen__title">{t("account.title")}</h1>}
       {/* Only signed-in people see Account: the card just says who it is. */}
       <section className="mm-card mm-stack">
         {editingName ? (
@@ -249,6 +254,20 @@ export function Account({ me }: { me: Me }) {
             <option value="en" lang="en">
               English
             </option>
+          </select>
+        </label>
+        <label className="mm-field">
+          <span className="mm-field__label">{t("account.theme")}</span>
+          <select
+            className="mm-input"
+            value={theme}
+            onChange={(e) => {
+              setTheme(e.target.value as ThemeChoice);
+            }}
+          >
+            <option value="system">{t("account.themeSystem")}</option>
+            <option value="light">{t("account.themeLight")}</option>
+            <option value="dark">{t("account.themeDark")}</option>
           </select>
         </label>
         <label className="mm-field">

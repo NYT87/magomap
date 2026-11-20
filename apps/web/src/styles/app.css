@@ -194,14 +194,6 @@ a {
   box-shadow: var(--shadow);
 }
 
-.mm-phone-status {
-  position: absolute;
-  top: calc(64px + env(safe-area-inset-top));
-  left: var(--space-md);
-  right: 80px;
-  z-index: 3;
-}
-
 .mm-page {
   position: absolute;
   inset: 0;
@@ -248,6 +240,22 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+}
+
+.mm-page__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-end: auto;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mm-section__head--end {
+  justify-content: flex-end;
 }
 
 .mm-screen__title {
@@ -604,17 +612,22 @@ a {
   background: var(--color-surface);
 }
 
+/* The map buttons column: a 48px button and the gutter beside it. The list view keeps clear of it. */
+.mm-shell--phone {
+  --mm-tools-width: 64px;
+}
+
 .mm-map-top {
   position: absolute;
   top: calc(var(--space-sm) + env(safe-area-inset-top));
   left: var(--space-md);
-  right: 72px;
-  z-index: 500;
+  right: var(--space-md);
+  z-index: 510;
 }
 
 .mm-map-tools {
   position: absolute;
-  top: calc(64px + env(safe-area-inset-top));
+  top: calc(var(--space-sm) + 48px + var(--space-sm) + env(safe-area-inset-top));
   right: var(--space-md);
   z-index: 500;
   display: flex;
@@ -657,6 +670,12 @@ a {
   pointer-events: none;
 }
 
+.mm-map-notes__live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
 .mm-note {
   padding: var(--space-sm) var(--space-md);
   color: var(--color-text);
@@ -679,8 +698,8 @@ a {
   inset: 0;
   z-index: 450;
   overflow-y: auto;
-  padding: calc(72px + env(safe-area-inset-top)) var(--space-md)
-    calc(112px + env(safe-area-inset-bottom));
+  padding: calc(72px + env(safe-area-inset-top)) calc(var(--mm-tools-width) + var(--space-md))
+    calc(112px + env(safe-area-inset-bottom)) var(--space-md);
   background: var(--color-bg);
 }
 
@@ -1367,15 +1386,14 @@ a {
   font-size: 13px;
 }
 
-/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue. */
-@media (prefers-color-scheme: dark) {
-  .mm-kakao-note__text {
-    border-inline-start-color: color-mix(
-      in srgb,
-      var(--note-color, var(--color-border)) 75%,
-      #ffffff
-    );
-  }
+/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue.
+   --kakao-note-lighten is 0% in light and set with the dark tokens (tokens.css). */
+.mm-kakao-note__text {
+  border-inline-start-color: color-mix(
+    in srgb,
+    var(--note-color, var(--color-border)),
+    #ffffff var(--kakao-note-lighten, 0%)
+  );
 }
 
 .mm-inline-form {
@@ -1497,10 +1515,6 @@ a {
   min-width: 0;
 }
 
-.mm-phone-status .mm-sync {
-  justify-content: flex-start;
-}
-
 .mm-sync__pill {
   display: inline-flex;
   align-items: center;
@@ -1517,10 +1531,6 @@ a {
   font-weight: 500;
   line-height: 1.35;
   text-decoration: none;
-}
-
-.mm-phone-status .mm-sync__pill {
-  box-shadow: var(--shadow);
 }
 
 .mm-sync__pill[data-tone="ok"] svg {
@@ -1542,6 +1552,96 @@ a {
   color: var(--color-error);
   border-color: var(--color-error);
   cursor: pointer;
+}
+
+/* Phones: one icon instead of the pills. 44 px, centred in the 48 px map-buttons column. */
+.mm-sync--compact {
+  position: relative;
+  flex-wrap: nowrap;
+  justify-content: center;
+  /* As wide as the column, so the icon sits in its middle whatever .mm-map-tools aligns to. */
+  flex: none;
+  width: 48px;
+}
+
+.mm-sync__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.mm-sync__icon[data-tone="ok"] svg {
+  color: var(--color-success);
+}
+
+.mm-sync__icon[data-tone="warn"] {
+  border-color: var(--color-warning);
+}
+
+.mm-sync__icon[data-tone="warn"] svg {
+  color: var(--color-warning);
+}
+
+/* Needs her (sign in, server trouble, clock): filled, so it doesn't read like the calm states. */
+.mm-sync__icon[data-attention] {
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.mm-sync__icon[data-attention] svg {
+  color: var(--color-on-primary);
+}
+
+.mm-sync__count {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  /* Warning (pending) fill; text on it is 5.1:1 light, 7.9:1 dark. */
+  color: var(--color-on-warning);
+  background: var(--color-warning-fill);
+  border: 2px solid var(--color-bg);
+  border-radius: var(--radius-pill);
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.mm-sync__dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-error);
+  border: 2px solid var(--color-bg);
+  border-radius: 50%;
+  box-sizing: content-box;
+  transform: translate(25%, -25%);
+}
+
+.mm-sync__sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.mm-sync__sheet > p {
+  margin: 0;
 }
 
 .mm-rejected {
@@ -1607,12 +1707,15 @@ a {
   min-width: 0;
 }
 
-.mm-phone-status .mm-status {
-  align-items: flex-start;
-}
-
-.mm-update-slot:empty:not(:focus) {
-  display: none;
+/* Nothing waiting: the slot takes no space but stays in the accessibility tree, so its live
+   region is already there when the message appears (display: none would miss the announcement). */
+.mm-update-slot:not(:has(.mm-update)) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .mm-update-slot:focus {
@@ -1633,8 +1736,15 @@ a {
   font-size: 14px;
 }
 
-.mm-phone-status .mm-update {
+/* On the phone map the banner sits in the notes stack; the stack itself ignores touches. */
+.mm-map-notes .mm-update {
+  pointer-events: auto;
   box-shadow: var(--shadow);
+}
+
+/* On phone pages it is a strip under the header. */
+.mm-page__notice .mm-update {
+  margin: var(--space-sm) var(--space-md) 0;
 }
 
 .mm-update__icon {

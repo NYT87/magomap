@@ -35,7 +35,7 @@ function BuildRow({ label, build }: { label: string; build: BuildInfo }) {
 export function AboutSection({ children }: { children?: ReactNode }) {
   const { t } = useTranslation();
   const server = useServerBuild();
-  const { waiting, update } = useAppUpdate();
+  const { waiting, updating, update } = useAppUpdate();
   let note: string | null = null;
   if (
     server.state === "ok" &&
@@ -79,9 +79,10 @@ export function AboutSection({ children }: { children?: ReactNode }) {
         <button
           type="button"
           className="mm-button mm-button--primary mm-about__update"
+          aria-disabled={updating || undefined}
           onClick={() => void update()}
         >
-          {t("update.now")}
+          {updating ? t("update.updating") : t("update.now")}
         </button>
       )}
       {children}

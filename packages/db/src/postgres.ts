@@ -35,7 +35,10 @@ export async function transactional(
   if (queries.length === 0) return [];
   return kysely.transaction().execute(async (trx) => {
     const results: QueryResult<unknown>[] = [];
-    for (const q of queries) results.push(await trx.executeQuery(q.compile()));
+    for (const q of queries) {
+      const r = await trx.executeQuery(q.compile());
+      results.push({ ...r, numAffectedRows: r.numAffectedRows ?? 0n });
+    }
     return results;
   });
 }

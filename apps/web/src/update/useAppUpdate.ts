@@ -1,5 +1,5 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { runBeforeUpdate } from "./beforeUpdate";
 import { dueForCheck, onUpdateFound } from "./timing";
 
@@ -8,8 +8,13 @@ import { dueForCheck, onUpdateFound } from "./timing";
 interface State {
   waiting: boolean;
   dismissed: boolean;
+  /** Update was tapped and the reload hasn't happened yet. */
+  updating: boolean;
 }
-let state: State = { waiting: false, dismissed: false };
+const INITIAL: State = { waiting: false, dismissed: false, updating: false };
+/** If no reload follows an Update tap by then, Update becomes available again. */
+const UPDATING_GIVE_UP_MS = 10_000;
+let state: State = INITIAL;
 let registration: ServiceWorkerRegistration | undefined;
 let applyWaiting: ((reloadPage?: boolean) => Promise<void>) | undefined;
 const listeners = new Set<() => void>();
@@ -26,6 +31,12 @@ function subscribe(l: () => void) {
 }
 
 async function update(): Promise<void> {
+  // A second tap while the first is still saving drafts or reloading does nothing.
+  if (state.updating) return;
+  set({ updating: true });
+  // The page normally reloads once the new version takes over. If it doesn't (no reload
+  // follows), don't leave a dead button.
+  setTimeout(() => set({ updating: false }), UPDATING_GIVE_UP_MS);
   await runBeforeUpdate();
   await applyWaiting?.(true);
 }
@@ -35,7 +46,7 @@ function dismiss() {
 
 /** For tests: forget everything the store learned. */
 export function resetAppUpdate() {
-  state = { waiting: false, dismissed: false };
+  state = INITIAL;
   registration = undefined;
   applyWaiting = undefined;
 }
@@ -85,11 +96,11 @@ export function useRegisterUpdates() {
 
 export function useAppUpdate(): {
   waiting: boolean;
+  updating: boolean;
   update: () => Promise<void>;
   dismissed: boolean;
   dismiss: () => void;
 } {
   const s = useSyncExternalStore(subscribe, () => state);
-  const run = useCallback(update, []);
-  return { waiting: s.waiting, dismissed: s.dismissed, update: run, dismiss };
+  return { waiting: s.waiting, updating: s.updating, dismissed: s.dismissed, update, dismiss };
 }

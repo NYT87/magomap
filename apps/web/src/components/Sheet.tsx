@@ -18,18 +18,21 @@ export function Sheet({
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
   useInertBackground();
+  // A new onClose on every render must not re-run the effect below (it would steal focus).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
       before?.focus();
     };
-  }, [onClose]);
+  }, []);
   return createPortal(
     <div className="mm-sheet-host">
       <button

@@ -5,6 +5,7 @@ import type {
   ImportRunInfo,
   ImportSummary,
   PlaceRow,
+  ResumeList,
   SyncTable,
 } from "@magomap/domain";
 import {
@@ -27,6 +28,8 @@ import {
   applyLocationUpdate,
   assertUserExists,
   latestValidUntil,
+  newestListSnapshot,
+  placeSnapshot,
   readByIds,
   userExists,
 } from "./sync";
@@ -200,6 +203,19 @@ export async function startImportRun(
     async (ctx) => ({
       statements: [
         db.kysely
+          .deleteFrom("import_run_pages")
+          .where("user_id", "=", userId)
+          .where(
+            "run_id",
+            "in",
+            db.kysely
+              .selectFrom("import_runs")
+              .select("id")
+              .where("user_id", "=", userId)
+              .where("status", "=", "running"),
+          )
+          .where(ctx.guard),
+        db.kysely
           .deleteFrom("import_run_lists")
           .where("user_id", "=", userId)
           .where(
@@ -266,7 +282,7 @@ export async function importListChunk(
         ownerName: progress.owner_name ?? undefined,
         followed: progress.followed === 1,
       };
-      const decided = await decideChunk(db, userId, runId, meta, items, now, ctx);
+      const decided = await decideChunk(db, userId, runId, meta, pageIndex, items, now, ctx);
       decided.statements.push(
         db.kysely
           .updateTable("import_run_lists")
@@ -287,6 +303,7 @@ async function decideChunk(
   userId: string,
   runId: string,
   meta: Omit<ImportList, "items">,
+  pageIndex: number,
   items: ImportItem[],
   now: number,
   ctx: WriteContext,
@@ -312,25 +329,31 @@ async function decideChunk(
     .filter((i) => i.localNote?.trim())
     .map((i) => importedNoteRowId(placeIdOf(i), listId));
 
-  const [lists, places, members, notes, myLists, myPlaces, validUntil] = await Promise.all([
-    readByIds(db, userId, "lists", [listId]),
-    readByIds(db, userId, "places", placeIds),
-    readByIds(db, userId, "list_items", itemIds),
-    readByIds(db, userId, "visit_notes", noteIds),
-    readByIds(db, userId, "user_lists", [userListRowId(listId)]),
-    readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
-    latestValidUntil(db, placeIds),
-  ]);
+  const [lists, places, members, notes, myLists, myPlaces, validUntil, listSnapshots] =
+    await Promise.all([
+      readByIds(db, userId, "lists", [listId]),
+      readByIds(db, userId, "places", placeIds),
+      readByIds(db, userId, "list_items", itemIds),
+      readByIds(db, userId, "visit_notes", noteIds),
+      readByIds(db, userId, "user_lists", [userListRowId(listId)]),
+      readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
+      latestValidUntil(db, placeIds),
+      newestListSnapshot(db, placeIds),
+    ]);
 
   const writes = new Map<SyncTable, Map<string, Row>>();
   const write = (table: SyncTable, row: Row) => {
     if (!writes.has(table)) writes.set(table, new Map());
     writes.get(table)?.set(row.id, row);
   };
-  const grantPlaces: string[] = [];
-  const grantLists: string[] = [];
-  // Rows whose content is unchanged only record the newer snapshot time, without a new seq.
-  const touch = { places: [] as string[], lists: [] as string[], list_items: [] as string[] };
+  // Existing places newly in this list: everyone who already has the list needs them.
+  const sharedPlaceIds: string[] = [];
+  // An unchanged list only records the newer snapshot time, without a new seq. Unchanged places
+  // and memberships are left alone: the list's snapshot vouches for them (see newestListSnapshot).
+  const touchLists: string[] = [];
+  // Existing places this user newly saves. A device pulls everything again only on gaining a list,
+  // so those no list of theirs shows must be re-stamped for them (see below).
+  const savedExisting: string[] = [];
 
   // The shared list
   const existingList = lists.get(listId);
@@ -370,7 +393,7 @@ async function decideChunk(
     if (changed) {
       inc("listsUpdated");
       write("lists", listRow);
-    } else if (Number(existingList.provider_snapshot_at) !== snapshotAt) touch.lists.push(listId);
+    } else if (Number(existingList.provider_snapshot_at) !== snapshotAt) touchLists.push(listId);
   }
 
   // This user's access: owner only when the snapshot knows who follows what
@@ -381,7 +404,9 @@ async function decideChunk(
     : run.subscription_known === 1
       ? "owner"
       : (access?.role ?? "follower");
-  if (!access || access.removed_at != null || access.deleted_at != null || access.role !== role) {
+  // Gaining the list only writes this row: the user's device then pulls everything again once.
+  const gainsList = !access || access.removed_at != null || access.deleted_at != null;
+  if (gainsList || access.role !== role) {
     write("user_lists", {
       user_id: userId,
       id: accessId,
@@ -394,7 +419,6 @@ async function decideChunk(
       client_updated_at: 0,
       seq: 0,
     });
-    if (!access || access.removed_at != null || access.deleted_at != null) grantLists.push(listId);
   }
 
   // Places, sources, memberships and imported notes. From a list older than the shared one,
@@ -435,7 +459,11 @@ async function decideChunk(
       });
       seenPlaces.set(placeId, placeRow);
       inc("placesAdded");
-    } else if (isNewer(snapshotAt, existing) && !seenPlaces.has(placeId)) {
+    } else if (
+      // A newer list holding the place confirmed it, even if the place itself wasn't rewritten.
+      snapshotAt >= (placeSnapshot(existing, listSnapshots) ?? snapshotAt) &&
+      !seenPlaces.has(placeId)
+    ) {
       const current = toAnyRow("places", existing) as PlaceRow;
       const update = applyLocationUpdate(
         current,
@@ -472,7 +500,7 @@ async function decideChunk(
         })
       ) {
         write("places", { ...refreshed, updated_at: now });
-      } else if (Number(existing.provider_snapshot_at) !== snapshotAt) touch.places.push(placeId);
+      }
       if (update.history) {
         write(
           "place_locations",
@@ -500,14 +528,14 @@ async function decideChunk(
       };
       myPlaces.set(myPlaceId, mine);
       write("user_places", mine);
-      grantPlaces.push(placeId);
+      if (places.has(placeId)) savedExisting.push(placeId);
     }
 
     const memberId = providerItemRowId(provider, meta.externalId, item.externalId);
     const member = members.get(memberId);
     // Everyone who has this list now sees this place: re-stamp an existing one so they receive it.
     if (listIsCurrent && places.has(placeId) && (!member || member.place_id !== placeId))
-      grantPlaces.push(placeId);
+      sharedPlaceIds.push(placeId);
     if (listIsCurrent && isNewer(snapshotAt, member)) {
       const memberRow: Row = {
         id: memberId,
@@ -535,8 +563,7 @@ async function decideChunk(
         })
       ) {
         write("list_items", memberRow);
-      } else if (Number(member.provider_snapshot_at) !== snapshotAt)
-        touch.list_items.push(memberId);
+      }
       if (member?.removed_at_provider != null) inc("membershipsRestored");
     }
 
@@ -573,7 +600,32 @@ async function decideChunk(
     }
   }
 
-  const seen = itemIds.map((id) => ({ user_id: userId, run_id: runId, list_item_id: id }));
+  // A list the user is gaining brings everything in its full pull; otherwise a newly saved place
+  // that no list the user already has shows (the older-snapshot notes path) is re-stamped.
+  if (!gainsList && savedExisting.length > 0) {
+    const listed = new Set(
+      (
+        await db.kysely
+          .selectFrom("list_items")
+          .select("place_id")
+          .where(inJson(db, "place_id", savedExisting))
+          .where(
+            sql<boolean>`list_id IN (SELECT list_id FROM user_lists WHERE user_id = ${userId} AND removed_at IS NULL AND deleted_at IS NULL)`,
+          )
+          .execute()
+      ).map((r) => r.place_id),
+    );
+    for (const id of savedExisting) if (!listed.has(id)) sharedPlaceIds.push(id);
+  }
+
+  // One row per page, whatever its size: a retried page replaces what it saw.
+  const seen = {
+    user_id: userId,
+    run_id: runId,
+    external_id: meta.externalId,
+    page: pageIndex,
+    item_ids: JSON.stringify(itemIds),
+  };
   const statements: Statement[] = [
     ...writeStatements(db, ctx, writes, {
       places: { update: IMPORT_PLACE_COLUMNS },
@@ -583,19 +635,19 @@ async function decideChunk(
         where: sql<boolean>`visit_notes.edited_by_user = 0 AND visit_notes.deleted_at IS NULL`,
       },
     }),
-    ...grantStatements(db, ctx, { placeIds: grantPlaces, listIds: grantLists }),
-    ...(Object.entries(touch) as [keyof typeof touch, string[]][])
-      .filter(([, ids]) => ids.length > 0)
-      .map(([table, ids]) =>
-        db.kysely
-          .updateTable(table)
-          .set({ provider_snapshot_at: snapshotAt })
-          .where(inJson(db, "id", ids))
-          .where(ctx.guard),
-      ),
-    ...bulkUpsertQuery(db, "import_seen", seen, {
-      conflict: ["user_id", "run_id", "list_item_id"],
-      update: [],
+    ...grantStatements(db, ctx, { sharedPlaceIds }),
+    ...(touchLists.length > 0
+      ? [
+          db.kysely
+            .updateTable("lists")
+            .set({ provider_snapshot_at: snapshotAt })
+            .where(inJson(db, "id", touchLists))
+            .where(ctx.guard),
+        ]
+      : []),
+    ...bulkUpsertQuery(db, "import_run_pages", [seen], {
+      conflict: ["user_id", "run_id", "external_id", "page"],
+      update: ["item_ids"],
       guard: ctx.guard,
     }),
     saveState(db, userId, runId, { ...state, summary: add(state.summary, counts) }, ctx),
@@ -625,7 +677,13 @@ export async function finishImportList(
       const list = (await readByIds(db, userId, "lists", [listId])).get(listId);
       const snapshotAt = Number(run.snapshot_at);
       // Unseen items not already protected by a newer snapshot; the removal records this snapshot.
-      const notSeen = sql<boolean>`list_id = ${listId} AND (provider_snapshot_at IS NULL OR provider_snapshot_at < ${snapshotAt}) AND id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`;
+      // The ids every page of this list held in this run.
+      const thisList = sql`p.user_id = ${userId} AND p.run_id = ${runId} AND p.external_id = ${externalId}`;
+      const seenIds =
+        db.dialect === "sqlite"
+          ? sql`SELECT j.value FROM import_run_pages p, json_each(p.item_ids) j WHERE ${thisList}`
+          : sql`SELECT jsonb_array_elements_text(p.item_ids::jsonb) FROM import_run_pages p WHERE ${thisList}`;
+      const notSeen = sql<boolean>`list_id = ${listId} AND (provider_snapshot_at IS NULL OR provider_snapshot_at < ${snapshotAt}) AND id NOT IN (${seenIds})`;
       // An incomplete or older snapshot may hold a partial or outdated list: it never marks removals.
       const removing =
         run.complete === 1 && isNewer(Number(run.snapshot_at), list)
@@ -656,12 +714,14 @@ export async function finishImportList(
           db.kysely
             .updateTable("list_items")
             .set({
-              removed_at_provider: sql`COALESCE(removed_at_provider, ${now})`,
+              removed_at_provider: now,
               provider_snapshot_at: snapshotAt,
               updated_at: now,
               seq: ctx.seq,
             })
             .where(notSeen)
+            // A membership already removed keeps the snapshot that removed it (newestListSnapshot).
+            .where("removed_at_provider", "is", null)
             .where(ctx.guard),
         );
       }
@@ -762,7 +822,7 @@ export async function completeImportRun(
       const summary = add(state.summary, { listsRemoved: removed });
       statements.push(
         db.kysely
-          .deleteFrom("import_seen")
+          .deleteFrom("import_run_pages")
           .where("user_id", "=", userId)
           .where("run_id", "=", runId)
           .where(ctx.guard),
@@ -798,13 +858,56 @@ export async function latestImportRun(db: Db, userId: string): Promise<ImportRun
     .executeTakeFirst();
   if (!run) return null;
   const state = run.summary_json ? (JSON.parse(run.summary_json) as RunState) : null;
+  const progress =
+    run.status === "running"
+      ? await runLists(db, userId, run.id).then((lists) => ({
+          listsDone: lists.filter((l) => l.finished === 1).length,
+          listCount: lists.length,
+        }))
+      : undefined;
   return {
     runId: run.id,
     status: run.status as ImportRunInfo["status"],
     startedAt: run.started_at,
     finishedAt: run.finished_at,
     summary: state?.summary ?? null,
+    snapshotAt: Number(run.snapshot_at),
+    ...(progress ? { progress } : {}),
   };
+}
+
+/** Where the running run stands, list by list, so an interrupted import can be continued. */
+export async function runProgress(
+  db: Db,
+  userId: string,
+  runId: string,
+): Promise<{ snapshotAt: number; lists: ResumeList[] }> {
+  const { run } = await runningRun(db, userId, runId);
+  const lists = (await runLists(db, userId, runId)).map((l) => ({
+    externalId: l.external_id,
+    name: l.name,
+    itemCount: l.item_count,
+    pagesDone: l.pages_done,
+    finished: l.finished === 1,
+  }));
+  return { snapshotAt: Number(run.snapshot_at), lists };
+}
+
+/** True when the user has a completed import of exactly this kakao-list sync. */
+export async function importedSnapshot(
+  db: Db,
+  userId: string,
+  snapshotAt: number,
+): Promise<boolean> {
+  const row = await db.kysely
+    .selectFrom("import_runs")
+    .select("id")
+    .where("user_id", "=", userId)
+    .where("status", "=", "completed")
+    .where("snapshot_at", "=", snapshotAt)
+    .limit(1)
+    .executeTakeFirst();
+  return row !== undefined;
 }
 
 /** The running run's snapshot time and fetched list summaries (for the server-driven import). */

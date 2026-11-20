@@ -1,15 +1,20 @@
 import type { ImportItem, ImportList } from "@magomap/domain";
 import { importedNoteRowId } from "@magomap/domain/ids";
+import { sql } from "kysely";
 import { expect, it } from "vitest";
 import type { Db, Statement } from "../core";
-import { forEachDialect } from "../testing/dbs";
+import { migrate } from "../migrate";
+import { forEachDialect, migrationsDir } from "../testing/dbs";
 import {
   completeImportRun,
   finishImportList,
   ImportIncompleteError,
+  importedSnapshot,
   importListChunk,
   latestImportRun,
   RunClosedError,
+  RunNotFoundError,
+  runProgress,
   startImportRun,
 } from "./importRuns";
 import { pull } from "./sync";
@@ -265,6 +270,118 @@ forEachDialect("import (shared)", (makeDb) => {
     expect((await mine(db, "user_lists", ME))[0]?.role).toBe("follower");
   });
 
+  it("keeps a place and membership an older snapshot would change after a newer one confirmed them", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500), providerNote: "new" })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(
+      db,
+      ME,
+      [list("1", [item("10", "A", { lat: NORTH(0), providerNote: "old" })], { followed: true })],
+      { at: T0 + 4000, snapshotMs: 2000 },
+    );
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    const items = await all(db, "list_items");
+    expect(items.find((i) => i.id === "i_kakao_1_10")?.provider_note).toBe("new");
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
+  it("keeps a place an older snapshot of another list would move after a newer one confirmed it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(db, ME, [list("2", [item("20", "A", { lat: NORTH(0) })])], {
+      at: T0 + 4000,
+      snapshotMs: 2000,
+    });
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+    expect((await all(db, "list_items")).map((i) => i.id).sort()).toEqual([
+      "i_kakao_1_10",
+      "i_kakao_2_20",
+    ]);
+  });
+
+  it("keeps a place a newer list confirmed after that list dropped it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 4000, snapshotMs: 4000 });
+    await runImport(db, ME, [list("2", [item("20", "A", { lat: NORTH(0) })])], {
+      at: T0 + 5000,
+      snapshotMs: 2000,
+    });
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
+  it("keeps a place from a search older than a list that confirmed it and then dropped it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 4000, snapshotMs: 4000 });
+    await push(
+      db,
+      ME,
+      [up("places", searchedPlace("A", { lat: NORTH(0), signedAt: T0 + 2000 }), T0 + 5000)],
+      T0 + 5000,
+    );
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
+  it("updates a place from a newer observation through another list after a list dropped it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 4000, snapshotMs: 4000 });
+    // List 1 keeps being imported without A: its snapshot moves on, the removal's does not.
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 6000, snapshotMs: 6000 });
+    await runImport(db, ME, [list("2", [item("20", "A", { lat: NORTH(0) })])], {
+      at: T0 + 7000,
+      snapshotMs: 5000,
+    });
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(0),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(1);
+  });
+
+  it("keeps a place from a search older than the import that last confirmed it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await push(
+      db,
+      ME,
+      [up("places", searchedPlace("A", { lat: NORTH(0), signedAt: T0 + 2000 }), T0 + 4000)],
+      T0 + 4000,
+    );
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
   it("turns local notes into private diary entries that respect edits and deletes", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A", { localNote: "주차 어려움" })])]);
@@ -395,16 +512,24 @@ forEachDialect("import (shared)", (makeDb) => {
     expect((await pull(db, WIFE, first.cursor)).rows).toHaveLength(0);
   });
 
-  it("delivers a list someone imported long ago to a new follower", async () => {
+  it("a new follower of a list imported long ago gets it in a full pull, and nothing shared is re-stamped", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A"), item("11", "B")])]);
     await push(db, ME, [up("places", searchedPlace("Z"))], T0);
-    const myCursor = (await pull(db, ME, null)).cursor;
+    await pull(db, ME, null);
+    const seqs = async () => {
+      const out: Record<string, number> = {};
+      for (const t of ["lists", "list_items", "places", "place_sources"] as const)
+        for (const r of await all(db, t)) out[`${t}:${r.id}`] = Number(r.seq);
+      return out;
+    };
+    const before = await seqs();
     await runImport(db, ME, [list("1", [item("10", "A"), item("11", "B")], { followed: true })], {
       at: T0 + 100,
       snapshotMs: 0,
     });
-    const got = (await pull(db, ME, myCursor)).rows.map((r) => `${r.table}:${r.row.id}`);
+    expect(await seqs()).toEqual(before);
+    const got = (await pull(db, ME, null)).rows.map((r) => `${r.table}:${r.row.id}`);
     for (const id of [
       "lists:l_kakao_1",
       "list_items:i_kakao_1_10",
@@ -416,6 +541,25 @@ forEachDialect("import (shared)", (makeDb) => {
     ]) {
       expect(got).toContain(id);
     }
+  });
+
+  it("re-stamps nothing when a user saves a place a list they have already shows", async () => {
+    const db = await setup(makeDb);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])]);
+    await runImport(db, ME, [list("1", [item("10", "A")], { followed: true })], { at: T0 + 10 });
+    // C joins list 1: ME's device receives it through list 1, without a user_places row of ME's.
+    const items = [item("10", "A"), item("11", "C")];
+    await runImport(db, WIFE, [list("1", items)], { at: T0 + 100, snapshotMs: 100 });
+    const seqOf = async () =>
+      Number((await all(db, "places")).find((p) => p.id === "p_kakao_C")?.seq);
+    const before = await seqOf();
+    // ME's import now saves C, a place a list ME has already shows: nothing to re-stamp.
+    await runImport(db, ME, [list("1", items, { followed: true })], {
+      at: T0 + 200,
+      snapshotMs: 150,
+    });
+    expect((await mine(db, "user_places", ME)).map((r) => r.id)).toContain("up_p_kakao_C");
+    expect(await seqOf()).toBe(before);
   });
 
   it("keys a favourite without a place id as a pin of that list", async () => {
@@ -481,5 +625,233 @@ forEachDialect("import (shared)", (makeDb) => {
       .execute();
     expect(running).toHaveLength(1);
     expect((await latestImportRun(db, WIFE))?.status).toBe("running");
+  });
+});
+
+forEachDialect("import seen pages", (makeDb) => {
+  const pages = (db: Db, runId: string) =>
+    db.kysely
+      .selectFrom("import_run_pages")
+      .selectAll()
+      .where("run_id", "=", runId)
+      .orderBy("external_id")
+      .orderBy("page")
+      .execute();
+  const removed = async (db: Db) =>
+    (await all(db, "list_items")).filter((i) => i.removed_at_provider != null).map((i) => i.id);
+
+  it("a page retried with the same items is seen once", async () => {
+    const db = await setup(makeDb);
+    const items = [item("10", "A"), item("11", "B")];
+    await runImport(db, WIFE, [list("1", items)]);
+    const { runId } = await startRun(db, WIFE, 1, { "1": 2 });
+    await importListChunk(db, WIFE, runId, "1", 0, items, T0 + 1);
+    await importListChunk(db, WIFE, runId, "1", 0, items, T0 + 1);
+    await finishImportList(db, WIFE, runId, "1", T0 + 1);
+    expect(await removed(db)).toEqual([]);
+    const seen = await pages(db, runId);
+    expect(seen.map((p) => [p.user_id, p.external_id, p.page])).toEqual([[WIFE, "1", 0]]);
+    expect(JSON.parse(seen[0]?.item_ids ?? "[]")).toEqual(["i_kakao_1_10", "i_kakao_1_11"]);
+    await completeImportRun(db, WIFE, runId, T0 + 2);
+    expect(await pages(db, runId)).toEqual([]);
+  });
+
+  it("marks only items missing from every page of the list removed", async () => {
+    const db = await setup(makeDb);
+    const items = ["10", "11", "12", "13", "14"].map((e) => item(e, `P${e}`));
+    await runImport(db, WIFE, [list("1", items)], { chunk: 2 });
+    // Three pages: the item count is the provider's, the pages hold what it sent.
+    const { runId } = await startRun(db, WIFE, 1, { "1": 1001 });
+    await importListChunk(db, WIFE, runId, "1", 0, items.slice(0, 2), T0 + 1);
+    await importListChunk(db, WIFE, runId, "1", 1, [], T0 + 1);
+    await importListChunk(db, WIFE, runId, "1", 2, items.slice(4), T0 + 1);
+    await finishImportList(db, WIFE, runId, "1", T0 + 1);
+    expect((await removed(db)).sort()).toEqual(["i_kakao_1_12", "i_kakao_1_13"]);
+    expect((await pages(db, runId)).map((p) => p.page)).toEqual([0, 1, 2]);
+  });
+
+  it("deletes a superseded run's pages when the next run starts", async () => {
+    const db = await setup(makeDb);
+    const first = await startRun(db, WIFE, 1);
+    await importListChunk(db, WIFE, first.runId, "1", 0, [item("10", "A")], T0 + 1);
+    const other = await startRun(db, ME, 1);
+    await importListChunk(db, ME, other.runId, "1", 0, [item("10", "A")], T0 + 1);
+    expect(await pages(db, first.runId)).toHaveLength(1);
+    await startRun(db, WIFE, 2);
+    expect(await pages(db, first.runId)).toEqual([]);
+    expect(await pages(db, other.runId)).toHaveLength(1);
+  });
+});
+
+forEachDialect("import seen pages migration", (makeDb) => {
+  it("a run started before the migration ends as superseded and marks nothing removed", async () => {
+    const db = await makeDb({ through: "0001_init.sql" });
+    await addUser(db, WIFE);
+    const base = { created_at: T0, updated_at: T0, deleted_at: null, client_updated_at: 0, seq: 1 };
+    await db.kysely
+      .insertInto("lists")
+      .values({
+        ...base,
+        id: "l_kakao_1",
+        provider: "kakao",
+        external_id: "1",
+        name: "리스트 1",
+        description: null,
+        color: null,
+        owner_name: null,
+        removed_at_provider: null,
+        provider_snapshot_at: T0,
+      })
+      .execute();
+    await db.kysely
+      .insertInto("list_items")
+      .values(
+        ["10", "11"].map((e, position) => ({
+          ...base,
+          id: `i_kakao_1_${e}`,
+          list_id: "l_kakao_1",
+          place_id: `p_kakao_P${e}`,
+          position,
+          added_at: T0,
+          external_id: e,
+          provider_note: null,
+          provider_color: null,
+          removed_at_provider: null,
+          provider_snapshot_at: T0,
+        })),
+      )
+      .execute();
+    await db.kysely
+      .insertInto("import_runs")
+      .values({
+        user_id: WIFE,
+        id: "old-run",
+        provider: "kakao",
+        started_at: T0 + 1,
+        finished_at: null,
+        status: "running",
+        complete: 1,
+        subscription_known: 1,
+        snapshot_at: T0 + 1,
+        summary_json: null,
+        error: null,
+      })
+      .execute();
+    await db.kysely
+      .insertInto("import_run_lists")
+      .values({
+        user_id: WIFE,
+        run_id: "old-run",
+        external_id: "1",
+        position: 0,
+        name: "리스트 1",
+        description: null,
+        owner_name: null,
+        followed: 0,
+        item_count: 2,
+        pages_done: 1,
+        finished: 0,
+      })
+      .execute();
+    await sql`INSERT INTO import_seen (user_id, run_id, list_item_id) VALUES (${WIFE}, 'old-run', 'i_kakao_1_10')`.execute(
+      db.kysely,
+    );
+
+    expect(await migrate(db, migrationsDir(db.dialect))).toEqual(["0002_import_run_pages.sql"]);
+
+    const run = await db.kysely
+      .selectFrom("import_runs")
+      .selectAll()
+      .where("id", "=", "old-run")
+      .executeTakeFirstOrThrow();
+    expect(run.status).toBe("superseded");
+    expect(Number(run.finished_at)).toBeGreaterThan(0);
+    await expect(finishImportList(db, WIFE, "old-run", "1", T0 + 2)).rejects.toBeInstanceOf(
+      RunClosedError,
+    );
+    expect((await all(db, "list_items")).map((i) => [i.id, i.removed_at_provider])).toEqual([
+      ["i_kakao_1_10", null],
+      ["i_kakao_1_11", null],
+    ]);
+    expect(await db.kysely.selectFrom("import_run_lists").selectAll().execute()).toEqual([]);
+    expect(await migrate(db, migrationsDir(db.dialect))).toEqual([]);
+  });
+});
+
+forEachDialect("import run progress", (makeDb) => {
+  it("latestImportRun reports the snapshot and, while running, how many lists are done", async () => {
+    const db = await setup(makeDb);
+    const run = await startRun(db, WIFE, 5, { "1": 1, "2": 1, "3": 1 });
+    await importListChunk(db, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, run.runId, "1", T0 + 7);
+    expect(await latestImportRun(db, WIFE)).toMatchObject({
+      status: "running",
+      snapshotAt: T0 + 5,
+      progress: { listsDone: 1, listCount: 3 },
+    });
+    for (const [ext, place] of [
+      ["2", "B"],
+      ["3", "C"],
+    ] as const) {
+      await importListChunk(db, WIFE, run.runId, ext, 0, [item(`${ext}0`, place)], T0 + 8);
+      await finishImportList(db, WIFE, run.runId, ext, T0 + 9);
+    }
+    await completeImportRun(db, WIFE, run.runId, T0 + 10);
+    const done = await latestImportRun(db, WIFE);
+    expect(done).toMatchObject({ status: "completed", snapshotAt: T0 + 5 });
+    expect(done?.progress).toBeUndefined();
+  });
+
+  it("runProgress gives each list's pages done and finished flag, in order", async () => {
+    const db = await setup(makeDb);
+    const run = await startRun(db, WIFE, 5, { "1": 1, "2": 501, "3": 1 });
+    await importListChunk(db, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, run.runId, "1", T0 + 7);
+    await importListChunk(
+      db,
+      WIFE,
+      run.runId,
+      "2",
+      0,
+      Array.from({ length: 500 }, (_, i) => item(`${200 + i}`, `P${i}`)),
+      T0 + 8,
+    );
+    expect(await runProgress(db, WIFE, run.runId)).toEqual({
+      snapshotAt: T0 + 5,
+      lists: [
+        { externalId: "1", name: "리스트 1", itemCount: 1, pagesDone: 1, finished: true },
+        { externalId: "2", name: "리스트 2", itemCount: 501, pagesDone: 1, finished: false },
+        { externalId: "3", name: "리스트 3", itemCount: 1, pagesDone: 0, finished: false },
+      ],
+    });
+    await expect(runProgress(db, ME, run.runId)).rejects.toBeInstanceOf(RunNotFoundError);
+    await startRun(db, WIFE, 6);
+    await expect(runProgress(db, WIFE, run.runId)).rejects.toBeInstanceOf(RunClosedError);
+  });
+
+  it("runProgress rejects a completed run", async () => {
+    const db = await setup(makeDb);
+    const run = await startRun(db, WIFE, 5);
+    await importListChunk(db, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, run.runId, "1", T0 + 7);
+    await completeImportRun(db, WIFE, run.runId, T0 + 8);
+    await expect(runProgress(db, WIFE, run.runId)).rejects.toBeInstanceOf(RunClosedError);
+  });
+
+  it("importedSnapshot is true only for a completed run on that snapshot", async () => {
+    const db = await setup(makeDb);
+    const first = await startRun(db, WIFE, 5);
+    expect(await importedSnapshot(db, WIFE, T0 + 5)).toBe(false);
+    await importListChunk(db, WIFE, first.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, first.runId, "1", T0 + 7);
+    await completeImportRun(db, WIFE, first.runId, T0 + 8);
+    expect(await importedSnapshot(db, WIFE, T0 + 5)).toBe(true);
+    expect(await importedSnapshot(db, WIFE, T0 + 6)).toBe(false);
+    expect(await importedSnapshot(db, ME, T0 + 5)).toBe(false);
+    // A superseded run (20) and a still-running one (30) don't count.
+    await startRun(db, WIFE, 20);
+    await startRun(db, WIFE, 30);
+    expect(await importedSnapshot(db, WIFE, T0 + 20)).toBe(false);
+    expect(await importedSnapshot(db, WIFE, T0 + 30)).toBe(false);
   });
 });

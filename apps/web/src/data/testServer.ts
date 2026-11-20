@@ -9,6 +9,10 @@ export interface FakeServer {
   /** Throw for a whole push (status code, or "network"). */
   failPush: ((ms: Mutation[]) => number | "network" | null) | null;
   pullPages: PullResponse[];
+  /** The path of every pull request, in order. */
+  pulls: string[];
+  /** When set, the pull with this number (1 = first) fails as a dropped connection. */
+  failPullAt: number | null;
   pullStatus: number | null;
   /** Error code in the body of a failed push (default "x"). */
   failCode: string;
@@ -27,6 +31,8 @@ export function fakeServer(): FakeServer {
     result: (m) => ({ mutationId: m.mutationId, status: "applied" }),
     failPush: null,
     pullPages: [],
+    pulls: [],
+    failPullAt: null,
     pullStatus: null,
     failCode: "x",
     pushGate: null,
@@ -45,6 +51,8 @@ export function fakeServer(): FakeServer {
         return { results: mutations.map((m) => server.result(m)) } as T;
       }
       if (path.startsWith("/api/sync/pull")) {
+        server.pulls.push(path);
+        if (server.pulls.length === server.failPullAt) throw new NetworkError();
         if (server.pullGate) await server.pullGate;
         if (server.pullStatus === 401) throw new UnauthorizedError();
         const page = server.pullPages.shift() ?? { rows: [], cursor: "c-end", hasMore: false };
