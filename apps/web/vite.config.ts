@@ -1,14 +1,23 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { readBuildInfo } from "./build-info";
+
+const build = readBuildInfo();
 
 // https://vite-pwa-org.netlify.app/guide/ (generateSW), https://developer.chrome.com/docs/workbox/
+// https://vite.dev/config/shared-options.html#define (values are code text, so JSON.stringify strings)
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(build.version),
+    __APP_COMMIT__: JSON.stringify(build.commit),
+    __APP_BUILT_AT__: JSON.stringify(build.builtAt ?? ""),
+  },
   plugins: [
     react(),
     VitePWA({
       strategies: "generateSW",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       injectRegister: false,
       includeAssets: ["icons/*"],
       manifest: {

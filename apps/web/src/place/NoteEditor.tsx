@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { currentDb } from "../data/db";
 import { addVisitNote, clearDraft, editVisitNote, saveDraft } from "../data/writes";
+import { registerBeforeUpdate } from "../update/beforeUpdate";
 
 /** Today in the device's own time zone, as YYYY-MM-DD. */
 export function localToday(): string {
@@ -60,32 +61,37 @@ function Editor({ placeId, note, onDone, draftKey: key }: Props & { draftKey: st
     }
   }, [draft]);
 
-  const flush = useCallback(() => {
+  // Keeps what's typed; resolves when it is kept. A database closed under it (deleted in another
+  // tab) has nowhere to keep it.
+  const flush = useCallback((): Promise<void> => {
     const value = unsaved.current;
-    if (!value) return;
+    if (!value) return Promise.resolve();
     unsaved.current = null;
-    // A database closed under it (deleted in another tab) has nowhere to keep it.
-    saveDraft(key, value, db).catch(() => {});
+    return saveDraft(key, value, db).catch(() => {});
   }, [key, db]);
+
+  // An update reloads the app: keep the half-typed note first.
+  useEffect(() => registerBeforeUpdate(flush), [flush]);
 
   useEffect(() => {
     if (!touched.current) return;
     unsaved.current = { visitedOn: visitedOn || null, body };
-    const timer = setTimeout(flush, 500);
+    const timer = setTimeout(() => void flush(), 500);
     return () => clearTimeout(timer);
   }, [visitedOn, body, flush]);
 
   // Hidden (switching apps, locking the phone) or closing: keep what's typed right away.
   useEffect(() => {
     const onHide = () => {
-      if (document.visibilityState === "hidden") flush();
+      if (document.visibilityState === "hidden") void flush();
     };
+    const onPageHide = () => void flush();
     document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", flush);
+    window.addEventListener("pagehide", onPageHide);
     return () => {
       document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", flush);
-      flush();
+      window.removeEventListener("pagehide", onPageHide);
+      void flush();
     };
   }, [flush]);
 

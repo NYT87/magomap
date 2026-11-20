@@ -13,6 +13,8 @@ import { PageRoutes } from "./routes";
 import { MapScreen } from "./screens/MapScreen";
 import { NotInvited } from "./screens/NotInvited";
 import { SignIn } from "./screens/SignIn";
+import { UpdateBanner } from "./update/UpdateBanner";
+import { UpdateRegistration } from "./update/UpdateRegistration";
 
 function askPersistentStorage() {
   try {
@@ -49,7 +51,15 @@ function Signedin({ me }: { me: Me }) {
     <SyncProvider key={key}>
       <MapPrefsProvider userId={me.userId}>
         <MapStageProvider>
-          <AppLayout map={<MapScreen />} status={<SyncIndicator />}>
+          <AppLayout
+            map={<MapScreen />}
+            status={
+              <div className="mm-status">
+                <SyncIndicator />
+                <UpdateBanner />
+              </div>
+            }
+          >
             <PageRoutes me={me} />
           </AppLayout>
         </MapStageProvider>
@@ -60,12 +70,15 @@ function Signedin({ me }: { me: Me }) {
 
 export function App() {
   return (
-    <Switch>
-      <Route path="/signin" component={SignIn} />
-      <Route path="/not-invited" component={NotInvited} />
-      <Route>
-        <Shell />
-      </Route>
-    </Switch>
+    <>
+      <UpdateRegistration />
+      <Switch>
+        <Route path="/signin" component={SignIn} />
+        <Route path="/not-invited" component={NotInvited} />
+        <Route>
+          <Shell />
+        </Route>
+      </Switch>
+    </>
   );
 }

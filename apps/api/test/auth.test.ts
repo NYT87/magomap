@@ -145,9 +145,35 @@ describe("dev login, health and config", () => {
     expect(res.status).toBe(404);
   });
 
-  it("reports the database on /api/health", async () => {
+  it("reports the build on /api/health", async () => {
+    const res = await call(
+      "/api/health",
+      {},
+      {
+        APP_VERSION: "0.1.1",
+        APP_COMMIT: "a1b2c3d",
+        APP_BUILT_AT: "2026-11-20T05:02:00.000Z",
+      },
+    );
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({
+      ok: true,
+      db: "d1",
+      version: "0.1.1",
+      commit: "a1b2c3d",
+      builtAt: "2026-11-20T05:02:00.000Z",
+    });
+  });
+
+  it("reports a dev build without them", async () => {
     const res = await call("/api/health");
-    expect(await res.json()).toEqual({ ok: true, db: "d1" });
+    expect(await res.json()).toEqual({
+      ok: true,
+      db: "d1",
+      version: "dev",
+      commit: "unknown",
+      builtAt: null,
+    });
   });
 
   it("serves the public config", async () => {

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "bootstrap-sha": "3f7b1d307ab68f070bdd23ae6e8da27f4fc33ce5",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "component": "magomap",
+      "package-name": "magomap"
+    }
+  }
+}

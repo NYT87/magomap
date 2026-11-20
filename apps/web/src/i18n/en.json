@@ -55,6 +55,15 @@
     "mapHint": "Automatic uses Kakao Map in Korea and OpenStreetMap elsewhere.",
     "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap."
   },
+  "about": {
+    "title": "About",
+    "app": "App",
+    "server": "Server",
+    "built": "built {{date}}",
+    "mismatch": "The app is older than the server. Update to get the latest.",
+    "differs": "The app and the server are on different versions.",
+    "offline": "Server: offline"
+  },
   "map": {
     "providerKakao": "Kakao Map",
     "providerOsm": "OpenStreetMap",
@@ -243,5 +252,10 @@
     "title": "Something went wrong on this screen",
     "body": "Your notes are safe on this device. Reload to continue.",
     "reload": "Reload"
+  },
+  "update": {
+    "ready": "A new version is ready",
+    "now": "Update",
+    "later": "Later"
   }
 }

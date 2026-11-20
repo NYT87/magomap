@@ -15,6 +15,10 @@ export interface Env {
   SIGNING_SECRET: string;
   ALLOW_DEV_LOGIN: string;
   SEARCH_LIMITER?: RateLimit;
+  /** Set by the release deploy; a Worker without them reports a dev build. */
+  APP_VERSION?: string;
+  APP_COMMIT?: string;
+  APP_BUILT_AT?: string;
 }
 
 export interface Vars {

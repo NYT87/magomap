@@ -123,6 +123,8 @@ a {
   font-size: 22px;
   font-weight: 700;
   text-decoration: none;
+  flex: none;
+  white-space: nowrap;
 }
 
 .mm-panel__body {
@@ -1526,4 +1528,125 @@ a {
   padding: var(--space-md);
   background: var(--color-surface);
   border-radius: var(--radius-card);
+}
+
+/* Account > About: the values are text to select and copy, not controls. */
+.mm-about__list,
+.mm-about__status {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mm-about__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+}
+
+.mm-about__what {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mm-about__label {
+  min-width: 4.5em;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.mm-about__value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Update banner (beside the sync indicator) ---------- */
+
+.mm-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.mm-phone-status .mm-status {
+  align-items: flex-start;
+}
+
+.mm-update-slot:empty:not(:focus) {
+  display: none;
+}
+
+.mm-update-slot:focus {
+  outline: none;
+}
+
+.mm-update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  max-width: 100%;
+  padding: 2px 4px 2px 12px;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-pine);
+  border-radius: var(--radius-card);
+  font-size: 14px;
+}
+
+.mm-phone-status .mm-update {
+  box-shadow: var(--shadow);
+}
+
+.mm-update__icon {
+  flex: none;
+  color: var(--color-pine);
+}
+
+.mm-update__text {
+  flex: 1 1 auto;
+  min-width: 8em;
+}
+
+.mm-update__button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  color: var(--color-pine);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mm-update__button--quiet {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.mm-about__update {
+  align-self: flex-start;
+}
+
+/* In the desktop panel the banner drops under the wordmark rather than squeezing it. */
+.mm-panel__header {
+  flex-wrap: wrap;
+}
+
+.mm-panel__header .mm-status:has(.mm-update) {
+  flex: 1 1 100%;
+}
+
+.mm-panel__header .mm-update {
+  width: 100%;
 }
