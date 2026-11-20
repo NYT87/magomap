@@ -25,6 +25,8 @@ Small change to the magomap PWA (apps/web), agreed with the owner on 2026-11-20.
 
 5. **Import moves into Account.** The Import tab goes away (the tabs become Map, Lists, Account). The Account screen gets an **"kakao-list에서 가져오기 / Import from kakao-list"** section with everything the Import screen has today: the lead, the offline note, the start/again button, progress, the summary, errors and the last import.
 
+6. **The Account card shows who you are** (owner's request, 2026-11-20). Only the name, as the card's heading ("카카오 계정 / Kakao account" when Kakao gave none). The "Kakao login connected" and "Google coming later" lines go, since Kakao is the only sign-in. "Signed in as…" goes too, because only signed-in people see Account.
+
 ## Non-goals
 
 - Syncing visibility between devices. It stays as today: remembered per account on each device (`mapPrefs`, localStorage).
