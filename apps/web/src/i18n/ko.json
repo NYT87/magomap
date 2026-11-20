@@ -157,7 +157,10 @@
     "deleteNote": "{{date}} 메모 삭제",
     "editLink": "{{name}} 링크 수정",
     "deleteLink": "{{name}} 링크 삭제",
-    "newTab": "(새 탭에서 열려요)"
+    "newTab": "(새 탭에서 열려요)",
+    "kakaoNotes": "카카오 메모",
+    "kakaoNoteReadOnly": "카카오맵에서만 바꿀 수 있어요.",
+    "removedSuffix": "(카카오에서 삭제됨)"
   },
   "import": {
     "title": "kakao-list에서 가져오기",

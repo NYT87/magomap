@@ -1,11 +1,12 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { X } from "lucide-react";
-import { useId, useState } from "react";
+import { type CSSProperties, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { currentDb } from "../data/db";
 import { loadLibrary, sectionOf, usePlaceMemberships } from "../data/queries";
 import { addToList, removeFromList } from "../data/writes";
 import { membershipColor } from "../map/markers";
+import { groupKakaoNotes } from "./kakaoNotes";
 
 /** The lists this place is in. Kakao lists are read-only; own lists can be added to or left. */
 export function Memberships({ placeId }: { placeId: string }) {
@@ -19,7 +20,9 @@ export function Memberships({ placeId }: { placeId: string }) {
   }, []);
   const [choice, setChoice] = useState("");
   const selectId = useId();
+  const notesId = useId();
   if (!memberships || !ownLists) return null;
+  const notes = groupKakaoNotes(memberships);
   const inList = new Set(memberships.map((m) => m.list.id));
   const addable = ownLists.filter((l) => !inList.has(l.id));
 
@@ -46,12 +49,6 @@ export function Memberships({ placeId }: { placeId: string }) {
               {item.removedAtProvider != null && (
                 <span className="mm-chip__meta">{t("place.removedFromKakao")}</span>
               )}
-              {item.providerNote && (
-                <span className="mm-chip__meta">
-                  <span className="mm-visually-hidden">{t("place.kakaoNote")}: </span>
-                  {item.providerNote}
-                </span>
-              )}
             </span>
             {section === "mine" && (
               <button
@@ -66,6 +63,38 @@ export function Memberships({ placeId }: { placeId: string }) {
           </li>
         ))}
       </ul>
+      {notes.length > 0 && (
+        <section className="mm-kakao-notes" aria-labelledby={notesId}>
+          <h3 id={notesId} className="mm-kakao-notes__title">
+            {t("place.kakaoNotes")}
+          </h3>
+          {notes.map((note) => {
+            const names = note.from
+              .map((f) => (f.removed ? `${f.name} ${t("place.removedSuffix")}` : f.name))
+              .join(" · ");
+            return (
+              <figure
+                key={note.text}
+                className="mm-card mm-kakao-note"
+                aria-label={`${t("place.kakaoNote")}: ${names}`}
+                style={{ "--note-color": note.from[0]?.color } as CSSProperties}
+              >
+                <figcaption className="mm-kakao-note__from">
+                  {note.from.map((f) => (
+                    <span key={f.listId} className="mm-kakao-note__list">
+                      <span className="mm-swatch" style={{ background: f.color }} aria-hidden />
+                      {f.name}
+                      {f.removed && ` ${t("place.removedSuffix")}`}
+                    </span>
+                  ))}
+                </figcaption>
+                <p className="mm-kakao-note__text">{note.text}</p>
+                <p className="mm-muted mm-kakao-note__hint">{t("place.kakaoNoteReadOnly")}</p>
+              </figure>
+            );
+          })}
+        </section>
+      )}
       {ownLists.length === 0 ? (
         <p className="mm-muted">{t("place.noOwnLists")}</p>
       ) : (
