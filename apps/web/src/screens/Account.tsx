@@ -1,15 +1,16 @@
-import type { Me } from "@magomap/domain";
+import { LIMITS, type Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
-import { forgetMe } from "../auth/useMe";
+import { forgetMe, notifyMeChanged } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { closeUserDb, dbName, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
+import { useOnline } from "../import/useOnline";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
 import { AboutSection } from "./AboutSection";
@@ -33,6 +34,34 @@ export function Account({ me }: { me: Me }) {
 
   // Every request here acts for the account this screen shows, never one opened meanwhile.
   const forMe = (method: string) => ({ method, headers: { [ACCOUNT_HEADER]: me.userId } });
+
+  // The nickname: shown as the card's heading, edited in place.
+  const online = useOnline();
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState(false);
+  const nameErrorId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editingName) nameInput.current?.focus();
+  }, [editingName]);
+  const saveName = async () => {
+    setSavingName(true);
+    setNameError(false);
+    try {
+      await apiFetch("/api/me", {
+        ...forMe("PATCH"),
+        body: JSON.stringify({ displayName: nameDraft }),
+      });
+      setEditingName(false);
+      notifyMeChanged();
+    } catch {
+      setNameError(true);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   const leave = () => {
     forgetMe();
@@ -94,8 +123,61 @@ export function Account({ me }: { me: Me }) {
     <div className="mm-screen mm-account">
       <h1 className="mm-screen__title">{t("account.title")}</h1>
       {/* Only signed-in people see Account: the card just says who it is. */}
-      <section className="mm-card">
-        <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
+      <section className="mm-card mm-stack">
+        {editingName ? (
+          <form
+            className="mm-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveName();
+            }}
+          >
+            <label className="mm-field">
+              <span className="mm-field__label">{t("account.nameLabel")}</span>
+              <input
+                className="mm-input"
+                value={nameDraft}
+                maxLength={LIMITS.nickname}
+                onChange={(e) => setNameDraft(e.target.value)}
+                aria-describedby={nameError ? nameErrorId : undefined}
+                ref={nameInput}
+              />
+            </label>
+            {nameError && (
+              <p className="mm-error" role="alert" id={nameErrorId}>
+                {t("account.failed")}
+              </p>
+            )}
+            <div className="mm-editor__actions">
+              <button type="submit" className="mm-button mm-button--primary" disabled={savingName}>
+                {t("account.save")}
+              </button>
+              <button
+                type="button"
+                className="mm-button mm-button--secondary"
+                onClick={() => setEditingName(false)}
+              >
+                {t("account.cancel")}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="mm-section__head">
+            <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
+            <button
+              type="button"
+              className="mm-button mm-button--secondary"
+              disabled={!online}
+              onClick={() => {
+                setNameDraft(me.displayName ?? "");
+                setNameError(false);
+                setEditingName(true);
+              }}
+            >
+              {t("account.editName")}
+            </button>
+          </div>
+        )}
       </section>
 
       <ImportSection />

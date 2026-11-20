@@ -1,8 +1,9 @@
 import { AlertTriangle, Check, CloudOff, Loader, LogIn } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { accountName } from "../auth/useMe";
 import type { RejectedEntry } from "../data/db";
-import { currentDb } from "../data/db";
+import { currentDb, dbUserId, openDbOrNull } from "../data/db";
 import { dismissRejected, useRejected } from "../data/queries";
 import { useSyncStatus } from "../data/useSyncStatus";
 import { useOnline } from "../import/useOnline";
@@ -88,7 +89,15 @@ export function SyncIndicator() {
   } else if (status.state === "needs_signin") {
     tone = "warn";
     icon = <LogIn aria-hidden size={16} strokeWidth={2} />;
-    text = n > 0 ? t("sync.needsSignin", { count: n }) : t("sync.needsSigninNone");
+    // Name the account whose data this device holds, so it's clear who should sign in.
+    const db = openDbOrNull();
+    const name = db ? accountName(dbUserId(db)) : null;
+    if (name) {
+      text =
+        n > 0 ? t("sync.needsSigninAs", { count: n, name }) : t("sync.needsSigninAsNone", { name });
+    } else {
+      text = n > 0 ? t("sync.needsSignin", { count: n }) : t("sync.needsSigninNone");
+    }
   } else if (status.state === "error") {
     tone = "warn";
     icon = <CloudOff aria-hidden size={16} strokeWidth={2} />;

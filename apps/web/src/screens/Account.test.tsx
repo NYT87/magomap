@@ -275,4 +275,68 @@ describe("Account", () => {
     renderAccount();
     expect(screen.getByRole("combobox", { name: "Map" })).toHaveValue("osm");
   });
+
+  describe("nickname", () => {
+    const setOnline = (on: boolean) =>
+      Object.defineProperty(navigator, "onLine", { value: on, configurable: true });
+
+    it("edits the nickname", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const field = screen.getByRole("textbox", { name: "Nickname" });
+      expect(field).toHaveValue("지은");
+      await user.clear(field);
+      await user.type(field, "민수");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith(
+          "/api/me",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ displayName: "민수" }),
+          }),
+        ),
+      );
+      await waitFor(() => expect(screen.queryByRole("textbox", { name: "Nickname" })).toBeNull());
+    });
+
+    it("Cancel keeps the name", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.type(screen.getByRole("textbox", { name: "Nickname" }), "x");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("textbox", { name: "Nickname" })).toBeNull();
+      expect(screen.getByRole("heading", { level: 2, name: "지은" })).toBeInTheDocument();
+      expect(apiFetch).not.toHaveBeenCalledWith("/api/me", expect.anything());
+    });
+
+    it("Edit is off offline", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(false);
+      try {
+        renderAccount();
+        expect(screen.getByRole("button", { name: "Edit name" })).toBeDisabled();
+      } finally {
+        setOnline(true);
+      }
+    });
+
+    it("says so when the name can't be saved", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      answerOnce("/api/me", () => Promise.reject(new NetworkError()));
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't reach the server/);
+      expect(screen.getByRole("textbox", { name: "Nickname" })).toBeInTheDocument();
+    });
+  });
 });

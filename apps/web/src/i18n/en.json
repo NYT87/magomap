@@ -53,7 +53,10 @@
     "mapKakao": "Kakao Map",
     "mapOsm": "OpenStreetMap",
     "mapHint": "Automatic uses Kakao Map in Korea and OpenStreetMap elsewhere.",
-    "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap."
+    "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap.",
+    "editName": "Edit name",
+    "nameLabel": "Nickname",
+    "save": "Save"
   },
   "about": {
     "title": "About",
@@ -246,7 +249,10 @@
     "copy": "Copy text",
     "copied": "Copied",
     "dismiss": "Done",
-    "dismissHint": "Removes it from this list. Copy the text first if you need it."
+    "dismissHint": "Removes it from this list. Copy the text first if you need it.",
+    "needsSigninAsNone": "Sign in again as {{name}} to keep syncing",
+    "needsSigninAs_one": "Sign in again as {{name}} to save {{count}} change",
+    "needsSigninAs_other": "Sign in again as {{name}} to save {{count}} changes"
   },
   "crash": {
     "title": "Something went wrong on this screen",

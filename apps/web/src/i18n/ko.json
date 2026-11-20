@@ -53,7 +53,10 @@
     "mapKakao": "카카오맵",
     "mapOsm": "OpenStreetMap",
     "mapHint": "자동은 한국에서는 카카오맵을, 다른 곳에서는 OpenStreetMap을 써요.",
-    "mapKakaoUnavailable": "지금은 카카오맵을 쓸 수 없어서 OpenStreetMap을 보여 줘요."
+    "mapKakaoUnavailable": "지금은 카카오맵을 쓸 수 없어서 OpenStreetMap을 보여 줘요.",
+    "editName": "이름 바꾸기",
+    "nameLabel": "닉네임",
+    "save": "저장"
   },
   "about": {
     "title": "버전 정보",
@@ -246,7 +249,10 @@
     "copy": "내용 복사",
     "copied": "복사했어요",
     "dismiss": "확인했어요",
-    "dismissHint": "이 목록에서 지워요. 필요하면 먼저 내용을 복사해 주세요."
+    "dismissHint": "이 목록에서 지워요. 필요하면 먼저 내용을 복사해 주세요.",
+    "needsSigninAsNone": "동기화하려면 {{name}} 님으로 다시 로그인해 주세요",
+    "needsSigninAs_one": "{{name}} 님으로 다시 로그인하면 변경 {{count}}개를 마저 저장해요",
+    "needsSigninAs_other": "{{name}} 님으로 다시 로그인하면 변경 {{count}}개를 마저 저장해요"
   },
   "crash": {
     "title": "이 화면에서 문제가 생겼어요",

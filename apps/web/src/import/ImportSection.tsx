@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
+import { notifyMeChanged } from "../auth/useMe";
 import { formatDate } from "../i18n";
 import { ImportError, runImport } from "./runImport";
 import { useOnline } from "./useOnline";
@@ -65,6 +66,9 @@ export function ImportSection() {
       apiFetch<ImportRunInfo | null>("/api/import/runs/latest").then(setLast, () => {});
     } catch (error) {
       setState({ kind: "failed", error: error instanceof ImportError ? error : null });
+    } finally {
+      // An import may have filled an empty nickname (even one that stopped): show it now.
+      notifyMeChanged();
     }
   };
 
