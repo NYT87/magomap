@@ -397,6 +397,7 @@ describe("sync", () => {
       "/api/sync/pull?cursor=f1",
     ]);
     expect((await db.meta.get("cursor"))?.value).toBe("f2");
+    expect((await db.meta.get("cursorGen"))?.value).toBe(1);
   });
 
   it("still pulls everything after a pull that brought a new list was cut off", async () => {
@@ -464,6 +465,7 @@ describe("sync", () => {
     await syncNow();
     expect(server.pulls).toEqual(["/api/sync/pull"]);
     expect((await db.meta.get("pullEpoch"))?.value).toBe(1);
+    expect((await db.meta.get("cursorGen"))?.value).toBe(1);
 
     server.pulls = [];
     await syncNow();
@@ -571,5 +573,269 @@ describe("sync", () => {
     expect(result.rejected).toBe(0);
     expect(await db.rejected.count()).toBe(0);
     expect(server.headers).toHaveLength(2); // the refused push, then the pull
+  });
+
+  it("remembers a full download a failed sync left unfinished, until its last page", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    const owed = async () => (await db.meta.get("fullPull")) !== undefined;
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: true },
+    ];
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await owed()).toBe(true);
+    // Resumed from its cursor: still owed until the last page is in.
+    server.failPullAt = null;
+    server.pullPages = [{ rows: [], cursor: "f2", hasMore: false }];
+    await pullAll(db);
+    expect(await owed()).toBe(false);
+  });
+
+  it("remembers the full download a newly added list starts", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: true },
+    ];
+    // The restarted, full download fails at once.
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await db.meta.get("fullPull")).toBeDefined();
+  });
+
+  it("an ordinary pull from a cursor owes no full download", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [{ rows: [], cursor: "c1", hasMore: true }];
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
+
+  it("clears the full download when the restarted pull is a single page", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+    expect((await db.meta.get("cursor"))?.value).toBe("f1");
+  });
+
+  it("a single-page download of everything never owes one", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
+
+  it("a page that lands after another tab restarted the download doesn't undo the restart", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.user_lists.put(access("l_kakao_1"));
+    await db.meta.put({ key: "cursor", value: "c0" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [], cursor: "c1", hasMore: false },
+      { rows: [], cursor: "f1", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab gained a list meanwhile: it dropped the cursor and owes a full download.
+    await db.meta.delete("cursor");
+    await db.meta.put({ key: "fullPull", value: 1 });
+    server.pullGate = null;
+    answer();
+    await late;
+    // This tab pulled again from the start, and the full download finished.
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f1");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
+
+  it("drops a page another tab overtook, keeping the newer rows it stored", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [pulled("visit_notes", note("n1", "old", 5))], cursor: "c1", hasMore: false },
+      { rows: [], cursor: "c6", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab pulled further meanwhile and stored the note's newer version.
+    await db.visit_notes.put(note("n1", "new", 9));
+    await db.meta.put({ key: "cursor", value: "c5" });
+    server.pullGate = null;
+    answer();
+    await late;
+    expect((await db.visit_notes.get("n1"))?.body).toBe("new");
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull?cursor=c5"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("c6");
+  });
+
+  it("drops a page whose cursor was deleted and reached again by another tab", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.user_lists.put(access("l_kakao_1"));
+    await db.meta.put({ key: "cursor", value: "f1" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      // The late page: from before the other tab's restart.
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "f2", hasMore: false },
+      { rows: [], cursor: "f9", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab restarted (the cursor deleted), then its first page brought it back to f1.
+    await db.meta.delete("cursor");
+    await db.meta.put({ key: "cursorGen", value: 1 });
+    await db.meta.put({ key: "cursor", value: "f1" });
+    server.pullGate = null;
+    answer();
+    await late;
+    // The late page was dropped: neither its list nor its cursor, and no restart.
+    expect(await db.user_lists.get("ul_l_kakao_2")).toBeUndefined();
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=f1", "/api/sync/pull?cursor=f1"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f9");
+  });
+
+  it("a download of everything doesn't restart for the lists it brings", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: true },
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "f2", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull", "/api/sync/pull?cursor=f1"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f2");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+    expect(await db.meta.get("cursorGen")).toBeUndefined();
+  });
+
+  it("restarts for a new list after another tab overtook its download of everything", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [], cursor: "f1", hasMore: true },
+      // From f1: overtaken, dropped.
+      { rows: [], cursor: "f2", hasMore: false },
+      // From the other tab's c30: an ordinary page, with a newly gained list.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c31", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f9", hasMore: false },
+    ];
+    const held = () => {
+      let open = () => {};
+      server.pullGate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return open;
+    };
+    const first = held();
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // The second request (from f1) waits until the other tab has finished the download.
+    const second = held();
+    first();
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(2));
+    await db.meta.put({ key: "cursor", value: "c30" });
+    server.pullGate = null;
+    second();
+    await late;
+    expect(server.pulls).toEqual([
+      "/api/sync/pull",
+      "/api/sync/pull?cursor=f1",
+      "/api/sync/pull?cursor=c30",
+      "/api/sync/pull",
+    ]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f9");
+  });
+
+  it("restarts for a new list when a pull from scratch was overtaken and goes on from a cursor", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [], cursor: "f1", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c10", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f2", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab finished the full download first.
+    await db.meta.put({ key: "cursor", value: "c9" });
+    server.pullGate = null;
+    answer();
+    await late;
+    expect(server.pulls).toEqual(["/api/sync/pull", "/api/sync/pull?cursor=c9", "/api/sync/pull"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f2");
+  });
+
+  it("restarts again for a list that reaches it after another tab overtook its restart", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      // From c0: a new list, so a restart.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+      // The restarted page: overtaken, dropped.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: false },
+      // From the other tab's c30: a list granted after its download.
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "c31", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "f9", hasMore: false },
+    ];
+    const held = () => {
+      let open = () => {};
+      server.pullGate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return open;
+    };
+    const first = held();
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    const second = held();
+    first();
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(2));
+    // Another tab finished a download of everything meanwhile.
+    await db.meta.put({ key: "cursor", value: "c30" });
+    await db.meta.delete("fullPull");
+    server.pullGate = null;
+    second();
+    await late;
+    expect(server.pulls).toEqual([
+      "/api/sync/pull?cursor=c0",
+      "/api/sync/pull",
+      "/api/sync/pull?cursor=c30",
+      "/api/sync/pull",
+    ]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f9");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+    // Each restart stored the list it was for, so neither restarts again.
+    expect(await db.user_lists.get("ul_l_kakao_1")).toBeDefined();
+    expect(await db.user_lists.get("ul_l_kakao_2")).toBeDefined();
   });
 });

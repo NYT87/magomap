@@ -109,6 +109,7 @@
     "count_one": "{{count}} place",
     "count_other": "{{count}} places",
     "downloading": "Downloading…",
+    "downloadWaiting": "Downloads at the next sync",
     "by": "by {{name}}",
     "hint": "Your Kakao lists show up here after you import them from kakao-list in Account.",
     "toggle": "Show {{name}} on the map"
@@ -231,6 +232,7 @@
     "readOnly": "From Kakao, read-only. Change it in Kakao Map, then import again.",
     "empty": "No places in this list yet.",
     "downloading": "Still downloading this list's places…",
+    "downloadWaiting": "This list's places will download at the next sync.",
     "removed": "Removed from Kakao",
     "notFound": "This list isn't on this device.",
     "colors": {
