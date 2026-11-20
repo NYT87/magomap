@@ -129,20 +129,23 @@ export async function latestValidUntil(db: Db, placeIds: Iterable<string>) {
 }
 
 /**
- * Each place's newest `lists.provider_snapshot_at` over the lists that hold or held it.
+ * Each place's newest snapshot over the lists that hold or held it.
  * An import leaves unchanged places alone, so a list's snapshot is what vouches for its places:
  * an older observation of a place never wins over a newer list that confirmed it. A membership
- * removed at the provider still counts: its list's snapshot is at least the removal's, which is
- * at least the last confirmation, so it can only over-protect, never let older data win.
+ * removed at the provider counts at the snapshot that removed it (kept on the membership, and at
+ * least the last confirmation), not at its list's current snapshot, which keeps moving on without
+ * saying anything more about the place.
  */
 export async function newestListSnapshot(db: Db, placeIds: string[]) {
   const list = [...new Set(placeIds)];
   const out = new Map<string, number>();
   if (list.length === 0) return out;
+  const vouchedAt = sql<number | null>`CASE WHEN list_items.removed_at_provider IS NULL
+    THEN lists.provider_snapshot_at ELSE list_items.provider_snapshot_at END`;
   const rows = await db.kysely
     .selectFrom("list_items")
     .innerJoin("lists", "lists.id", "list_items.list_id")
-    .select(["list_items.place_id", sql<number | null>`max(lists.provider_snapshot_at)`.as("at")])
+    .select(["list_items.place_id", sql<number | null>`max(${vouchedAt})`.as("at")])
     .where(inJson(db, "list_items.place_id", list))
     .groupBy("list_items.place_id")
     .execute();

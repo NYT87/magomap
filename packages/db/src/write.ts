@@ -110,11 +110,11 @@ export function writeStatements(
 
 /**
  * Places written long ago that someone's cursor is already past, but who should have them now:
- * an existing place newly added to a list other users already have, or an existing place saved
- * by someone whose device already shows it as saved. Their shared rows are re-stamped with this
- * write's seq, so the next pull includes them. (Other users who already have them receive them
- * again: harmless.) A user gaining a list or place is not re-stamped here: their device sees the
- * new `user_lists` or `user_places` row and pulls everything again once.
+ * an existing place newly added to a list other users already have, or an existing place a user
+ * newly saves (from search, or from an import) that no list of theirs shows. Their shared rows are
+ * re-stamped with this write's seq, so the next pull includes them. (Other users who already have
+ * them receive them again: harmless.) A user gaining a list is not re-stamped here: their device
+ * sees the new or restored `user_lists` row and pulls everything again once.
  */
 export function grantStatements(
   db: Db,

@@ -401,7 +401,7 @@ describe("sync", () => {
     expect(server.pulls).toEqual(["/api/sync/pull"]);
   });
 
-  it("pulls everything again once when a new place or a restored list arrives", async () => {
+  it("pulls everything again once when a restored list arrives, but not for a new place", async () => {
     const db = open();
     const { pullAll } = await import("./sync");
     await db.user_lists.put(access("l_kakao_2", 5));
@@ -417,7 +417,10 @@ describe("sync", () => {
       { rows: [pulled("user_places", saved("p_kakao_9"))], cursor: "c2", hasMore: false },
     ];
     await pullAll(db);
-    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c-end", "/api/sync/pull"]);
+    // A place the user newly has comes with its shared rows (the server re-stamps them).
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c-end"]);
+    expect(await db.user_places.get("up_p_kakao_9")).toBeTruthy();
+    expect((await db.meta.get("cursor"))?.value).toBe("c2");
   });
 
   it("does not pull again for lists and places it already had", async () => {
@@ -438,6 +441,29 @@ describe("sync", () => {
     ];
     await pullAll(db);
     expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0"]);
+  });
+
+  it("pulls everything once on a device that synced before pulls had an epoch", async () => {
+    const db = open();
+    // An older app stored this cursor; its lists may lack rows it never re-pulled.
+    await db.meta.put({ key: "cursor", value: "c-old" });
+    await syncNow();
+    expect(server.pulls).toEqual(["/api/sync/pull"]);
+    expect((await db.meta.get("pullEpoch"))?.value).toBe(1);
+
+    server.pulls = [];
+    await syncNow();
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c-end"]);
+  });
+
+  it("a first sync sets the pull epoch without pulling twice", async () => {
+    const db = open();
+    await syncNow();
+    expect(server.pulls).toEqual(["/api/sync/pull"]);
+    expect((await db.meta.get("pullEpoch"))?.value).toBe(1);
+    server.pulls = [];
+    await syncNow();
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c-end"]);
   });
 
   it("a first pull on a new device does not pull twice", async () => {

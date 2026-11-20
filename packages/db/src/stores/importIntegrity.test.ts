@@ -281,13 +281,17 @@ forEachDialect("import integrity", (makeDb) => {
       [list("1", [item("11", "A", { localNote: "맛있음" })], { followed: true })],
       { at: T0 + 30, snapshot: T0 },
     );
-    expect((await pull(db, ME, cursor)).rows.map((r) => `${r.table}:${r.row.id}`)).not.toContain(
-      "places:p_kakao_A",
-    );
+    // ME gains A only through the new user_places row (no list ME has shows it, and ME's device
+    // won't pull everything again): the import re-stamps A, so the next pull from ME's cursor has it.
+    const afterImport = await pull(db, ME, cursor);
+    const gotImport = afterImport.rows.map((r) => `${r.table}:${r.row.id}`);
+    expect(gotImport).toContain("user_places:up_p_kakao_A");
+    expect(gotImport).toContain("places:p_kakao_A");
+    expect(gotImport).toContain("place_sources:s_kakao_A");
     // Meanwhile the device had saved A from search offline (so it already has its user_places
-    // row): this push is what has to bring A's shared rows.
+    // row): this push re-stamps A's shared rows again, as for any save no list shows.
     await push(db, ME, [up("places", searchedPlace("A", { signedAt: T0 - 1000 }))], T0 + 40);
-    const got = (await pull(db, ME, cursor)).rows.map((r) => `${r.table}:${r.row.id}`);
+    const got = (await pull(db, ME, afterImport.cursor)).rows.map((r) => `${r.table}:${r.row.id}`);
     expect(got).toContain("places:p_kakao_A");
     expect(got).toContain("place_sources:s_kakao_A");
   });

@@ -351,6 +351,9 @@ async function decideChunk(
   // An unchanged list only records the newer snapshot time, without a new seq. Unchanged places
   // and memberships are left alone: the list's snapshot vouches for them (see newestListSnapshot).
   const touchLists: string[] = [];
+  // Existing places this user newly saves. A device pulls everything again only on gaining a list,
+  // so those no list of theirs shows must be re-stamped for them (see below).
+  const savedExisting: string[] = [];
 
   // The shared list
   const existingList = lists.get(listId);
@@ -402,7 +405,8 @@ async function decideChunk(
       ? "owner"
       : (access?.role ?? "follower");
   // Gaining the list only writes this row: the user's device then pulls everything again once.
-  if (!access || access.removed_at != null || access.deleted_at != null || access.role !== role) {
+  const gainsList = !access || access.removed_at != null || access.deleted_at != null;
+  if (gainsList || access.role !== role) {
     write("user_lists", {
       user_id: userId,
       id: accessId,
@@ -524,6 +528,7 @@ async function decideChunk(
       };
       myPlaces.set(myPlaceId, mine);
       write("user_places", mine);
+      if (places.has(placeId)) savedExisting.push(placeId);
     }
 
     const memberId = providerItemRowId(provider, meta.externalId, item.externalId);
@@ -593,6 +598,24 @@ async function decideChunk(
         write("visit_notes", { ...existingNote, body, updated_at: now });
       }
     }
+  }
+
+  // A list the user is gaining brings everything in its full pull; otherwise a newly saved place
+  // that no list the user already has shows (the older-snapshot notes path) is re-stamped.
+  if (!gainsList && savedExisting.length > 0) {
+    const listed = new Set(
+      (
+        await db.kysely
+          .selectFrom("list_items")
+          .select("place_id")
+          .where(inJson(db, "place_id", savedExisting))
+          .where(
+            sql<boolean>`list_id IN (SELECT list_id FROM user_lists WHERE user_id = ${userId} AND removed_at IS NULL AND deleted_at IS NULL)`,
+          )
+          .execute()
+      ).map((r) => r.place_id),
+    );
+    for (const id of savedExisting) if (!listed.has(id)) sharedPlaceIds.push(id);
   }
 
   // One row per page, whatever its size: a retried page replaces what it saw.
@@ -691,12 +714,14 @@ export async function finishImportList(
           db.kysely
             .updateTable("list_items")
             .set({
-              removed_at_provider: sql`COALESCE(removed_at_provider, ${now})`,
+              removed_at_provider: now,
               provider_snapshot_at: snapshotAt,
               updated_at: now,
               seq: ctx.seq,
             })
             .where(notSeen)
+            // A membership already removed keeps the snapshot that removed it (newestListSnapshot).
+            .where("removed_at_provider", "is", null)
             .where(ctx.guard),
         );
       }

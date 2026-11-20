@@ -199,9 +199,9 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
 // ---------- pull ----------
 
 /**
- * Pulls every page; each page's rows and its cursor are stored together. A list or place this
- * device didn't have may hold shared rows written long before its cursor (the server doesn't
- * re-stamp them). So when a pull that started from a cursor brings one in, that page drops the
+ * Pulls every page; each page's rows and its cursor are stored together. A list this device
+ * didn't have may hold shared rows written long before its cursor (the server doesn't re-stamp
+ * them). So when a pull that started from a cursor brings one in, that page drops the
  * cursor instead of storing it, and the pull goes on from the start, once. An interruption then
  * resumes the full pull rather than forgetting it was needed.
  */
@@ -242,9 +242,11 @@ export async function pullAll(db: MagomapDexie): Promise<number> {
   }
 }
 
-/** A list or place this device didn't have, or a list it had been taken out of. */
+/**
+ * A list this device didn't have, or a list it had been taken out of. (A place the user newly has
+ * without a list showing it arrives with its shared rows: the server re-stamps those.)
+ */
 async function gainsAccess(db: MagomapDexie, table: SyncTable, row: AnyRow): Promise<boolean> {
-  if (table === "user_places") return (await db.user_places.get(row.id)) === undefined;
   if (table !== "user_lists") return false;
   const before = await db.user_lists.get(row.id);
   if (!before) return true;
@@ -256,6 +258,13 @@ async function gainsAccess(db: MagomapDexie, table: SyncTable, row: AnyRow): Pro
 }
 
 // ---------- syncNow ----------
+
+/**
+ * Raised when a pull from a stored cursor can no longer be trusted to be complete; every device
+ * whose stored epoch differs pulls everything once. 1: apps from before the server stopped
+ * re-stamping a list's rows for a new member never re-pulled on gaining a list.
+ */
+const PULL_EPOCH = 1;
 
 async function run(
   db: MagomapDexie,
@@ -269,8 +278,16 @@ async function run(
   try {
     const entries = await db.outbox.orderBy("seq").toArray();
     for (const batch of batches(entries)) await pushBatch(db, batch, t);
-    // After a refusal, the server's copies come back in full, replacing refused local edits.
-    if (t.repull) await db.meta.delete("cursor");
+    await db.transaction("rw", db.meta, async () => {
+      // After a refusal, the server's copies come back in full, replacing refused local edits.
+      if (t.repull) await db.meta.delete("cursor");
+      // An app from before PULL_EPOCH may have been given a list without pulling its older rows:
+      // its cursor is dropped once, so the device pulls everything one time.
+      if ((await db.meta.get("pullEpoch"))?.value !== PULL_EPOCH) {
+        await db.meta.delete("cursor");
+        await db.meta.put({ key: "pullEpoch", value: PULL_EPOCH });
+      }
+    });
     const pulled = await pullAll(db);
     const now = Date.now();
     await db.meta.put({ key: "lastSyncAt", value: now });

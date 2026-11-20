@@ -24,7 +24,7 @@ function list(ext: string, items: ImportItem[]): ImportList {
   return { externalId: ext, name: `리스트 ${ext}`, followed: false, items };
 }
 
-const all = (db: Db, t: "places" | "list_items" | "place_sources") =>
+const all = (db: Db, t: "places" | "list_items" | "place_sources" | "place_locations") =>
   db.kysely.selectFrom(t).selectAll().execute();
 
 async function setup(makeDb: () => Promise<Db>) {
@@ -46,21 +46,65 @@ forEachDialect("import write budget", (makeDb) => {
     expect(counted.written()).toBeLessThanOrEqual(10 + 6 * 2 + 5 * 3);
   });
 
-  it("an unchanged re-import changes no places, list items or sources", async () => {
+  it("an unchanged re-import changes no places, list items, sources or locations", async () => {
     const db = await setup(makeDb);
-    const lists = [
-      list("1", [item("10", { category: "카페", phone: "064-000-0000", lat: 33.5, lng: 126.5 })]),
-    ];
-    await importSnapshot(db, USER, lists, { snapshot: T0 });
+    const full = { category: "카페", phone: "064-000-0000", lat: 33.5, lng: 126.5 };
+    const moved = 33.46 + 500 / 111_320;
+    await importSnapshot(db, USER, [list("1", [item("10", full), item("11")])], { snapshot: T0 });
+    // Place 11 moves, so it has a location history row.
+    const lists = [list("1", [item("10", full), item("11", { lat: moved })])];
+    await importSnapshot(db, USER, lists, { at: T0 + 500, snapshot: T0 + 500 });
+    await db.kysely
+      .updateTable("places")
+      .set({ road_address: "제주 애월읍 애월해안로 1" })
+      .where("id", "=", "p_kakao_P10")
+      .execute();
     const before = {
       places: await all(db, "places"),
       items: await all(db, "list_items"),
       sources: await all(db, "place_sources"),
+      locations: await all(db, "place_locations"),
     };
+    expect(before.locations).toHaveLength(1);
+    expect(before.places.find((p) => p.id === "p_kakao_P10")?.road_address).toBe(
+      "제주 애월읍 애월해안로 1",
+    );
     await importSnapshot(db, USER, lists, { at: T0 + 1000, snapshot: T0 + 1000 });
     expect(await all(db, "places")).toEqual(before.places);
     expect(await all(db, "list_items")).toEqual(before.items);
     expect(await all(db, "place_sources")).toEqual(before.sources);
+    expect(await all(db, "place_locations")).toEqual(before.locations);
+  });
+
+  it("a re-import leaves memberships already removed alone, within the write budget", async () => {
+    const db = await setup(makeDb);
+    await importSnapshot(
+      db,
+      USER,
+      [
+        list(
+          "1",
+          ["1", "2", "3"].map((e) => item(e)),
+        ),
+      ],
+      {
+        snapshot: T0,
+      },
+    );
+    const two = [
+      list(
+        "1",
+        ["1", "2"].map((e) => item(e)),
+      ),
+    ];
+    await importSnapshot(db, USER, two, { at: T0 + 500, snapshot: T0 + 500 });
+    const before = await all(db, "list_items");
+    expect(before.filter((i) => i.removed_at_provider != null)).toHaveLength(1);
+
+    const counted = countWrites(db);
+    await importSnapshot(counted.db, USER, two, { at: T0 + 1000, snapshot: T0 + 1000 });
+    expect(await all(db, "list_items")).toEqual(before);
+    expect(counted.written()).toBeLessThanOrEqual(10 + 6 * 1 + 5 * 1);
   });
 
   it("atomic reports the rows each statement changed", async () => {

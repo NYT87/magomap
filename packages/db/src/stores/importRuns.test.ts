@@ -346,6 +346,24 @@ forEachDialect("import (shared)", (makeDb) => {
     expect(await all(db, "place_locations")).toHaveLength(0);
   });
 
+  it("updates a place from a newer observation through another list after a list dropped it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 4000, snapshotMs: 4000 });
+    // List 1 keeps being imported without A: its snapshot moves on, the removal's does not.
+    await runImport(db, WIFE, [list("1", [])], { at: T0 + 6000, snapshotMs: 6000 });
+    await runImport(db, ME, [list("2", [item("20", "A", { lat: NORTH(0) })])], {
+      at: T0 + 7000,
+      snapshotMs: 5000,
+    });
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(0),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(1);
+  });
+
   it("keeps a place from a search older than the import that last confirmed it", async () => {
     const db = await setup(makeDb);
     const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
@@ -523,6 +541,25 @@ forEachDialect("import (shared)", (makeDb) => {
     ]) {
       expect(got).toContain(id);
     }
+  });
+
+  it("re-stamps nothing when a user saves a place a list they have already shows", async () => {
+    const db = await setup(makeDb);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])]);
+    await runImport(db, ME, [list("1", [item("10", "A")], { followed: true })], { at: T0 + 10 });
+    // C joins list 1: ME's device receives it through list 1, without a user_places row of ME's.
+    const items = [item("10", "A"), item("11", "C")];
+    await runImport(db, WIFE, [list("1", items)], { at: T0 + 100, snapshotMs: 100 });
+    const seqOf = async () =>
+      Number((await all(db, "places")).find((p) => p.id === "p_kakao_C")?.seq);
+    const before = await seqOf();
+    // ME's import now saves C, a place a list ME has already shows: nothing to re-stamp.
+    await runImport(db, ME, [list("1", items, { followed: true })], {
+      at: T0 + 200,
+      snapshotMs: 150,
+    });
+    expect((await mine(db, "user_places", ME)).map((r) => r.id)).toContain("up_p_kakao_C");
+    expect(await seqOf()).toBe(before);
   });
 
   it("keys a favourite without a place id as a pin of that list", async () => {
