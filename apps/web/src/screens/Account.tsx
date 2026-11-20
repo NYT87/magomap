@@ -6,7 +6,13 @@ import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
 import { forgetMe, notifyMeChanged } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { closeUserDb, dbName, forgetAccountOnDevice, openDbOrNull } from "../data/db";
+import {
+  closeUserDb,
+  dbName,
+  forgetAccountOnDevice,
+  openDbOrNull,
+  REMOVE_RESULT,
+} from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
@@ -43,8 +49,13 @@ export function Account({ me }: { me: Me }) {
   const [nameError, setNameError] = useState(false);
   const nameErrorId = useId();
   const nameInput = useRef<HTMLInputElement>(null);
+  const editNameButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  // Opening the editor focuses its field; closing it (Save or Cancel) gives focus back to Edit.
   useEffect(() => {
     if (editingName) nameInput.current?.focus();
+    else if (wasEditing.current) editNameButton.current?.focus();
+    wasEditing.current = editingName;
   }, [editingName]);
   const saveName = async () => {
     setSavingName(true);
@@ -99,7 +110,15 @@ export function Account({ me }: { me: Me }) {
       if (switched()) return;
       // Removed only when everything reached the server ("Sign out anyway" keeps unsynced data).
       // Otherwise the local database is kept: unsynced changes go out at the next sign-in here.
-      if (removeData && !force) await forgetAccountOnDevice(me.userId);
+      if (removeData && !force) {
+        // The sign-in screen says how it went (removed, kept for unsent changes, or still going).
+        const result = await forgetAccountOnDevice(me.userId);
+        try {
+          sessionStorage.setItem(REMOVE_RESULT, result);
+        } catch {
+          // storage blocked: no message
+        }
+      }
       leave();
     } catch (e) {
       setError(e instanceof NetworkError ? t("account.signOutOffline") : t("account.failed"));
@@ -143,8 +162,10 @@ export function Account({ me }: { me: Me }) {
               <input
                 className="mm-input"
                 value={nameDraft}
-                maxLength={LIMITS.nickname}
-                onChange={(e) => setNameDraft(e.target.value)}
+                // The limit counts characters as the server does (an emoji is one, not two).
+                onChange={(e) =>
+                  setNameDraft(Array.from(e.target.value).slice(0, LIMITS.nickname).join(""))
+                }
                 aria-describedby={nameError ? nameErrorId : undefined}
                 ref={nameInput}
               />
@@ -171,6 +192,7 @@ export function Account({ me }: { me: Me }) {
           <div className="mm-section__head">
             <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
             <button
+              ref={editNameButton}
               type="button"
               className="mm-button mm-button--secondary"
               disabled={!online}

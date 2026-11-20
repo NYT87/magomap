@@ -19,7 +19,10 @@
     "devName": "닉네임",
     "devSubmit": "로그인",
     "devFailed": "로그인하지 못했어요. ID를 확인하고 다시 시도해 주세요.",
-    "otherAccount": "다른 카카오 계정으로 로그인"
+    "otherAccount": "다른 카카오 계정으로 로그인",
+    "removed": "이 기기에서 내 데이터를 지웠어요.",
+    "removeKept": "서버에 저장되지 않은 변경이 있어서 이 기기의 데이터는 남겨 두었어요.",
+    "removePending": "이 기기에서 데이터를 지우는 중이에요. 다른 magomap 탭을 닫으면 마무리돼요."
   },
   "notInvited": {
     "title": "지금은 초대받은 분만 쓸 수 있어요",

@@ -164,11 +164,92 @@ export function closeUserDb(userId?: string) {
   }
 }
 
+/** Where sign-out leaves the removal's outcome for the sign-in screen to show. */
+export const REMOVE_RESULT = "mm.removeResult";
+
+/** How removing an account's data from this device ended. */
+export type RemovalResult = "removed" | "kept" | "pending";
+
+/** Accounts whose database removal hasn't finished yet; retried from the sign-in screen. */
+const PENDING_REMOVAL = "mm.pendingRemoval";
+
+function pendingRemovals(): string[] {
+  try {
+    const ids: unknown = JSON.parse(localStorage.getItem(PENDING_REMOVAL) ?? "[]");
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function setPendingRemovals(ids: string[]) {
+  try {
+    if (ids.length > 0) localStorage.setItem(PENDING_REMOVAL, JSON.stringify(ids));
+    else localStorage.removeItem(PENDING_REMOVAL);
+  } catch {
+    // storage blocked: nothing to retry later
+  }
+}
+
+/** Deletes the database; once done, the account leaves the pending list. Never throws. */
+function deleteDatabase(userId: string): Promise<boolean> {
+  return Dexie.delete(dbName(userId)).then(
+    () => {
+      setPendingRemovals(pendingRemovals().filter((id) => id !== userId));
+      return true;
+    },
+    () => false,
+  );
+}
+
+/**
+ * Unsent or refused changes in an account's database, counted straight from the browser's
+ * storage (not from what the screen last showed). A database that doesn't exist has none.
+ */
+function changesLeft(userId: string): Promise<number> {
+  return new Promise((resolve) => {
+    const request = indexedDB.open(dbName(userId));
+    // It didn't exist: don't create it.
+    request.onupgradeneeded = () => request.transaction?.abort();
+    request.onerror = () => resolve(0);
+    request.onsuccess = () => {
+      const db = request.result;
+      const stores = ["outbox", "rejected"].filter((n) => db.objectStoreNames.contains(n));
+      if (stores.length === 0) {
+        db.close();
+        resolve(0);
+        return;
+      }
+      const tx = db.transaction(stores, "readonly");
+      let total = 0;
+      for (const name of stores) {
+        tx.objectStore(name).count().onsuccess = (e) => {
+          total += (e.target as IDBRequest<number>).result;
+        };
+      }
+      tx.oncomplete = () => {
+        db.close();
+        resolve(total);
+      };
+      // Unreadable: treat as having changes, so nothing is deleted on a guess.
+      tx.onerror = () => {
+        db.close();
+        resolve(1);
+      };
+    };
+  });
+}
+
 /**
  * Removes an account from this device: its database and what the device remembers for it
- * (lists shown, map choice, name). Device-wide settings stay. Only for data already on the server.
+ * (lists shown, map choice, name). Device-wide settings stay.
+ * - "kept": the database still has unsent or refused changes, so nothing is removed.
+ * - "removed": done.
+ * - "pending": another connection (another tab) holds the database; the browser finishes the
+ *   deletion when it lets go, and the sign-in screen retries it until then.
  */
-export async function forgetAccountOnDevice(userId: string): Promise<void> {
+export async function forgetAccountOnDevice(userId: string): Promise<RemovalResult> {
+  if ((await changesLeft(userId)) > 0) return "kept";
   for (const key of accountDeviceKeys(userId)) {
     try {
       localStorage.removeItem(key);
@@ -177,8 +258,15 @@ export async function forgetAccountOnDevice(userId: string): Promise<void> {
     }
   }
   closeUserDb(userId);
-  // Another connection (another tab, a sync finishing) holds the deletion until it lets go. The
-  // browser keeps the request and completes it then; sign-out doesn't wait more than a moment.
-  const deleting = Dexie.delete(dbName(userId)).catch(() => {});
-  await Promise.race([deleting, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+  setPendingRemovals([...new Set([...pendingRemovals(), userId])]);
+  const deleted = await Promise.race([
+    deleteDatabase(userId),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000)),
+  ]);
+  return deleted ? "removed" : "pending";
+}
+
+/** Tries again to delete databases whose removal didn't finish (from the sign-in screen). */
+export function retryPendingRemovals(): Promise<void> {
+  return Promise.all(pendingRemovals().map((id) => deleteDatabase(id))).then(() => {});
 }

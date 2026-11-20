@@ -316,6 +316,28 @@ describe("Account", () => {
       expect(apiFetch).not.toHaveBeenCalledWith("/api/me", expect.anything());
     });
 
+    it("counts the nickname's limit in characters, emoji included", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const field = screen.getByRole("textbox", { name: "Nickname" });
+      await user.clear(field);
+      await user.type(field, "🌸".repeat(41));
+      expect(Array.from((field as HTMLInputElement).value)).toHaveLength(40);
+    });
+
+    it("gives focus back to Edit name when the editor closes", async () => {
+      await i18n.changeLanguage("en");
+      setOnline(true);
+      const user = userEvent.setup();
+      renderAccount();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.getByRole("button", { name: "Edit name" })).toHaveFocus();
+    });
+
     it("Edit is off offline", async () => {
       await i18n.changeLanguage("en");
       setOnline(false);
@@ -342,8 +364,16 @@ describe("Account", () => {
 
   describe("remove my data from this device", () => {
     const keys = ["mm.visibleLists.u1", "mm.showPrevious.u1", "mm.mapProvider.u1", "mm.name.u1"];
-    const seedDevice = async () => {
-      await makeDb();
+    /** The account's database on this device: empty queues unless rows are given. */
+    const seedDevice = async (rows: { outbox?: number; rejected?: number } = {}) => {
+      const db = new Dexie("magomap-u1");
+      db.version(1).stores({ outbox: "++seq", rejected: "mutationId" });
+      await db.open();
+      for (let i = 0; i < (rows.outbox ?? 0); i++) await db.table("outbox").add({ id: `o${i}` });
+      for (let i = 0; i < (rows.rejected ?? 0); i++) {
+        await db.table("rejected").add({ mutationId: `r${i}` });
+      }
+      db.close();
       for (const k of keys) localStorage.setItem(k, "x");
       localStorage.setItem("mm.lang", "en");
     };
@@ -415,10 +445,36 @@ describe("Account", () => {
       );
       await user.click(screen.getByRole("button", { name: "Sign out" }));
       await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 6_000 });
-      // What the device remembers for the account is gone already; the database follows.
+      // What the device remembers for the account is gone already; the database follows,
+      // marked so it's retried, and the sign-in screen is told it's still being removed.
       expect(leftOnDevice()).toEqual([]);
+      expect(JSON.parse(localStorage.getItem("mm.pendingRemoval") ?? "[]")).toEqual(["u1"]);
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("pending");
       held.close();
       await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
+      await waitFor(() => expect(localStorage.getItem("mm.pendingRemoval")).toBeNull());
+    });
+
+    it("keeps the data when sign-out's own sync leaves a refused change", async () => {
+      await i18n.changeLanguage("en");
+      // The note was pending; the sync refused it, so it moved to "couldn't be saved".
+      await seedDevice({ rejected: 1 });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({
+        unsynced: 1,
+        rejected: 0,
+        syncNow: vi.fn(async () => {}),
+        countUnsynced: vi.fn(async () => 0),
+      });
+      await user.click(
+        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+      expect(await Dexie.exists("magomap-u1")).toBe(true);
+      expect(leftOnDevice()).toEqual(keys);
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
     });
 
     it("keeps the data when the server sign-out fails", async () => {
