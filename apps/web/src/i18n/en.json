@@ -27,10 +27,6 @@
   },
   "account": {
     "title": "Account",
-    "signedInAs": "Signed in as {{name}}",
-    "noName": "Signed in",
-    "kakao": "Kakao login connected",
-    "linkGoogle": "Linking a Google account is coming later.",
     "language": "Language",
     "signOut": "Sign out",
     "signOutEverywhere": "Sign out on every device",
@@ -50,7 +46,8 @@
     "rejectedNote_other": "{{count}} changes couldn't be saved on the server. They stay on this phone, and you can copy their text from the sync status.",
     "deleteUnsynced_one": "{{count}} change on this phone hasn't been sent yet and will be lost too.",
     "deleteUnsynced_other": "{{count}} changes on this phone haven't been sent yet and will be lost too.",
-    "signOutOffline": "You can sign out once you're online. Your notes are safe on this phone."
+    "signOutOffline": "You can sign out once you're online. Your notes are safe on this phone.",
+    "unnamed": "Kakao account"
   },
   "map": {
     "providerKakao": "Kakao Map",

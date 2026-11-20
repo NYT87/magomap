@@ -27,10 +27,6 @@
   },
   "account": {
     "title": "계정",
-    "signedInAs": "{{name}} 님으로 로그인했어요",
-    "noName": "로그인했어요",
-    "kakao": "카카오 로그인 연결됨",
-    "linkGoogle": "Google 계정 연결은 준비 중이에요.",
     "language": "언어",
     "signOut": "로그아웃",
     "signOutEverywhere": "모든 기기에서 로그아웃",
@@ -50,7 +46,8 @@
     "rejectedNote_other": "변경 {{count}}개는 서버에 저장하지 못했어요. 이 휴대폰에 남아 있고, 동기화 상태에서 내용을 복사할 수 있어요.",
     "deleteUnsynced_one": "아직 보내지 못한 변경 {{count}}개도 함께 사라져요.",
     "deleteUnsynced_other": "아직 보내지 못한 변경 {{count}}개도 함께 사라져요.",
-    "signOutOffline": "온라인일 때 로그아웃할 수 있어요. 메모는 이 휴대폰에 안전하게 남아 있어요."
+    "signOutOffline": "온라인일 때 로그아웃할 수 있어요. 메모는 이 휴대폰에 안전하게 남아 있어요.",
+    "unnamed": "카카오 계정"
   },
   "map": {
     "providerKakao": "카카오맵",

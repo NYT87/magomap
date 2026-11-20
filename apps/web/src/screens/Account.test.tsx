@@ -1,3 +1,4 @@
+import type { Me } from "@magomap/domain";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
@@ -34,7 +35,7 @@ beforeEach(() => {
 
 const me = { userId: "u1", displayName: "지은", identities: [{ provider: "kakao" as const }] };
 
-function renderAccount(sync: Partial<SyncControls> = {}) {
+function renderAccount(sync: Partial<SyncControls> = {}, who: Me = me) {
   const controls: SyncControls = {
     unsynced: 0,
     rejected: 0,
@@ -43,7 +44,7 @@ function renderAccount(sync: Partial<SyncControls> = {}) {
   };
   render(
     <SyncContext.Provider value={controls}>
-      <Account me={me} />
+      <Account me={who} />
     </SyncContext.Provider>,
   );
   return controls;
@@ -231,5 +232,18 @@ describe("Account", () => {
       screen.getByRole("heading", { level: 2, name: "Import from kakao-list" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import from kakao-list" })).toBeInTheDocument();
+  });
+
+  it("shows who is signed in, without sign-in or Google notes", async () => {
+    await i18n.changeLanguage("en");
+    renderAccount();
+    expect(screen.getByRole("heading", { level: 2, name: "지은" })).toBeInTheDocument();
+    expect(screen.queryByText(/Signed in|Kakao login|Google/)).toBeNull();
+  });
+
+  it("names the Kakao account when Kakao gave no name", async () => {
+    await i18n.changeLanguage("en");
+    renderAccount({}, { ...me, displayName: null });
+    expect(screen.getByRole("heading", { level: 2, name: "Kakao account" })).toBeInTheDocument();
   });
 });

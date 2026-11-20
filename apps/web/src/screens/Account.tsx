@@ -88,12 +88,9 @@ export function Account({ me }: { me: Me }) {
   return (
     <div className="mm-screen">
       <h1 className="mm-screen__title">{t("account.title")}</h1>
+      {/* Only signed-in people see Account: the card just says who it is. */}
       <section className="mm-card">
-        <p className="mm-strong">
-          {me.displayName ? t("account.signedInAs", { name: me.displayName }) : t("account.noName")}
-        </p>
-        <p className="mm-muted">{t("account.kakao")}</p>
-        <p className="mm-muted">{t("account.linkGoogle")}</p>
+        <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
       </section>
 
       <ImportSection />
