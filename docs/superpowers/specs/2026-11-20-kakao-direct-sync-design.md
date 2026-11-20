@@ -46,7 +46,7 @@ Kakao has no public API for saved lists. The lists are read from undocumented `m
 
 ## Phase 0 — the test (owner gate, before any build)
 
-Done with the owner, signed in, using throwaway scripts. Nothing from it is kept as product code. Results go into `docs/kakao-map-access.md` (new).
+Done with the owner, signed in, using throwaway scripts. Nothing from it is kept as product code. Results go into `docs/kakao-map-access.md` (new). **Steps 1, 2 (from the owner's computer), part of 3, and 5's fixtures ran on 2026-11-20; see "Phase 0 results" below.**
 
 1. **Token.** Call `GET https://map.kakao.com/folder/list` with `Authorization: Bearer <Kakao Login access token>` from a real magomap sign-in (temporarily logged by a local dev build, never in production). Record the status and body.
 2. **Cookie from the Worker.** From a deployed throwaway Worker, call both endpoints with the `Cookie` header copied from her signed-in `map.kakao.com` tab. Record:
@@ -57,6 +57,26 @@ Done with the owner, signed in, using throwaway scripts. Nothing from it is kept
 5. **Plan 03 G1 and G2 checks, which still apply.** Collect the three coordinate fixtures for the converter. Compare one shared favourite's `seq` as seen by her and by the owner.
 
 **Decision.** Phase 2 (phone sync) is built if step 1 works, or if step 2 works and the cookie lasts at least about a week (the owner can accept less after seeing the numbers). Otherwise this project ends after phase 1, and the document is updated to say so.
+
+### Phase 0 results (2026-11-20)
+
+- **The Kakao Login token doesn't open Kakao Map.** `/folder/list` and `/favorite/timestamp` with `Authorization: Bearer <token>` answer 403 HTML. Phone sync, if any, uses the cookie.
+- **One cookie is enough: `_kawlt`** (the Kakao account web login token, on `.kakao.com`). From a plain HTTP client it also needs browser-like headers: `User-Agent`, `Referer: https://map.kakao.com/` (and `Origin`, `Sec-Fetch-*`). Without them Kakao answers 403 HTML even with the cookie. Inside a `map.kakao.com` tab (the extension) the browser sends these itself.
+- **Signed out is not an error.** Without the cookie, `/folder/list` answers 200 `{ status: { code: "SUCCESS" }, folders: [] }`. A read must treat **zero folders** as "signed out of Kakao Map", never as "she deleted every list" (that would mark every list removed).
+- **Responses use a `folders` key** (`{ status, folders }`), as the kakao-list extractor already handles.
+- **Lifetime.** `_kawltea` (its expiry) said 2026-11-20 20:00 KST; after that time the same `_kawlt` still read all 29 folders. The multi-day check (1, 3, 7 days) and the read **from Cloudflare's network** are still open, so the phase 2 decision is still open.
+- **Coordinates.**
+  - Some favourites now carry Kakao's own `lat`/`lon` (WGS84) beside `x`/`y`; older ones only `x`/`y`. **Use `lat`/`lon` when present, else convert `x`/`y`.**
+  - The projection is confirmed: proj4 (EPSG:5181 × 2.5) on `x`/`y` agrees with Kakao's `lat`/`lon` within 3e-9° on two fixtures (Jeju PLACE `471350, -32433` → `33.37661909, 126.87684594`; `608064, 1159067` → `37.67127631, 127.48995646`).
+  - **Negative `y` is valid** (south of about 33.5°N, southern Jeju). Only missing, zero, non-finite input or a result outside Korea gives no coordinates. (kakao-list had the same bug; fixed there in its PR #29.)
+- **Folder 0 is each person's default favourites list** and is listed by `/folder/list`. Its list external id is per person: `0~<Kakao Login id>` (magomap PR #2, `kakaoListExternalId`), the same for both sources.
+- **Favourite types:** `PLACE` and `ADDRESS` are shown as places (kakao-list `MAGOMAP_PLACE_TYPES = {"PLACE","ADDRESS"}`, its PR #29; an `ADDRESS` key is an `N…`/`J…` address docid). `POINT` and `ROUTE_BICYCLE` arrive without a key, as pins at their own coordinates; a `ROUTE_BICYCLE` has no `x`/`y`, so it is a list item with no pin. Nothing more is done for routes for now.
+- **Owner ids.** Folder records carry `map_user_id` and not always `kakao_map_user_id`. Own-account detection uses `kakao_map_user_id || map_user_id`, as kakao-list's extractor does.
+- **Not needed now:** the place-detail endpoint (`/api/v1/mapsearch/srcid`) could add category and phone later, through the extension only. The address lookup (`search_addr`) is gated and unusable outside the page.
+- **Still open (owner gates):**
+  - **Step 4,** phone edits reaching the web endpoint;
+  - **the `seq` comparison** of one shared favourite between her account and the owner's. It needs her signed in once on the computer; it blocks Task 2's parity work if the `seq`s differ (see "Settled after the builder check");
+  - **step 2 from a Worker and the multi-day lifetime,** before phase 2.
 
 ## Phase 1 — computer sync through a magomap extension
 
@@ -82,12 +102,14 @@ Done with the owner, signed in, using throwaway scripts. Nothing from it is kept
   - `favorite.seq` → item external id;
   - `display1`/`display2`/`memo`/`color` → title, address, provider note, provider colour.
 
-  It also converts WCONGNAMUL `x`/`y` to WGS84. That conversion moves into magomap: proj4 with the definition in plan 03's Global Constraints, tested against the published pair and phase 0's fixtures, and invalid coordinates are dropped, never thrown. This supersedes "conversion belongs in kakao-list" in the main spec's "Left to the builder".
+  Coordinates: Kakao's `lat`/`lon` when the favourite has them, otherwise WCONGNAMUL `x`/`y` converted to WGS84. That conversion moves into magomap: proj4 with the definition in plan 03's Global Constraints, tested against the published pair and phase 0's fixtures. Negative values are valid; invalid coordinates are dropped, never thrown. This supersedes "conversion belongs in kakao-list" in the main spec's "Left to the builder".
+  - **Zero folders is "signed out"** (phase 0): the read stops with `kakao_signed_out` and nothing is uploaded.
 - **Upload runs.** New routes beside the existing ones. They take the run's list summaries, then each page's raw favourites. They validate everything with the same limits and schemas, and reuse `importRuns` (start, chunk, finish, complete) unchanged. All existing run rules hold: pages in order, exact sizes, removals only after a complete run.
-  - `importedAt` for an upload run is the **server's clock when the run starts**, never the client's.
+  - `importedAt` for an upload run is the **server's clock when the run starts**, never the client's. So every direct sync is a new snapshot; the "already imported this sync" refusal stays kakao-list only.
+  - An upload run can't be continued after the page closes (the read lived in that page). Starting a new sync supersedes it, as a new kakao-list import does. Within the page, the existing single retry per request applies.
   - `subscriptionKnown` is true; `complete` is true once every list finished.
 - **Who may upload.** Only users whose Kakao id is in `ALLOWED_KAKAO_USER_IDS`. If that list is empty, uploads are refused (`not_allowed`). *(Designer's call: open sign-up must not mean open writes to shared rows.)*
-- **Kakao Map account binding (the anti-goal).** The read includes the Kakao Map account id (the `kakao_map_user_id` of her own, unflagged folders) and its nickname.
+- **Kakao Map account binding (the anti-goal).** The read includes the Kakao Map account id (the `kakao_map_user_id`, else `map_user_id`, of her own, unflagged folders) and its nickname.
   - **First sync:** magomap shows "This is the Kakao Map account of <nickname>. Sync it into your magomap?" and, on yes, stores the binding on the user.
   - **Later syncs:** reads from a different Kakao Map account are refused (`kakao_account_mismatch`), with a way to re-confirm.
   - **One Kakao Map account is bound to at most one magomap user.**
@@ -102,7 +124,7 @@ Done with the owner, signed in, using throwaway scripts. Nothing from it is kept
   - **Cookie works:** the extension gets the `cookies` permission and a **"Connect phone sync"** action. It reads only the cookies phase 0 named and sends them once to magomap.
 - **Storage.** A new per-user table holds the credential, **encrypted** (AES-GCM, key in a new Worker secret). It also holds the bound Kakao Map account id, when it was connected, and when it last worked. The credential is never sent to the client. **Disconnect** (in Account) deletes it, and deleting the account deletes it.
 - **Server-driven run.** "Sync from Kakao Map" on a device without the extension starts a run the Worker drives itself. The client says "next", and the Worker reads the next folder from Kakao Map with the stored credential, keeping the original trust rule. The account-binding check applies to every read.
-- **Expiry.** If Kakao answers signed-out (an auth status, a redirect to login, or a non-JSON body), the credential is marked expired. The section then says "Phone sync needs reconnecting — open magomap on your computer and tap Connect phone sync" (or "sign in again" for the token case).
+- **Expiry.** If Kakao answers signed-out (zero folders, an auth status, a redirect to login, or a non-JSON body), the credential is marked expired. The Worker sends the browser-like headers phase 0 found (`User-Agent`, `Referer`, `Origin`). The section then says "Phone sync needs reconnecting — open magomap on your computer and tap Connect phone sync" (or "sign in again" for the token case).
 - The Account section on the phone shows one of: **Sync** (connected), **Not connected** (how to connect from the computer), or **Needs reconnecting**.
 
 ## Living with kakao-list (until migration)
@@ -135,7 +157,8 @@ Deprecating kakao-list itself is the owner's call in that repo.
   - item id `seq ?? key ?? "<folder>-<index>"`;
   - list description from the first favourite's `display2`;
   - "Saved place N" titles;
-  - place key only for `type ∈ {"PLACE"}` (deployed `MAGOMAP_PLACE_TYPES`), and for favourites with no `type`.
+  - place key only for `type ∈ {"PLACE", "ADDRESS"}` (deployed `MAGOMAP_PLACE_TYPES`, kakao-list PR #29), and for favourites with no `type`.
+  - Coordinates are the one allowed difference: the adapter prefers Kakao's `lat`/`lon` where kakao-list converts `x`/`y`. They agree within 3e-9°, so the parity test compares coordinates within 1e-6.
 
   A parity test runs the same raw fixture through both mappings: kakao-list's code, copied as a test fixture, and the new adapter. It asserts identical external ids, titles, place ids and coordinates. Any rule above that disagrees with kakao-list yields to kakao-list.
 - **If phase 0's `seq` check shows owner and follower see different `seq`s**, this project stops before phase 1, and the owner decides on re-keying memberships as a separate change. Re-keying already affects the kakao-list import too, so it isn't this project's scope.
