@@ -31,7 +31,11 @@ function answerOnce(path: string, answer: () => Promise<unknown>) {
 }
 
 beforeEach(() => {
-  vi.mocked(apiFetch).mockImplementation(async () => ({}));
+  vi.mocked(apiFetch).mockImplementation(async (p: string) =>
+    p === "/api/import/status"
+      ? { latest: null, sourceSnapshotAt: null, upToDate: false, source: "ok" }
+      : {},
+  );
 });
 
 const me = { userId: "u1", displayName: "지은", identities: [{ provider: "kakao" as const }] };

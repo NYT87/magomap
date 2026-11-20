@@ -7,9 +7,12 @@ import {
   completeImportRun,
   finishImportList,
   ImportIncompleteError,
+  importedSnapshot,
   importListChunk,
   latestImportRun,
   RunClosedError,
+  RunNotFoundError,
+  runProgress,
   startImportRun,
 } from "./importRuns";
 import { pull } from "./sync";
@@ -481,5 +484,83 @@ forEachDialect("import (shared)", (makeDb) => {
       .execute();
     expect(running).toHaveLength(1);
     expect((await latestImportRun(db, WIFE))?.status).toBe("running");
+  });
+});
+
+forEachDialect("import run progress", (makeDb) => {
+  it("latestImportRun reports the snapshot and, while running, how many lists are done", async () => {
+    const db = await setup(makeDb);
+    const run = await startRun(db, WIFE, 5, { "1": 1, "2": 1, "3": 1 });
+    await importListChunk(db, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, run.runId, "1", T0 + 7);
+    expect(await latestImportRun(db, WIFE)).toMatchObject({
+      status: "running",
+      snapshotAt: T0 + 5,
+      progress: { listsDone: 1, listCount: 3 },
+    });
+    for (const [ext, place] of [
+      ["2", "B"],
+      ["3", "C"],
+    ] as const) {
+      await importListChunk(db, WIFE, run.runId, ext, 0, [item(`${ext}0`, place)], T0 + 8);
+      await finishImportList(db, WIFE, run.runId, ext, T0 + 9);
+    }
+    await completeImportRun(db, WIFE, run.runId, T0 + 10);
+    const done = await latestImportRun(db, WIFE);
+    expect(done).toMatchObject({ status: "completed", snapshotAt: T0 + 5 });
+    expect(done?.progress).toBeUndefined();
+  });
+
+  it("runProgress gives each list's pages done and finished flag, in order", async () => {
+    const db = await setup(makeDb);
+    const run = await startRun(db, WIFE, 5, { "1": 1, "2": 501, "3": 1 });
+    await importListChunk(db, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, run.runId, "1", T0 + 7);
+    await importListChunk(
+      db,
+      WIFE,
+      run.runId,
+      "2",
+      0,
+      Array.from({ length: 500 }, (_, i) => item(`${200 + i}`, `P${i}`)),
+      T0 + 8,
+    );
+    expect(await runProgress(db, WIFE, run.runId)).toEqual({
+      snapshotAt: T0 + 5,
+      lists: [
+        { externalId: "1", name: "리스트 1", itemCount: 1, pagesDone: 1, finished: true },
+        { externalId: "2", name: "리스트 2", itemCount: 501, pagesDone: 1, finished: false },
+        { externalId: "3", name: "리스트 3", itemCount: 1, pagesDone: 0, finished: false },
+      ],
+    });
+    await expect(runProgress(db, ME, run.runId)).rejects.toBeInstanceOf(RunNotFoundError);
+    await startRun(db, WIFE, 6);
+    await expect(runProgress(db, WIFE, run.runId)).rejects.toBeInstanceOf(RunClosedError);
+  });
+
+  it("runProgress rejects a completed run", async () => {
+    const db = await setup(makeDb);
+    const run = await startRun(db, WIFE, 5);
+    await importListChunk(db, WIFE, run.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, run.runId, "1", T0 + 7);
+    await completeImportRun(db, WIFE, run.runId, T0 + 8);
+    await expect(runProgress(db, WIFE, run.runId)).rejects.toBeInstanceOf(RunClosedError);
+  });
+
+  it("importedSnapshot is true only for a completed run on that snapshot", async () => {
+    const db = await setup(makeDb);
+    const first = await startRun(db, WIFE, 5);
+    expect(await importedSnapshot(db, WIFE, T0 + 5)).toBe(false);
+    await importListChunk(db, WIFE, first.runId, "1", 0, [item("10", "A")], T0 + 6);
+    await finishImportList(db, WIFE, first.runId, "1", T0 + 7);
+    await completeImportRun(db, WIFE, first.runId, T0 + 8);
+    expect(await importedSnapshot(db, WIFE, T0 + 5)).toBe(true);
+    expect(await importedSnapshot(db, WIFE, T0 + 6)).toBe(false);
+    expect(await importedSnapshot(db, ME, T0 + 5)).toBe(false);
+    // A superseded run (20) and a still-running one (30) don't count.
+    await startRun(db, WIFE, 20);
+    await startRun(db, WIFE, 30);
+    expect(await importedSnapshot(db, WIFE, T0 + 20)).toBe(false);
+    expect(await importedSnapshot(db, WIFE, T0 + 30)).toBe(false);
   });
 });

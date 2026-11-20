@@ -72,6 +72,7 @@ describe("server-driven import", () => {
     const contract = baseContract("111");
     const seen = serveKakaoList({
       ...contract,
+      importedAt: "2026-11-18T00:00:00.000Z",
       lists: contract.lists.filter((l) => l.kakaoFolderId === 101),
     });
     const { body } = await start(cookie);
@@ -204,6 +205,126 @@ describe("server-driven import", () => {
     expect((await call(`${runUrl}/lists/101/pages/0`, post(cookie))).status).toBe(502);
   });
 
+  async function importAll(cookie: string) {
+    const { body } = await start(cookie);
+    for (const l of body.lists) {
+      const at = `/api/import/runs/${body.runId}/lists/${l.externalId}`;
+      expect((await call(`${at}/pages/0`, post(cookie))).status).toBe(200);
+      expect((await call(`${at}/finish`, post(cookie))).status).toBe(200);
+    }
+    expect((await call(`/api/import/runs/${body.runId}/complete`, post(cookie))).status).toBe(200);
+    return body;
+  }
+  const status = async (cookie: string) => call("/api/import/status", { headers: { cookie } });
+  const NEWER = "2026-11-20T00:00:00.000Z";
+
+  it("status says up to date only after a completed import of kakao-list's current sync", async () => {
+    const cookie = await devLogin("333");
+    serveKakaoList(baseContract("333"));
+    const before = await status(cookie);
+    expect(before.status).toBe(200);
+    expect(await before.json()).toEqual({
+      latest: null,
+      sourceSnapshotAt: Date.parse("2026-11-19T00:00:00.000Z"),
+      upToDate: false,
+      source: "ok",
+    });
+    await importAll(cookie);
+    const after = (await (await status(cookie)).json()) as {
+      latest: { status: string };
+      upToDate: boolean;
+    };
+    expect(after.upToDate).toBe(true);
+    expect(after.latest.status).toBe("completed");
+  });
+
+  it("status survives kakao-list being down", async () => {
+    const cookie = await devLogin("111");
+    network.use(http.get(`${BASE}/lists`, () => HttpResponse.text("boom", { status: 500 })));
+    const res = await status(cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      sourceSnapshotAt: null,
+      upToDate: false,
+      source: "unavailable",
+    });
+  });
+
+  it("status tells apart kakao-list having no snapshot from being unreachable", async () => {
+    const cookie = await devLogin("555");
+    network.use(
+      http.get(`${BASE}/lists`, () => HttpResponse.json({ error: "no_snapshot" }, { status: 404 })),
+    );
+    const res = await status(cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sourceSnapshotAt: null, source: "no_snapshot" });
+  });
+
+  it("treats an unreadable importedAt as kakao-list being unavailable", async () => {
+    const cookie = await devLogin("666");
+    network.use(
+      http.get(`${BASE}/lists`, () =>
+        HttpResponse.json({ ...listsBody(baseContract("666")), importedAt: "not a date" }),
+      ),
+    );
+    const started = await start(cookie);
+    expect(started.res.status).toBe(502);
+    expect(started.body).toEqual({ error: "kakao_list_unavailable" });
+    const res = await status(cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sourceSnapshotAt: null, source: "unavailable" });
+  });
+
+  it("a new import of an already-imported sync is refused", async () => {
+    const cookie = await devLogin("444");
+    serveKakaoList(baseContract("444"));
+    await importAll(cookie);
+    const again = await start(cookie);
+    expect(again.res.status).toBe(409);
+    expect(again.body).toEqual({ error: "up_to_date" });
+    serveKakaoList({ ...baseContract("444"), importedAt: NEWER });
+    expect((await start(cookie)).res.status).toBe(200);
+  });
+
+  it("resume returns each list's progress while the sync is unchanged", async () => {
+    const cookie = await devLogin("111");
+    serveKakaoList();
+    const { body } = await start(cookie);
+    const at = `/api/import/runs/${body.runId}/lists/101`;
+    expect((await call(`${at}/pages/0`, post(cookie))).status).toBe(200);
+    expect((await call(`${at}/finish`, post(cookie))).status).toBe(200);
+    const res = await call(`/api/import/runs/${body.runId}/resume`, post(cookie));
+    expect(res.status).toBe(200);
+    const resumed = (await res.json()) as {
+      runId: string;
+      lists: { externalId: string; pagesDone: number; finished: boolean }[];
+    };
+    expect(resumed.runId).toBe(body.runId);
+    expect(resumed.lists[0]).toMatchObject({ externalId: "101", pagesDone: 1, finished: true });
+    for (const l of resumed.lists.slice(1)) {
+      expect(l).toMatchObject({ pagesDone: 0, finished: false });
+    }
+  });
+
+  it("resume refuses when kakao-list has synced since", async () => {
+    const cookie = await devLogin("111");
+    serveKakaoList();
+    const { body } = await start(cookie);
+    serveKakaoList({ ...baseContract("111"), importedAt: NEWER });
+    const res = await call(`/api/import/runs/${body.runId}/resume`, post(cookie));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "snapshot_changed" });
+  });
+
+  it("resume refuses another account's run", async () => {
+    const owner = await devLogin("111");
+    const other = await devLogin("222");
+    serveKakaoList();
+    const { body } = await start(owner);
+    serveKakaoList(baseContract("222"));
+    expect((await call(`/api/import/runs/${body.runId}/resume`, post(other))).status).toBe(404);
+  });
+
   it("no longer accepts import data from the app", async () => {
     const cookie = await devLogin("111");
     serveKakaoList();
@@ -224,6 +345,7 @@ describe("server-driven import", () => {
       if (!list || !item) throw new Error("fixture changed");
       return {
         ...c,
+        importedAt: "2026-11-18T01:00:00.000Z",
         lists: [{ ...list, kakaoFolderId: 0, items: [{ ...item, favoriteSeq: seq }] }],
       };
     };
