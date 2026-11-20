@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { BADA, devLogin, importFromKakao, setVariant } from "./helpers";
 
 const LONG_NAME = `Restaurants-cafes-and-viewpoints-${"x".repeat(60)}`;
+const LONG_NOTE = `예약 필수, 창가 자리 추천. https://place.map.kakao.com/${"a".repeat(92)}`;
 
 test("a long list name and a long note stay inside their Kakao note card", async ({
   page,
@@ -12,34 +13,47 @@ test("a long list name and a long note stay inside their Kakao note card", async
   await importFromKakao(page);
   await page.goto(`/places/${BADA}`);
   await expect(page.getByRole("heading", { name: "Kakao notes" })).toBeVisible();
-  // Give the place's Kakao list a long unbroken name, straight in the local database.
-  await page.evaluate(async (name) => {
-    const dbs = await indexedDB.databases();
-    const dbName = dbs.map((d) => d.name ?? "").find((n) => n.startsWith("magomap-"));
-    if (!dbName) throw new Error("no local database");
-    const db = await new Promise<IDBDatabase>((ok, ko) => {
-      const r = indexedDB.open(dbName);
-      r.onsuccess = () => ok(r.result);
-      r.onerror = () => ko(r.error);
-    });
-    await new Promise<void>((ok) => {
-      const tx = db.transaction("lists", "readwrite");
-      tx.objectStore("lists").openCursor().onsuccess = (e) => {
-        const c = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
-        if (!c) return;
-        const v = c.value as { name: string };
-        if (v.name === "제주 카페") c.update({ ...v, name });
-        c.continue();
-      };
-      tx.oncomplete = () => ok();
-    });
-    db.close();
-  }, LONG_NAME);
+  // Give the place's Kakao list a long unbroken name and its note a long link, straight in
+  // the local database.
+  await page.evaluate(
+    async ({ name, note }) => {
+      const dbs = await indexedDB.databases();
+      const dbName = dbs.map((d) => d.name ?? "").find((n) => n.startsWith("magomap-"));
+      if (!dbName) throw new Error("no local database");
+      const db = await new Promise<IDBDatabase>((ok, ko) => {
+        const r = indexedDB.open(dbName);
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => ko(r.error);
+      });
+      await new Promise<void>((ok) => {
+        const tx = db.transaction(["lists", "list_items"], "readwrite");
+        tx.objectStore("lists").openCursor().onsuccess = (e) => {
+          const c = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+          if (!c) return;
+          const v = c.value as { name: string };
+          if (v.name === "제주 카페") c.update({ ...v, name });
+          c.continue();
+        };
+        tx.objectStore("list_items").openCursor().onsuccess = (e) => {
+          const c = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+          if (!c) return;
+          const v = c.value as { placeId: string; providerNote: string | null };
+          if (v.placeId === "p_kakao_27324155" && v.providerNote)
+            c.update({ ...v, providerNote: note });
+          c.continue();
+        };
+        tx.oncomplete = () => ok();
+      });
+      db.close();
+    },
+    { name: LONG_NAME, note: LONG_NOTE },
+  );
   // The narrowest phones she might use.
   await page.setViewportSize({ width: 360, height: 780 });
   await page.reload();
   const card = page.locator(".mm-kakao-note").first();
   await expect(card).toContainText(LONG_NAME);
+  await expect(card).toContainText(LONG_NOTE);
   const overflow = await card.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   const pageOverflow = await page.evaluate(
