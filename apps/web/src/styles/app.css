@@ -130,6 +130,18 @@ a {
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-lg) var(--space-xl) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+}
+
+/* The routed screen fills the panel's height, so a screen can push a group to the bottom. */
+.mm-panel__body > * {
+  flex: 1 0 auto;
+}
+
+/* Desktop: the account actions sit at the bottom of the panel when there's room. */
+.mm-panel .mm-account-actions {
+  margin-top: auto;
 }
 
 /* Nav: tabs in the panel, a bottom bar on the phone map. */
@@ -362,6 +374,16 @@ a {
 
 .mm-button--wide {
   width: 100%;
+}
+
+.mm-button--danger-outline {
+  color: var(--color-error);
+  background: transparent;
+  border-color: var(--color-error);
+}
+
+.mm-button--danger-outline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-error) 8%, transparent);
 }
 
 .mm-icon-button {
@@ -1272,7 +1294,17 @@ a {
 
 /* ---------- Lists and import ---------- */
 
+/* A list row: the link (opens the list) takes the room, the switch sits at the end. */
 .mm-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mm-list-row__link {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-md);
@@ -1280,7 +1312,24 @@ a {
   padding: var(--space-xs) 0;
   color: var(--color-text);
   text-decoration: none;
-  border-bottom: 1px solid var(--color-border);
+}
+
+.mm-list-row__link .mm-switch__label {
+  min-width: 0;
+}
+
+.mm-list-row__link .mm-switch__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-switch--bare {
+  flex: none;
+  justify-content: center;
+  width: 56px;
+  min-height: 56px;
+  padding: 0;
 }
 
 .mm-place-row[data-removed] .mm-place-row__title {

@@ -6,7 +6,6 @@
   "nav": {
     "map": "Map",
     "lists": "Lists",
-    "import": "Import",
     "account": "Account",
     "back": "Back",
     "menu": "Menu"
@@ -28,10 +27,6 @@
   },
   "account": {
     "title": "Account",
-    "signedInAs": "Signed in as {{name}}",
-    "noName": "Signed in",
-    "kakao": "Kakao login connected",
-    "linkGoogle": "Linking a Google account is coming later.",
     "language": "Language",
     "signOut": "Sign out",
     "signOutEverywhere": "Sign out on every device",
@@ -51,7 +46,8 @@
     "rejectedNote_other": "{{count}} changes couldn't be saved on the server. They stay on this phone, and you can copy their text from the sync status.",
     "deleteUnsynced_one": "{{count}} change on this phone hasn't been sent yet and will be lost too.",
     "deleteUnsynced_other": "{{count}} changes on this phone haven't been sent yet and will be lost too.",
-    "signOutOffline": "You can sign out once you're online. Your notes are safe on this phone."
+    "signOutOffline": "You can sign out once you're online. Your notes are safe on this phone.",
+    "unnamed": "Kakao account"
   },
   "map": {
     "providerKakao": "Kakao Map",
@@ -59,7 +55,7 @@
     "mapBy": "Map: {{name}}",
     "myLocation": "Show my location",
     "locationDenied": "Location is off for this site. You can turn it on in your browser settings.",
-    "layers": "Lists on the map",
+    "layers": "Lists",
     "listView": "Show as a list",
     "mapView": "Show the map",
     "noLocation_one": "{{count}} place has no location yet. Update it in kakao-list, then import again.",
@@ -70,12 +66,11 @@
     "openPlace": "Open place",
     "close": "Close",
     "placesTitle": "Places on the map",
-    "empty": "No places on the map yet. Search for one, or import your Kakao lists.",
+    "empty": "No places on the map yet. Search for one, or import your lists from kakao-list in Account.",
     "previousLabel": "{{title}}, previous location until {{date}}",
     "hasPrevious": "Moved. Open it to see where it was."
   },
   "picker": {
-    "title": "Lists on the map",
     "mine": "My lists",
     "kakao": "Kakao lists",
     "kakaoSubscribed": "Subscribed in Kakao",
@@ -86,8 +81,8 @@
     "count_one": "{{count}} place",
     "count_other": "{{count}} places",
     "by": "by {{name}}",
-    "none": "None yet",
-    "hint": "Your Kakao lists show up here after you import them."
+    "hint": "Your Kakao lists show up here after you import them from kakao-list in Account.",
+    "toggle": "Show {{name}} on the map"
   },
   "search": {
     "label": "Search places",
@@ -159,9 +154,9 @@
     "newTab": "(opens in a new tab)"
   },
   "import": {
-    "title": "Import from Kakao",
+    "title": "Import from kakao-list",
     "lead": "Bring in your Kakao Map lists from kakao-list. Your notes here are never changed by an import.",
-    "start": "Import from Kakao",
+    "start": "Import from kakao-list",
     "again": "Import again",
     "running": "Importing list {{current}} of {{total}}…",
     "starting": "Getting your lists from kakao-list…",

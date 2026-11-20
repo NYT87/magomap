@@ -2,9 +2,7 @@ import { Layers, List as ListIcon, LocateFixed, Map as MapIcon } from "lucide-re
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
-import { Sheet } from "../components/Sheet";
 import { useLayout } from "../layout/useLayout";
-import { ListPicker } from "../map/ListPicker";
 import { useMapStage } from "../map/MapStage";
 import { MapView } from "../map/MapView";
 import { useMapData } from "../map/useMapData";
@@ -36,9 +34,8 @@ export function MissingLocationNote({ count }: { count: number }) {
 export function MapScreen() {
   const { t } = useTranslation();
   const layout = useLayout();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const data = useMapData();
-  const [sheet, setSheet] = useState(false);
   const [asList, setAsList] = useState(false);
   const { locate, denied } = useLocate();
   const phoneRoot = layout === "phone" && location === "/";
@@ -52,7 +49,7 @@ export function MapScreen() {
             <SearchBar />
           </div>
           <div className="mm-map-tools">
-            <button type="button" className="mm-fab" onClick={() => setSheet(true)}>
+            <button type="button" className="mm-fab" onClick={() => navigate("/lists")}>
               <Layers aria-hidden size={22} strokeWidth={1.75} />
               <span className="mm-visually-hidden">{t("map.layers")}</span>
             </button>
@@ -88,11 +85,6 @@ export function MapScreen() {
               <VisiblePlacesList places={data.shownPlaces} moved={data.moved} />
             </div>
           )}
-          {sheet && data && (
-            <Sheet title={t("picker.title")} onClose={() => setSheet(false)}>
-              <ListPicker sections={data.sections} heading={false} />
-            </Sheet>
-          )}
         </>
       )}
       {layout === "desktop" && (
@@ -108,14 +100,13 @@ export function MapScreen() {
   );
 }
 
-/** The desktop panel at the root: which lists show, and the places on the map. */
+/** The desktop panel at the root: search, and the places on the map. */
 export function HomePanel() {
   const data = useMapData();
   if (!data) return null;
   return (
     <div className="mm-screen">
       <SearchBar />
-      <ListPicker sections={data.sections} />
       <MissingLocationNote count={data.withoutLocation} />
       <VisiblePlacesList places={data.shownPlaces} moved={data.moved} />
     </div>

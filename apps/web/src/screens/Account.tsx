@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { closeUserDb, dbName, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
+import { ImportSection } from "../import/ImportSection";
 
 type Dialog =
   | null
@@ -85,15 +86,14 @@ export function Account({ me }: { me: Me }) {
   };
 
   return (
-    <div className="mm-screen">
+    <div className="mm-screen mm-account">
       <h1 className="mm-screen__title">{t("account.title")}</h1>
+      {/* Only signed-in people see Account: the card just says who it is. */}
       <section className="mm-card">
-        <p className="mm-strong">
-          {me.displayName ? t("account.signedInAs", { name: me.displayName }) : t("account.noName")}
-        </p>
-        <p className="mm-muted">{t("account.kakao")}</p>
-        <p className="mm-muted">{t("account.linkGoogle")}</p>
+        <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>
       </section>
+
+      <ImportSection />
 
       <section className="mm-card">
         <label className="mm-field">
@@ -113,10 +113,10 @@ export function Account({ me }: { me: Me }) {
         </label>
       </section>
 
-      <section className="mm-stack">
+      <section className="mm-stack mm-account-actions">
         <button
           type="button"
-          className="mm-button mm-button--secondary"
+          className="mm-button mm-button--secondary mm-button--wide"
           disabled={busy}
           onClick={() => void signOut(false)}
         >
@@ -124,7 +124,7 @@ export function Account({ me }: { me: Me }) {
         </button>
         <button
           type="button"
-          className="mm-button mm-button--tertiary"
+          className="mm-button mm-button--secondary mm-button--wide"
           disabled={busy}
           onClick={() => void signOut(true)}
         >
@@ -132,7 +132,7 @@ export function Account({ me }: { me: Me }) {
         </button>
         <button
           type="button"
-          className="mm-button mm-button--danger-text"
+          className="mm-button mm-button--danger-outline mm-button--wide"
           disabled={busy}
           onClick={() => {
             setTyped("");

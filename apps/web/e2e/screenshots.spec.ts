@@ -7,8 +7,8 @@ test.use({ locale: "ko-KR" });
 test("homepage screenshots", async ({ page, context }, info) => {
   await setVariant(page, { name: "base" });
   await devLogin(context, "111");
-  await page.goto("/import");
-  await page.getByRole("button", { name: /카카오에서 가져오기|다시 가져오기/ }).click();
+  await page.goto("/account");
+  await page.getByRole("button", { name: /kakao-list에서 가져오기|다시 가져오기/ }).click();
   await page.getByText("가져오기를 마쳤어요").waitFor({ timeout: 30_000 });
   const phone = info.project.name === "phone";
   for (const scheme of ["light", "dark"] as const) {

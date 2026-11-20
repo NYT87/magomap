@@ -13,10 +13,10 @@ export async function setVariant(page: Page, variant: unknown) {
   await page.request.post(`${KAKAO_LIST}/__variant`, { data: variant });
 }
 
-/** Runs an import from the Import screen and waits for its summary. */
+/** Runs an import from kakao-list (in Account) and waits for its summary. */
 export async function importFromKakao(page: Page) {
-  await page.goto("/import");
-  await page.getByRole("button", { name: /Import (from Kakao|again)/ }).click();
+  await page.goto("/account");
+  await page.getByRole("button", { name: /Import (from kakao-list|again)/ }).click();
   await page.getByText("Import finished").waitFor({ timeout: 30_000 });
 }
 

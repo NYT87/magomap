@@ -1,11 +1,11 @@
 import type { ImportRunInfo, ImportSummary } from "@magomap/domain";
 import type { TFunction } from "i18next";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { formatDate } from "../i18n";
-import { ImportError, runImport } from "../import/runImport";
-import { useOnline } from "../import/useOnline";
+import { ImportError, runImport } from "./runImport";
+import { useOnline } from "./useOnline";
 
 type State =
   | { kind: "idle" }
@@ -42,8 +42,10 @@ function errorKey(e: ImportError | null): string {
   }
 }
 
-export function ImportScreen() {
+/** Import from kakao-list: a section of the Account screen. */
+export function ImportSection() {
   const { t } = useTranslation();
+  const headingId = useId();
   const online = useOnline();
   const [state, setState] = useState<State>({ kind: "idle" });
   const [last, setLast] = useState<ImportRunInfo | null>(null);
@@ -68,8 +70,10 @@ export function ImportScreen() {
 
   const running = state.kind === "running";
   return (
-    <div className="mm-screen">
-      <h1 className="mm-screen__title">{t("import.title")}</h1>
+    <section className="mm-card mm-stack" aria-labelledby={headingId}>
+      <h2 className="mm-h4" id={headingId}>
+        {t("import.title")}
+      </h2>
       <p className="mm-muted">{t("import.lead")}</p>
       {!online && <p className="mm-note">{t("import.offline")}</p>}
       <button
@@ -97,7 +101,7 @@ export function ImportScreen() {
           </>
         )}
         {state.kind === "done" && (
-          <div className="mm-card">
+          <div>
             <p className="mm-strong">{t("import.done")}</p>
             <p>{summaryText(t, state.summary)}</p>
           </div>
@@ -109,7 +113,7 @@ export function ImportScreen() {
         )}
       </div>
       {last && state.kind !== "done" && (
-        <section className="mm-card">
+        <div>
           {last.status === "completed" && last.finishedAt ? (
             <>
               <p className="mm-strong">{t("import.last", { date: formatDate(last.finishedAt) })}</p>
@@ -118,8 +122,8 @@ export function ImportScreen() {
           ) : (
             <p className="mm-muted">{t("import.lastFailed")}</p>
           )}
-        </section>
+        </div>
       )}
-    </div>
+    </section>
   );
 }
