@@ -1540,6 +1540,34 @@ a {
   color: var(--color-warning);
 }
 
+/* Needs her (sign in, server trouble, clock): filled, so it doesn't read like the calm states. */
+.mm-sync__icon[data-attention] {
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.mm-sync__icon[data-attention] svg {
+  color: var(--color-on-primary);
+}
+
+.mm-sync__count {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  color: var(--color-on-primary);
+  background: var(--color-warning);
+  border: 2px solid var(--color-bg);
+  border-radius: var(--radius-pill);
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
 .mm-sync__dot {
   position: absolute;
   top: 4px;

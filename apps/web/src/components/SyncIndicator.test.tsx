@@ -51,6 +51,74 @@ describe("SyncIndicator, compact", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    ["needs_signin", true],
+    ["error", true],
+    ["clock_ahead", true],
+    ["offline", false],
+    ["idle", false],
+    ["syncing", false],
+  ] as const)("%s: the icon is %s when it needs her", (state, attention) => {
+    status.current = { state, unsynced: 0, rejected: 0 } as SyncStatus;
+    render(<SyncIndicator compact />);
+    const icon = screen.getByRole("button");
+    expect(icon.hasAttribute("data-attention")).toBe(attention);
+    if (state === "offline") expect(icon).toHaveAttribute("data-tone", "warn");
+  });
+
+  it("shows how many changes are not saved yet, capped at 9+", () => {
+    status.current = { state: "offline", unsynced: 3, rejected: 0 };
+    const view = render(<SyncIndicator compact />);
+    const badge = view.container.querySelector(".mm-sync__count");
+    expect(badge).toHaveTextContent("3");
+    expect(badge).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button")).toHaveAccessibleName(
+      "Offline — 3 changes saved on this phone",
+    );
+    status.current = { state: "offline", unsynced: 25, rejected: 0 };
+    view.rerender(<SyncIndicator compact />);
+    expect(view.container.querySelector(".mm-sync__count")).toHaveTextContent("9+");
+    status.current = { state: "idle", unsynced: 0, rejected: 0 };
+    view.rerender(<SyncIndicator compact />);
+    expect(view.container.querySelector(".mm-sync__count")).toBeNull();
+  });
+
+  it("keeps focus in the sheet while the status changes, and returns it to the icon on close", async () => {
+    status.current = { state: "needs_signin", unsynced: 0, rejected: 0 };
+    const view = render(<SyncIndicator compact />);
+    await userEvent.click(screen.getByRole("button", { name: /Sign in again/ }));
+    const dialog = screen.getByRole("dialog", { name: "Sync" });
+    const link = within(dialog).getByRole("link");
+    link.focus();
+    status.current = { state: "needs_signin", unsynced: 2, rejected: 0 };
+    view.rerender(<SyncIndicator compact />);
+    expect(link).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector(".mm-sync__icon")).toHaveFocus();
+  });
+
+  it("announces status changes from inside the open sheet", async () => {
+    const view = render(<SyncIndicator compact />);
+    await userEvent.click(screen.getByRole("button", { name: "Synced" }));
+    const dialog = screen.getByRole("dialog", { name: "Sync" });
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Synced");
+    status.current = { state: "offline", unsynced: 0, rejected: 0 };
+    view.rerender(<SyncIndicator compact />);
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Offline");
+  });
+
+  it("returns focus to the icon after Sync leads to the refused changes and both close", async () => {
+    status.current = { state: "idle", unsynced: 0, rejected: 1 };
+    render(<SyncIndicator compact />);
+    await userEvent.click(screen.getByRole("button", { name: "Synced" }));
+    await userEvent.click(screen.getByRole("button", { name: "1 change couldn't be saved" }));
+    expect(screen.getByRole("dialog", { name: "Changes that couldn't be saved" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector(".mm-sync__icon")).toHaveFocus();
+  });
+
   it("keeps announcing changes", () => {
     const view = render(<SyncIndicator compact />);
     expect(screen.getByRole("status")).toHaveTextContent("Synced");

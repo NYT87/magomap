@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, CloudOff, Loader, LogIn } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RejectedEntry } from "../data/db";
 import { currentDb } from "../data/db";
@@ -76,6 +76,13 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
   const status = useSyncStatus();
   const online = useOnline();
   const [sheet, setSheet] = useState<"sync" | "rejected" | null>(null);
+  const iconRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  // Back to the icon whenever the sheets close, also when one sheet replaces the other.
+  useEffect(() => {
+    if (sheet === null && wasOpen.current) iconRef.current?.focus();
+    wasOpen.current = sheet !== null;
+  }, [sheet]);
   const n = status.unsynced;
 
   const size = compact ? 20 : 16;
@@ -104,6 +111,9 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
     text = t("sync.syncing");
   }
 
+  // States that need her, not ones that mend themselves (offline): a stronger signal on the icon.
+  const needsHer = ["needs_signin", "error", "clock_ahead"].includes(status.state) && online;
+
   if (compact) {
     return (
       <div className="mm-sync mm-sync--compact">
@@ -113,18 +123,26 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
         </span>
         <button
           type="button"
+          ref={iconRef}
           className="mm-sync__icon"
           data-tone={tone}
+          data-attention={needsHer || undefined}
           aria-label={text}
           onClick={() => setSheet("sync")}
         >
           {icon}
           {status.rejected > 0 && <span className="mm-sync__dot" aria-hidden />}
+          {n > 0 && (
+            <span className="mm-sync__count" aria-hidden>
+              {n > 9 ? "9+" : n}
+            </span>
+          )}
         </button>
         {sheet === "sync" && (
           <Sheet title={t("sync.title")} onClose={() => setSheet(null)}>
             <div className="mm-sync__sheet">
-              <p>{text}</p>
+              {/* The page behind a sheet is inert, so its live region is silent: announce here. */}
+              <p role="status">{text}</p>
               {status.state === "needs_signin" && (
                 <a href="/api/auth/kakao/start" className="mm-sync__pill mm-sync__pill--action">
                   <LogIn aria-hidden size={16} strokeWidth={2} />
