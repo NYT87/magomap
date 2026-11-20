@@ -1333,6 +1333,17 @@ a {
   font-size: 13px;
 }
 
+/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue. */
+@media (prefers-color-scheme: dark) {
+  .mm-kakao-note__text {
+    border-inline-start-color: color-mix(
+      in srgb,
+      var(--note-color, var(--color-border)) 75%,
+      #ffffff
+    );
+  }
+}
+
 .mm-inline-form {
   display: flex;
   gap: var(--space-sm);

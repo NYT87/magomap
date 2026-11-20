@@ -53,7 +53,14 @@ describe("Memberships", () => {
     );
     expect(chip).toBeDefined();
     expect(chip?.textContent).not.toContain("창가 자리");
-    expect(screen.getByRole("heading", { name: "Kakao notes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Kakao notes" })).toBeInTheDocument();
+    // What a screen reader announces for each note: every list it comes from.
+    expect(
+      screen.getByRole("figure", { name: "Kakao note: 제주 카페 · 가을 산책" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("figure", { name: "Kakao note: 아내의 맛집 (Removed from Kakao)" }),
+    ).toBeInTheDocument();
     const notes = screen.getAllByText("창가 자리");
     expect(notes).toHaveLength(1);
     expect(notes[0]?.closest("[aria-label]")?.getAttribute("aria-label")).toMatch(/^Kakao note/);
