@@ -5,6 +5,7 @@ import "../i18n";
 import { AboutSection } from "../screens/AboutSection";
 import { registerBeforeUpdate } from "./beforeUpdate";
 import { UpdateBanner } from "./UpdateBanner";
+import { UpdateRegistration } from "./UpdateRegistration";
 import { resetAppUpdate } from "./useAppUpdate";
 
 const sw = vi.hoisted(() => ({
@@ -13,10 +14,12 @@ const sw = vi.hoisted(() => ({
     onNeedRefresh?: () => void;
     immediate?: boolean;
   },
+  calls: 0,
   updateServiceWorker: vi.fn(async (_reload?: boolean) => {}),
 }));
 vi.mock("virtual:pwa-register/react", () => ({
   useRegisterSW: (options: typeof sw.options) => {
+    sw.calls++;
     sw.options = options;
     return {
       needRefresh: [false, () => {}],
@@ -30,6 +33,7 @@ let sinceLoad = 10_000;
 beforeEach(() => {
   resetAppUpdate();
   sw.updateServiceWorker.mockClear();
+  sw.calls = 0;
   sinceLoad = 10_000;
   vi.spyOn(performance, "now").mockImplementation(() => sinceLoad);
 });
@@ -38,8 +42,24 @@ afterEach(() => vi.restoreAllMocks());
 const found = () => act(() => sw.options.onNeedRefresh?.());
 
 describe("UpdateBanner", () => {
-  it("no banner without a waiting update", () => {
+  it("the banner never registers; mounting it again doesn't register again", () => {
+    const reg = render(<UpdateRegistration />);
+    const first = render(<UpdateBanner />);
+    first.unmount();
+    const second = render(<UpdateBanner />);
+    second.unmount();
     render(<UpdateBanner />);
+    expect(sw.calls).toBe(1);
+    reg.unmount();
+  });
+
+  it("no banner without a waiting update", () => {
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -51,7 +71,12 @@ describe("UpdateBanner", () => {
     sw.updateServiceWorker.mockImplementation(async () => {
       order.push("update");
     });
-    render(<UpdateBanner />);
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
     expect(sw.options.immediate).toBe(true);
     found();
     expect(await screen.findByText("A new version is ready")).toBeInTheDocument();
@@ -62,7 +87,12 @@ describe("UpdateBanner", () => {
   });
 
   it("Dismiss hides it for the session", async () => {
-    render(<UpdateBanner />);
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
     found();
     await userEvent.click(await screen.findByRole("button", { name: "Later" }));
     expect(screen.queryByText("A new version is ready")).toBeNull();
@@ -71,7 +101,12 @@ describe("UpdateBanner", () => {
 
   it("an update found within the first 3 s applies at once, without a banner", async () => {
     sinceLoad = 1200;
-    render(<UpdateBanner />);
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
     found();
     await vi.waitFor(() => expect(sw.updateServiceWorker).toHaveBeenCalledWith(true));
     expect(screen.queryByText("A new version is ready")).toBeNull();
@@ -79,7 +114,12 @@ describe("UpdateBanner", () => {
 
   it("returning to the foreground asks the registration to check every time", () => {
     const reg = { update: vi.fn(async () => undefined) };
-    render(<UpdateBanner />);
+    render(
+      <>
+        <UpdateRegistration />
+        <UpdateBanner />
+      </>,
+    );
     act(() => sw.options.onRegisteredSW?.("/sw.js", reg));
     for (let i = 0; i < 2; i++) {
       document.dispatchEvent(new Event("visibilitychange"));
@@ -94,6 +134,7 @@ describe("UpdateBanner", () => {
     );
     render(
       <>
+        <UpdateRegistration />
         <UpdateBanner />
         <AboutSection />
       </>,

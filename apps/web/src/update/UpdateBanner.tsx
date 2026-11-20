@@ -1,11 +1,10 @@
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useAppUpdate, useRegisterUpdates } from "./useAppUpdate";
+import { useAppUpdate } from "./useAppUpdate";
 
 /** A new version is waiting: say so, once, and let her choose when. Quiet otherwise. */
 export function UpdateBanner() {
   const { t } = useTranslation();
-  useRegisterUpdates();
   const { waiting, dismissed, update, dismiss } = useAppUpdate();
   return (
     <div role="status" className="mm-update-slot">
