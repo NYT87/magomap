@@ -3,7 +3,10 @@ import { D1Dialect } from "kysely-d1";
 import type { Db, Statement } from "./core";
 import type { Database } from "./schema";
 
-/** Db over a Cloudflare D1 binding. `atomic` uses `d1.batch()`, which D1 runs as one transaction. */
+/**
+ * Db over a Cloudflare D1 binding. `atomic` uses `d1.batch()`, which D1 runs as one transaction;
+ * `numAffectedRows` is each statement's `meta.changes`.
+ */
 export function dbFromD1(d1: D1Database): Db {
   const kysely = new Kysely<Database>({ dialect: new D1Dialect({ database: d1 }) });
   return {
@@ -16,7 +19,10 @@ export function dbFromD1(d1: D1Database): Db {
         return d1.prepare(compiled.sql).bind(...(compiled.parameters as unknown[]));
       });
       const results = await d1.batch(prepared);
-      return results.map((r) => ({ rows: (r.results ?? []) as unknown[] }));
+      return results.map((r) => ({
+        rows: (r.results ?? []) as unknown[],
+        numAffectedRows: BigInt(r.meta?.changes ?? 0),
+      }));
     },
     async close() {},
   };
