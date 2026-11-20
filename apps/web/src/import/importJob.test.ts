@@ -1,13 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runImport = vi.fn();
 vi.mock("./runImport", () => ({ runImport: (...args: unknown[]) => runImport(...args) }));
 const release = vi.fn();
 const holdScreenOn = vi.fn(() => release);
 vi.mock("./wakeLock", () => ({ holdScreenOn: () => holdScreenOn() }));
+const { openUserDb } = await import("../data/db");
 const { currentImportJob, forgetImportJob, startImportJob, subscribeImportJob } = await import(
   "./importJob"
 );
+
+beforeEach(() => {
+  openUserDb("A");
+});
 
 afterEach(() => {
   forgetImportJob();
@@ -63,5 +68,27 @@ describe("importJob", () => {
     await expect(startImportJob().promise).rejects.toThrow("boom");
     expect(release).toHaveBeenCalledTimes(1);
     expect(currentImportJob()).toBeNull();
+  });
+
+  it("keeps each account's job apart, so another account can start its own", async () => {
+    let finishA: (v: unknown) => void = () => {};
+    runImport.mockReturnValueOnce(new Promise((resolve) => (finishA = resolve)));
+    const a = startImportJob();
+    openUserDb("B");
+    expect(currentImportJob()).toBeNull();
+    runImport.mockReturnValueOnce(new Promise(() => {}));
+    const b = startImportJob();
+    expect(b).not.toBe(a);
+    expect(currentImportJob()).toBe(b);
+    await Promise.resolve();
+    expect(holdScreenOn).toHaveBeenCalledTimes(2);
+    openUserDb("A");
+    expect(currentImportJob()).toBe(a);
+    finishA({});
+    await a.promise;
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(currentImportJob()).toBeNull();
+    openUserDb("B");
+    expect(currentImportJob()).toBe(b);
   });
 });

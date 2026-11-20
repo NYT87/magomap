@@ -1,10 +1,14 @@
 // The import in flight, kept outside any screen: leaving Account and coming back must not
 // make a running import look stopped, and the screen stays awake until the import really ends.
+// One job per account, so signing in as someone else never shows (or blocks on) another's import.
 import type { ImportSummary } from "@magomap/domain";
+import { dbUserId, openDbOrNull } from "../data/db";
 import { runImport } from "./runImport";
 import { holdScreenOn } from "./wakeLock";
 
 export interface ImportJob {
+  /** The account this import acts for. */
+  account: string;
   /** Known once the server has started or continued the run. */
   runId: string | null;
   current: number;
@@ -15,16 +19,23 @@ export interface ImportJob {
   promise: Promise<{ summary: ImportSummary; freshStart: boolean }>;
 }
 
-let job: ImportJob | null = null;
+const jobs = new Map<string, ImportJob>();
 const listeners = new Set<() => void>();
 
-const publish = (next: ImportJob | null) => {
-  job = next;
+const accountNow = () => {
+  const db = openDbOrNull();
+  return db ? dbUserId(db) : "";
+};
+
+const publish = (account: string, next: ImportJob | null) => {
+  if (next) jobs.set(account, next);
+  else jobs.delete(account);
   for (const listener of listeners) listener();
 };
 
-const patch = (changes: Partial<Omit<ImportJob, "promise">>) => {
-  if (job) publish({ ...job, ...changes });
+const patch = (account: string, changes: Partial<Omit<ImportJob, "promise" | "account">>) => {
+  const job = jobs.get(account);
+  if (job) publish(account, { ...job, ...changes });
 };
 
 export const subscribeImportJob = (listener: () => void) => {
@@ -34,37 +45,51 @@ export const subscribeImportJob = (listener: () => void) => {
   };
 };
 
-export const currentImportJob = () => job;
+/** The signed-in account's import, if one is running. */
+export const currentImportJob = () => jobs.get(accountNow()) ?? null;
 
-/** Starts an import (or continues a stopped run), or returns the one already running. */
+/** Starts an import (or continues a stopped run) for the signed-in account, or returns the one running. */
 export function startImportJob(resumeRunId?: string): ImportJob {
-  if (job) return job;
+  const account = accountNow();
+  const existing = jobs.get(account);
+  if (existing) return existing;
   const release = holdScreenOn();
   let freshStart = false;
   // Deferred a tick so the job is published before runImport can report anything.
   const promise = Promise.resolve().then(async () => {
     try {
       const summary = await runImport(
-        ({ listIndex, listCount }) => patch({ current: listIndex + 1, total: listCount }),
+        ({ listIndex, listCount }) => patch(account, { current: listIndex + 1, total: listCount }),
         {
+          account,
           ...(resumeRunId ? { resumeRunId } : {}),
-          onRun: (runId) => patch({ runId }),
+          onRun: (runId) => patch(account, { runId }),
           onFreshStart: () => {
             freshStart = true;
-            patch({ freshStart });
+            patch(account, { freshStart });
           },
         },
       );
       return { summary, freshStart };
     } finally {
       release();
-      publish(null);
+      publish(account, null);
     }
   });
-  const started: ImportJob = { runId: null, current: 0, total: 0, freshStart: false, promise };
-  publish(started);
+  const started: ImportJob = {
+    account,
+    runId: null,
+    current: 0,
+    total: 0,
+    freshStart: false,
+    promise,
+  };
+  publish(account, started);
   return started;
 }
 
-/** Forgets the job without waiting for it (tests, which never let one finish). */
-export const forgetImportJob = () => publish(null);
+/** Forgets every job without waiting for them (tests, which never let one finish). */
+export const forgetImportJob = () => {
+  jobs.clear();
+  for (const listener of listeners) listener();
+};

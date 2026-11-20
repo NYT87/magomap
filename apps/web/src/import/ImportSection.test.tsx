@@ -20,6 +20,7 @@ const holdScreenOn = vi.fn(() => release);
 vi.mock("./wakeLock", () => ({ holdScreenOn: () => holdScreenOn() }));
 const { ImportSection } = await import("./ImportSection");
 const { forgetImportJob } = await import("./importJob");
+const { openUserDb } = await import("../data/db");
 const { ImportError } = await import("./runImport");
 
 const SNAP = Date.UTC(2026, 10, 18);
@@ -40,6 +41,7 @@ function status(s: ImportStatus) {
 
 beforeEach(async () => {
   api.mockReset();
+  openUserDb("A");
   forgetImportJob();
   runImport.mockReset();
   holdScreenOn.mockClear();
@@ -67,6 +69,7 @@ describe("ImportSection", () => {
     await userEvent.click(screen.getByRole("button", { name: "Continue import" }));
     expect(runImport).toHaveBeenCalledWith(expect.any(Function), {
       resumeRunId: "r1",
+      account: "A",
       onRun: expect.any(Function),
       onFreshStart: expect.any(Function),
     });
@@ -228,6 +231,25 @@ describe("ImportSection", () => {
     finish({ placesAdded: 2 });
     expect(await screen.findByText("Import finished")).toBeInTheDocument();
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't show another account's import after signing in as someone else", async () => {
+    status({ latest: run(), sourceSnapshotAt: SNAP, upToDate: false, source: "ok" });
+    let finish: (v: unknown) => void = () => {};
+    runImport.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const first = render(<ImportSection />);
+    await userEvent.click(await screen.findByRole("button", { name: "Continue import" }));
+    await screen.findByText(/Getting your lists|Importing/);
+    first.unmount();
+
+    openUserDb("B");
+    render(<ImportSection />);
+    expect(await screen.findByRole("button", { name: "Continue import" })).toBeEnabled();
+    expect(screen.queryByText(/Importing|Getting your lists/)).toBeNull();
+
+    finish({ placesAdded: 5 });
+    await waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Import finished")).toBeNull();
   });
 
   it("says up front when kakao-list has nothing for this account", async () => {

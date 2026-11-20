@@ -53,6 +53,8 @@ type ResumeLists = (RunLists[number] & { pagesDone: number; finished: boolean })
 export async function runImport(
   onProgress: (p: { listIndex: number; listCount: number }) => void,
   opts: {
+    /** The account to act for; defaults to the open one. */
+    account?: string;
     resumeRunId?: string;
     /** Called once the run is known, started or continued. */
     onRun?: (runId: string) => void;
@@ -60,7 +62,7 @@ export async function runImport(
     onFreshStart?: () => void;
   } = {},
 ): Promise<ImportSummary> {
-  const account = dbUserId(currentDb());
+  const account = opts.account ?? dbUserId(currentDb());
   let run: { runId: string; lists: ResumeLists } | undefined;
   if (opts.resumeRunId) {
     try {
