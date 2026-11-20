@@ -238,8 +238,8 @@ export async function pullAll(
   let fullPass = false;
   let restarted = false;
   for (;;) {
-    const cursor = (await db.meta.get("cursor"))?.value;
     const gen = await cursorGen(db);
+    const cursor = (await db.meta.get("cursor"))?.value;
     const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
     let page: PullResponse;
     try {
@@ -283,7 +283,10 @@ export async function pullAll(
         }
       },
     );
-    if (moved) continue;
+    if (moved) {
+      fullPass = false;
+      continue;
+    }
     if (q === "") fullPass = true;
     if (restart) {
       restarted = true;
