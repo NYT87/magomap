@@ -25,7 +25,7 @@ describe("SignIn", () => {
     sessionStorage.setItem("mm.removeResult", "kept");
     render(<SignIn />);
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Some changes hadn't reached the server, so your data was kept on this device.",
+      "Your data was kept on this device: some changes hadn't reached the server, or it couldn't be checked.",
     );
   });
 

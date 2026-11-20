@@ -21,7 +21,7 @@
     "devFailed": "Couldn't sign in. Check the user id and try again.",
     "otherAccount": "Sign in with a different Kakao account",
     "removed": "Your data was removed from this device.",
-    "removeKept": "Some changes hadn't reached the server, so your data was kept on this device."
+    "removeKept": "Your data was kept on this device: some changes hadn't reached the server, or it couldn't be checked."
   },
   "notInvited": {
     "title": "This map is invite-only for now",

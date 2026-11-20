@@ -191,11 +191,25 @@ export async function forgetAccountOnDevice(userId: string): Promise<RemovalResu
   const db = known && !known.hasBeenClosed() ? known : defineUserDb(userId);
   let kept: boolean;
   try {
-    kept = await db.transaction("rw", db.tables, async () => {
+    const clearing = db.transaction("rw", db.tables, async () => {
       if ((await db.outbox.count()) > 0 || (await db.rejected.count()) > 0) return true;
       await Promise.all(db.tables.map((table) => table.clear()));
       return false;
     });
+    // Opening a database another tab holds at an older version waits for that tab. Don't make
+    // sign-out wait with it: after a moment, keep everything (closing our copy cancels the open,
+    // so nothing is cleared later behind the person's back).
+    const timedOut = new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), 4_000),
+    );
+    const outcome = await Promise.race([clearing, timedOut]);
+    if (outcome === "timeout") {
+      if (db !== known) db.close();
+      clearing.catch(() => {});
+      kept = true;
+    } else {
+      kept = outcome;
+    }
   } catch {
     // Couldn't read it: keep everything rather than guess.
     kept = true;

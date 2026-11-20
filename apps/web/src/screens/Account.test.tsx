@@ -489,6 +489,27 @@ describe("Account", () => {
       held.close();
     });
 
+    it("never waits for long on a database another tab holds at an older version", async () => {
+      await i18n.changeLanguage("en");
+      closeUserDb("u1");
+      await Dexie.delete("magomap-u1");
+      // An older version of the database, held open by a connection that never lets go: opening
+      // it with today's tables would wait for that connection forever.
+      const held = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("drafts", { keyPath: "key" });
+        r.onsuccess = () => ok(r.result);
+      });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(check());
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 8_000 });
+      expect(sessionStorage.getItem("mm.removeResult")).toBe("kept");
+      held.close();
+    });
+
     it("keeps the data when the server sign-out fails", async () => {
       await i18n.changeLanguage("en");
       await seedDevice();
