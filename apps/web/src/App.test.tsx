@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./i18n";
 
 const sw = vi.hoisted(() => ({ calls: 0, immediate: undefined as boolean | undefined }));
@@ -21,6 +21,10 @@ beforeEach(() => {
   sw.calls = 0;
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("App", () => {
   it("registers the service worker on the sign-in screen, with nobody signed in", () => {
     vi.stubGlobal(
@@ -31,6 +35,5 @@ describe("App", () => {
     render(<App />);
     expect(sw.calls).toBe(1);
     expect(sw.immediate).toBe(true);
-    vi.unstubAllGlobals();
   });
 });

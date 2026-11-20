@@ -15,11 +15,18 @@ vi.mock("../version", async (orig) => {
   };
 });
 
+const check = vi.hoisted(() => vi.fn());
+vi.mock("../update/useAppUpdate", async (orig) => {
+  const actual = await orig<typeof import("../update/useAppUpdate")>();
+  return { ...actual, checkForUpdate: check };
+});
+
 function health(build: BuildInfo) {
   return vi.fn(async () => new Response(JSON.stringify({ ok: true, db: "ok", ...build })));
 }
 
 beforeEach(async () => {
+  check.mockClear();
   await i18n.changeLanguage("en");
 });
 afterEach(() => {
@@ -52,6 +59,21 @@ describe("AboutSection", () => {
     );
     render(<AboutSection />);
     expect(await screen.findByText(/The app is older than the server/)).toBeInTheDocument();
+  });
+
+  it("checks for an update on opening, and once more when the server is on another commit", async () => {
+    vi.stubGlobal("fetch", health({ ...app, commit: "e4f5a6b" }));
+    render(<AboutSection />);
+    expect(check).toHaveBeenCalledTimes(1);
+    await screen.findByText("The app and the server are on different versions.");
+    expect(check).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not look again when the commits match", async () => {
+    vi.stubGlobal("fetch", health(app));
+    render(<AboutSection />);
+    await screen.findByText("Server");
+    expect(check).toHaveBeenCalledTimes(1);
   });
 
   it("says only that versions differ when the app is not provably older", async () => {

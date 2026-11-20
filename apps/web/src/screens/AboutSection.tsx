@@ -1,7 +1,7 @@
 import type { BuildInfo } from "@magomap/domain";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppUpdate } from "../update/useAppUpdate";
+import { checkForUpdate, useAppUpdate } from "../update/useAppUpdate";
 import { APP_BUILD, useServerBuild } from "../version";
 
 /** The time of a build, or null when missing or not a date. */
@@ -48,6 +48,15 @@ export function AboutSection({ children }: { children?: ReactNode }) {
     note =
       app !== null && theirs !== null && app < theirs ? t("about.mismatch") : t("about.differs");
   }
+  const differs = note !== null;
+  // The Update button only shows once the worker found the new version: look when Account opens,
+  // and again as soon as the server is seen on another version.
+  useEffect(() => {
+    checkForUpdate();
+  }, []);
+  useEffect(() => {
+    if (differs) checkForUpdate();
+  }, [differs]);
   return (
     <section className="mm-card mm-about" aria-labelledby="mm-about-title">
       <h2 className="mm-h4" id="mm-about-title">

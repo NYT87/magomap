@@ -40,8 +40,13 @@ export function resetAppUpdate() {
   applyWaiting = undefined;
 }
 
+/** Ask the server now whether a new version exists. Does nothing before a registration is kept. */
+export function checkForUpdate(): void {
+  registration?.update().catch(() => {});
+}
+
 /**
- * Registers the service worker and watches for new versions. Mounted once, by the banner.
+ * Registers the service worker and watches for new versions. Mounted once, by UpdateRegistration.
  * Found within the cold-start window: applied at once. Later: she is asked; the app never
  * reloads by itself then.
  */
@@ -62,7 +67,7 @@ export function useRegisterUpdates() {
     let last = Date.now();
     const check = () => {
       last = Date.now();
-      registration?.update().catch(() => {});
+      checkForUpdate();
     };
     const onVisible = () => {
       if (document.visibilityState === "visible") check();

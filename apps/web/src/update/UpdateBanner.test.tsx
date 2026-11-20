@@ -6,7 +6,7 @@ import { AboutSection } from "../screens/AboutSection";
 import { registerBeforeUpdate } from "./beforeUpdate";
 import { UpdateBanner } from "./UpdateBanner";
 import { UpdateRegistration } from "./UpdateRegistration";
-import { resetAppUpdate } from "./useAppUpdate";
+import { checkForUpdate, resetAppUpdate } from "./useAppUpdate";
 
 const sw = vi.hoisted(() => ({
   options: {} as {
@@ -37,7 +37,11 @@ beforeEach(() => {
   sinceLoad = 10_000;
   vi.spyOn(performance, "now").mockImplementation(() => sinceLoad);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 const found = () => act(() => sw.options.onNeedRefresh?.());
 
@@ -97,6 +101,8 @@ describe("UpdateBanner", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Later" }));
     expect(screen.queryByText("A new version is ready")).toBeNull();
     expect(sw.updateServiceWorker).not.toHaveBeenCalled();
+    expect(document.body).not.toHaveFocus();
+    expect(screen.getByRole("status")).toHaveFocus();
   });
 
   it("an update found within the first 3 s applies at once, without a banner", async () => {
@@ -127,6 +133,45 @@ describe("UpdateBanner", () => {
     expect(reg.update).toHaveBeenCalledTimes(2);
   });
 
+  it("the 30-minute check: one update() when visible after 31 min, none while hidden", async () => {
+    vi.useFakeTimers();
+    const reg = { update: vi.fn(async () => undefined) };
+    render(<UpdateRegistration />);
+    act(() => sw.options.onRegisteredSW?.("/sw.js", reg));
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+    visibility.mockReturnValue("hidden");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31 * 60 * 1000);
+    });
+    expect(reg.update).not.toHaveBeenCalled();
+    visibility.mockReturnValue("visible");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60 * 1000);
+    });
+    expect(reg.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("checkForUpdate asks the kept registration, and is a no-op without one", () => {
+    expect(() => checkForUpdate()).not.toThrow();
+    const reg = { update: vi.fn(async () => undefined) };
+    render(<UpdateRegistration />);
+    act(() => sw.options.onRegisteredSW?.("/sw.js", reg));
+    checkForUpdate();
+    expect(reg.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("About checks for an update when it opens", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 500 })),
+    );
+    const reg = { update: vi.fn(async () => undefined) };
+    render(<UpdateRegistration />);
+    act(() => sw.options.onRegisteredSW?.("/sw.js", reg));
+    render(<AboutSection />);
+    expect(reg.update).toHaveBeenCalledTimes(1);
+  });
+
   it("About offers Update only while one is waiting, even after Later", async () => {
     vi.stubGlobal(
       "fetch",
@@ -144,6 +189,5 @@ describe("UpdateBanner", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Later" }));
     await userEvent.click(screen.getByRole("button", { name: "Update" }));
     expect(sw.updateServiceWorker).toHaveBeenCalledWith(true);
-    vi.unstubAllGlobals();
   });
 });

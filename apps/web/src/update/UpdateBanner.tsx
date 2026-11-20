@@ -1,4 +1,5 @@
 import { RefreshCw } from "lucide-react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppUpdate } from "./useAppUpdate";
 
@@ -6,8 +7,10 @@ import { useAppUpdate } from "./useAppUpdate";
 export function UpdateBanner() {
   const { t } = useTranslation();
   const { waiting, dismissed, update, dismiss } = useAppUpdate();
+  const slot = useRef<HTMLDivElement>(null);
   return (
-    <div role="status" className="mm-update-slot">
+    // tabIndex -1: focus can rest here when "Later" removes the buttons, instead of falling to <body>.
+    <div role="status" className="mm-update-slot" ref={slot} tabIndex={-1}>
       {waiting && !dismissed && (
         <div className="mm-update">
           <RefreshCw aria-hidden className="mm-update__icon" size={16} strokeWidth={2} />
@@ -18,7 +21,10 @@ export function UpdateBanner() {
           <button
             type="button"
             className="mm-update__button mm-update__button--quiet"
-            onClick={dismiss}
+            onClick={() => {
+              slot.current?.focus();
+              dismiss();
+            }}
           >
             {t("update.later")}
           </button>
