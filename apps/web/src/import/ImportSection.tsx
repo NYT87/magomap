@@ -1,4 +1,4 @@
-import type { ImportRunInfo, ImportSummary } from "@magomap/domain";
+import type { ImportStatus, ImportSummary } from "@magomap/domain";
 import type { TFunction } from "i18next";
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,6 +6,7 @@ import { apiFetch } from "../api/client";
 import { formatDate } from "../i18n";
 import { ImportError, runImport } from "./runImport";
 import { useOnline } from "./useOnline";
+import { holdScreenOn } from "./wakeLock";
 
 type State =
   | { kind: "idle" }
@@ -48,26 +49,43 @@ export function ImportSection() {
   const headingId = useId();
   const online = useOnline();
   const [state, setState] = useState<State>({ kind: "idle" });
-  const [last, setLast] = useState<ImportRunInfo | null>(null);
+  const [status, setStatus] = useState<ImportStatus | null>(null);
+  const [freshStart, setFreshStart] = useState(false);
+
+  const readStatus = () => apiFetch<ImportStatus>("/api/import/status").then(setStatus, () => {});
 
   useEffect(() => {
     if (!online) return;
-    apiFetch<ImportRunInfo | null>("/api/import/runs/latest").then(setLast, () => {});
+    apiFetch<ImportStatus>("/api/import/status").then(setStatus, () => {});
   }, [online]);
 
-  const start = async () => {
+  const start = async (resumeRunId?: string) => {
+    setFreshStart(false);
     setState({ kind: "running", current: 0, total: 0 });
+    const release = holdScreenOn();
     try {
-      const summary = await runImport(({ listIndex, listCount }) =>
-        setState({ kind: "running", current: listIndex + 1, total: listCount }),
+      const summary = await runImport(
+        ({ listIndex, listCount }) =>
+          setState({ kind: "running", current: listIndex + 1, total: listCount }),
+        { ...(resumeRunId ? { resumeRunId } : {}), onFreshStart: () => setFreshStart(true) },
       );
       setState({ kind: "done", summary });
-      apiFetch<ImportRunInfo | null>("/api/import/runs/latest").then(setLast, () => {});
     } catch (error) {
-      setState({ kind: "failed", error: error instanceof ImportError ? error : null });
+      const e = error instanceof ImportError ? error : null;
+      // A refused start means kakao-list has nothing new: the up-to-date note says so.
+      setState(e?.code === "up_to_date" ? { kind: "idle" } : { kind: "failed", error: e });
+    } finally {
+      release();
+      await readStatus();
     }
   };
 
+  const last = status?.latest ?? null;
+  const stopped = last?.status === "running" ? last : null;
+  const syncedAt = status?.sourceSnapshotAt ?? null;
+  const newer = stopped !== null && syncedAt !== null && syncedAt !== stopped.snapshotAt;
+  const upToDate = status?.upToDate === true && syncedAt !== null;
+  const resumable = stopped !== null && !newer && !upToDate && state.kind !== "done";
   const running = state.kind === "running";
   return (
     <section className="mm-card mm-stack" aria-labelledby={headingId}>
@@ -76,14 +94,48 @@ export function ImportSection() {
       </h2>
       <p className="mm-muted">{t("import.lead")}</p>
       {!online && <p className="mm-note">{t("import.offline")}</p>}
-      <button
-        type="button"
-        className="mm-button mm-button--primary"
-        disabled={!online || running}
-        onClick={() => void start()}
-      >
-        {state.kind === "done" ? t("import.again") : t("import.start")}
-      </button>
+      {upToDate && syncedAt !== null && (
+        <p className="mm-note">{t("import.upToDate", { date: formatDate(syncedAt) })}</p>
+      )}
+      {!upToDate && stopped && state.kind === "idle" && (
+        <p className="mm-note">
+          {newer && syncedAt !== null
+            ? t("import.stoppedNewer", { date: formatDate(syncedAt) })
+            : t("import.stopped", {
+                done: stopped.progress?.listsDone ?? 0,
+                total: stopped.progress?.listCount ?? 0,
+              })}
+        </p>
+      )}
+      {resumable ? (
+        <>
+          <button
+            type="button"
+            className="mm-button mm-button--primary"
+            disabled={!online || running}
+            onClick={() => void start(stopped.runId)}
+          >
+            {t("import.continue")}
+          </button>
+          <button
+            type="button"
+            className="mm-button mm-button--secondary"
+            disabled={!online || running}
+            onClick={() => void start()}
+          >
+            {t("import.startOver")}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="mm-button mm-button--primary"
+          disabled={!online || running || upToDate}
+          onClick={() => void start()}
+        >
+          {state.kind === "done" ? t("import.again") : t("import.start")}
+        </button>
+      )}
       <div aria-live="polite" className="mm-stack">
         {running && (
           <>
@@ -100,6 +152,7 @@ export function ImportSection() {
             />
           </>
         )}
+        {freshStart && <p className="mm-note">{t("import.freshStart")}</p>}
         {state.kind === "done" && (
           <div>
             <p className="mm-strong">{t("import.done")}</p>
@@ -112,7 +165,7 @@ export function ImportSection() {
           </p>
         )}
       </div>
-      {last && state.kind !== "done" && (
+      {last && !stopped && state.kind !== "done" && (
         <div>
           {last.status === "completed" && last.finishedAt ? (
             <>
