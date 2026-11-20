@@ -12,6 +12,7 @@ import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
+import { setTheme, storedTheme, type ThemeChoice } from "../theme";
 import { AboutSection } from "./AboutSection";
 
 type Dialog =
@@ -25,6 +26,7 @@ export function Account({ me }: { me: Me }) {
   const mapHintId = useId();
   const sync = useSyncControls();
   const [, navigate] = useLocation();
+  const [theme, setThemeChoice] = useState<ThemeChoice>(storedTheme);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -114,6 +116,22 @@ export function Account({ me }: { me: Me }) {
             <option value="en" lang="en">
               English
             </option>
+          </select>
+        </label>
+        <label className="mm-field">
+          <span className="mm-field__label">{t("account.theme")}</span>
+          <select
+            className="mm-input"
+            value={theme}
+            onChange={(e) => {
+              const choice = e.target.value as ThemeChoice;
+              setTheme(choice);
+              setThemeChoice(choice);
+            }}
+          >
+            <option value="system">{t("account.themeSystem")}</option>
+            <option value="light">{t("account.themeLight")}</option>
+            <option value="dark">{t("account.themeDark")}</option>
           </select>
         </label>
         <label className="mm-field">

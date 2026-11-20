@@ -279,4 +279,35 @@ describe("Account", () => {
     renderAccount();
     expect(screen.getByRole("combobox", { name: "Map" })).toHaveValue("osm");
   });
+  describe("theme", () => {
+    beforeEach(() => {
+      localStorage.removeItem("mm.theme");
+      delete document.documentElement.dataset.theme;
+    });
+
+    it("chooses the theme", async () => {
+      await i18n.changeLanguage("en");
+      const user = userEvent.setup();
+      renderAccount();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Dark");
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(localStorage.getItem("mm.theme")).toBe("dark");
+    });
+
+    it("shows the saved choice", async () => {
+      await i18n.changeLanguage("en");
+      localStorage.setItem("mm.theme", "light");
+      renderAccount();
+      expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("light");
+    });
+
+    it("defaults to the device", async () => {
+      await i18n.changeLanguage("en");
+      renderAccount();
+      const theme = screen.getByRole("combobox", { name: "Theme" });
+      expect(theme).toHaveValue("system");
+      expect(screen.getByRole("option", { name: "Same as this device" })).toBeInTheDocument();
+      expect(theme).toHaveDisplayValue("Same as this device");
+    });
+  });
 });

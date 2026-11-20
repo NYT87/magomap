@@ -28,6 +28,10 @@
   "account": {
     "title": "Account",
     "language": "Language",
+    "theme": "Theme",
+    "themeSystem": "Same as this device",
+    "themeLight": "Light",
+    "themeDark": "Dark",
     "signOut": "Sign out",
     "signOutEverywhere": "Sign out on every device",
     "unsyncedTitle": "Some notes haven't reached the server yet",
