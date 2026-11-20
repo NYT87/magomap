@@ -59,3 +59,24 @@ test("search results fit the screen", async ({ page, context }, info) => {
   const width = page.viewportSize()?.width ?? 0;
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width - GUTTER + 1);
 });
+
+test("the header title wraps at 200% text and the sync icon stays on screen", async ({
+  page,
+  context,
+}, info) => {
+  if (info.project.name !== "phone") return;
+  await devLogin(context, "111");
+  await page.goto("/account");
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "200%";
+  });
+  const title = page.locator(".mm-page__header h1");
+  await expect(title).toBeVisible();
+  const clipped = await title.evaluate((el) => el.scrollWidth > el.clientWidth);
+  expect(clipped).toBe(false);
+  const icon = await page.locator(".mm-page__header button").last().boundingBox();
+  const width = page.viewportSize()?.width ?? 0;
+  expect(icon).not.toBeNull();
+  expect((icon?.x ?? 0) + (icon?.width ?? 0)).toBeLessThanOrEqual(width);
+  expect(icon?.x ?? -1).toBeGreaterThanOrEqual(0);
+});

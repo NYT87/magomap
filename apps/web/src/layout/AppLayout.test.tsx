@@ -106,6 +106,13 @@ describe("AppLayout", () => {
     }
   });
 
+  it("lets the header title wrap instead of truncating", () => {
+    renderAt("/account", 390);
+    const style = getComputedStyle(screen.getByRole("heading", { level: 1 }));
+    expect(style.textOverflow).not.toBe("ellipsis");
+    expect(style.whiteSpace).not.toBe("nowrap");
+  });
+
   it("keeps other titles in the page", () => {
     const { container } = renderAt("/lists/abc", 390);
     const header = container.querySelector("header") as HTMLElement;
