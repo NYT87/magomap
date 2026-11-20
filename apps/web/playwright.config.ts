@@ -2,13 +2,19 @@ import { defineConfig, devices } from "@playwright/test";
 
 // End-to-end: the built app served by a local Worker (fresh D1 each run) and the fake kakao-list.
 // https://playwright.dev/docs/test-webserver
-const PORT = 8790;
+// Overridable so two checkouts can run their end-to-end tests at the same time.
+const PORT = Number(process.env.E2E_PORT ?? 8790);
+const FAKE_PORT = Number(process.env.E2E_FAKE_PORT ?? 8788);
+// The fake kakao-list and the Worker must share this secret. Passed to both here, so the
+// tests never depend on what apps/api/.dev.vars holds (a real secret there broke every import test).
+const IMPORT_SECRET = "m".repeat(48);
 
 // The d1 environment holds the deployed settings; the e2e server uses local stand-ins instead:
 // the fake kakao-list, the dev-login test accounts, and no Kakao map key (OpenStreetMap).
 const E2E_VARS = [
   "ALLOW_DEV_LOGIN:true",
-  "KAKAO_LIST_URL:http://localhost:8788",
+  `KAKAO_LIST_URL:http://localhost:${FAKE_PORT}`,
+  `MAGOMAP_IMPORT_SECRET:${IMPORT_SECRET}`,
   "ALLOWED_KAKAO_USER_IDS:111,222,333",
   `KAKAO_REDIRECT_URI:http://localhost:${PORT}/api/auth/kakao/callback`,
   "KAKAO_JAVASCRIPT_KEY:",
@@ -39,8 +45,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm --filter @magomap/api dev:fake-kakao-list",
-      url: "http://localhost:8788/__health",
+      command: `MAGOMAP_IMPORT_SECRET=${IMPORT_SECRET} FAKE_KAKAO_LIST_PORT=${FAKE_PORT} pnpm --filter @magomap/api dev:fake-kakao-list`,
+      url: `http://localhost:${FAKE_PORT}/__health`,
       reuseExistingServer: true,
       ignoreHTTPSErrors: true,
     },
