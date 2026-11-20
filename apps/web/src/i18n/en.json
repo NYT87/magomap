@@ -59,6 +59,7 @@
     "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap.",
     "editName": "Edit name",
     "nameLabel": "Nickname",
+    "nameTooLong": "Up to {{max}} characters.",
     "save": "Save",
     "removeData": "Also remove my data from this device",
     "removeDataKept": "Your unsynced changes will stay on this device, so its data won't be removed."

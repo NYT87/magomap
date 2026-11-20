@@ -59,6 +59,7 @@
     "mapKakaoUnavailable": "지금은 카카오맵을 쓸 수 없어서 OpenStreetMap을 보여 줘요.",
     "editName": "이름 바꾸기",
     "nameLabel": "닉네임",
+    "nameTooLong": "{{max}}자까지 쓸 수 있어요.",
     "save": "저장",
     "removeData": "이 기기에서 내 데이터도 지우기",
     "removeDataKept": "저장되지 않은 변경이 이 기기에 남아 있어서 데이터는 지우지 않아요."

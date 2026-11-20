@@ -287,10 +287,23 @@ describe("sync", () => {
     const stop = startSyncTriggers();
     try {
       window.dispatchEvent(new Event("online"));
-      await vi.waitFor(() => expect(syncState().state).toBe("offline"));
+      // The first try failed and its retry is waiting (the state may still say "offline" from
+      // an earlier test, so it can't tell).
+      const failedTries = async (count: number) =>
+        vi.waitFor(() => {
+          expect(pushes).toBe(count);
+          expect(vi.getTimerCount()).toBe(1);
+        });
+      await failedTries(1);
       // One chain: the first try, then retries 5 s, 30 s and 2 min apart.
-      await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000 + 1_000);
-      expect(pushes).toBe(4);
+      for (const [wait, count] of [
+        [5_000, 2],
+        [30_000, 3],
+        [120_000, 4],
+      ] as const) {
+        await vi.advanceTimersByTimeAsync(wait);
+        await failedTries(count);
+      }
     } finally {
       stop();
       vi.useRealTimers();
@@ -386,16 +399,23 @@ describe("sync", () => {
       status: "ignored_stale",
       row: note(id, "server"),
     });
+    // The pull that follows the push would bring the note back too.
+    server.pullPages = [
+      { rows: [pulled("visit_notes", note(id, "server"))], cursor: "c9", hasMore: false },
+    ];
     const late = syncNow();
     await new Promise((r) => setTimeout(r, 20));
-    // Another tab got the answer first, then the data was removed from the device.
+    // Another tab got the answer first, then the data was removed from the device (as
+    // forgetAccountOnDevice does: every table emptied, a new removal mark).
     const otherTab = defineUserDb(userId);
     await otherTab.transaction("rw", otherTab.tables, async () => {
       await Promise.all(otherTab.tables.map((table) => table.clear()));
+      await otherTab.meta.put({ key: "removal", value: "r1" });
     });
     otherTab.close();
     answer();
     await late;
     expect(await db.visit_notes.count()).toBe(0);
+    expect(await db.meta.get("cursor")).toBeUndefined();
   });
 });

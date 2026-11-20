@@ -49,6 +49,7 @@ export function Account({ me }: { me: Me }) {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState(false);
   const nameErrorId = useId();
+  const nameLongId = useId();
   const nameInput = useRef<HTMLInputElement>(null);
   const editNameButton = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(false);
@@ -137,9 +138,7 @@ export function Account({ me }: { me: Me }) {
     setBusy(true);
     try {
       await apiFetch("/api/account", forMe("DELETE"));
-      // Close this account's database first, so nothing (a sync, a live query) recreates it.
-      closeUserDb(me.userId);
-      await Dexie.delete(dbName(me.userId));
+      // The account is gone: so is what the device remembers for it (its name included).
       for (const key of accountDeviceKeys(me.userId)) {
         try {
           localStorage.removeItem(key);
@@ -147,6 +146,9 @@ export function Account({ me }: { me: Me }) {
           // storage blocked: nothing was stored
         }
       }
+      // Close this account's database first, so nothing (a sync, a live query) recreates it.
+      closeUserDb(me.userId);
+      await Dexie.delete(dbName(me.userId));
       // If another account opened meanwhile (even during the deletion), it stays on its own page.
       if (openDbOrNull() === null) leave();
     } catch {
@@ -166,6 +168,7 @@ export function Account({ me }: { me: Me }) {
             className="mm-stack"
             onSubmit={(e) => {
               e.preventDefault();
+              if (nameTooLong || savingName) return;
               void saveName();
             }}
           >
@@ -176,10 +179,19 @@ export function Account({ me }: { me: Me }) {
                 value={nameDraft}
                 // Not cut while typing (that breaks Korean input mid-syllable): Save waits instead.
                 onChange={(e) => setNameDraft(e.target.value)}
-                aria-describedby={nameError ? nameErrorId : undefined}
+                aria-describedby={
+                  [nameTooLong && nameLongId, nameError && nameErrorId].filter(Boolean).join(" ") ||
+                  undefined
+                }
+                aria-invalid={nameTooLong || undefined}
                 ref={nameInput}
               />
             </label>
+            {nameTooLong && (
+              <p className="mm-note" id={nameLongId}>
+                {t("account.nameTooLong", { max: LIMITS.nickname })}
+              </p>
+            )}
             {nameError && (
               <p className="mm-error" role="alert" id={nameErrorId}>
                 {t("account.failed")}

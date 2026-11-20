@@ -325,8 +325,11 @@ describe("Account", () => {
       const field = screen.getByRole("textbox", { name: "Nickname" });
       await user.clear(field);
       await user.type(field, "🌸".repeat(41));
-      // Not cut while typing (Korean input), but Save waits until it fits.
+      // Not cut while typing (Korean input), but Save waits until it fits, and says why.
       expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+      expect(field).toHaveAccessibleDescription("Up to 40 characters.");
+      await user.type(field, "{Enter}");
+      expect(apiFetch).not.toHaveBeenCalledWith("/api/me", expect.anything());
       await user.type(field, "{Backspace}{Backspace}");
       expect(Array.from((field as HTMLInputElement).value)).toHaveLength(40);
       expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
