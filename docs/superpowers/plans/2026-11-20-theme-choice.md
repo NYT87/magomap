@@ -31,7 +31,7 @@
 2. **"Same as this device" follows the device live:** switching the phone to dark while the app is open turns the app dark, including the `theme-color` bar. (Task 1.)
 3. **Blocked storage** (private mode): choosing a theme still applies it for the session and nothing throws, on load or on change. (Task 1.)
 4. **Native controls in dark:** selects, inputs and scrollbars use dark styling when Dark is chosen on a light-mode device (`color-scheme`). (Task 1.)
-5. **Another tab** changing the theme updates this one, as the language does through `storage` events. (Task 1.)
+5. **Another tab** changing the theme updates this one through the `storage` event, so two open tabs never disagree. (Task 1.)
 
 ## Reviewers
 
