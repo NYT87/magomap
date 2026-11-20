@@ -22,6 +22,7 @@ export function createLeafletAdapter(): MapAdapter {
   let zoom = 10;
   let destroyed = false;
   let host: HTMLElement | null = null;
+  let myLoc: LatLng | null = null;
   let pending: MapMarker[] | null = null;
   let pendingFit: LatLng[] | null = null;
   let center: LatLng = { lat: 0, lng: 0 };
@@ -76,6 +77,16 @@ export function createLeafletAdapter(): MapAdapter {
     addTiles();
   };
 
+  const drawMe = (p: LatLng) => {
+    if (!map || !L) return;
+    me?.remove();
+    me = L.marker([p.lat, p.lng], {
+      interactive: false,
+      keyboard: false,
+      icon: L.divIcon({ className: "", html: '<span class="mm-me"></span>', iconSize: [18, 18] }),
+    }).addTo(map);
+  };
+
   return {
     provider: "leaflet",
     mount(el, view) {
@@ -114,6 +125,7 @@ export function createLeafletAdapter(): MapAdapter {
         map.addLayer(loose);
         if (pending) draw(pending);
         pending = null;
+        if (myLoc) drawMe(myLoc);
         if (pendingFit) fitView(pendingFit);
         pendingFit = null;
       })();
@@ -139,15 +151,21 @@ export function createLeafletAdapter(): MapAdapter {
     onViewChange(cb) {
       viewChange = cb;
     },
-    showMyLocation(p) {
-      if (!map || !L) return;
-      me?.remove();
-      me = L.marker([p.lat, p.lng], {
-        interactive: false,
-        keyboard: false,
-        icon: L.divIcon({ className: "", html: '<span class="mm-me"></span>', iconSize: [18, 18] }),
-      }).addTo(map);
-      map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
+    showMyLocation(p, opts = {}) {
+      myLoc = p;
+      if (!map || !L) {
+        // Still loading: the dot is drawn on mount, and the move waits with the other fits.
+        if (opts.recenter !== false) pendingFit = [p];
+        return;
+      }
+      drawMe(p);
+      if (opts.recenter !== false) map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15));
+    },
+    pendingFit() {
+      return pendingFit;
+    },
+    myLocation() {
+      return myLoc;
     },
     destroy() {
       destroyed = true;

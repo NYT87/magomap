@@ -53,6 +53,7 @@ export function createKakaoAdapter(): MapAdapter {
   let select: (id: string) => void = () => {};
   let viewChange: () => void = () => {};
   let host: HTMLElement | null = null;
+  let myLoc: LatLng | null = null;
 
   const overlay = (m: MapMarker) => {
     const el = document.createElement("button");
@@ -123,13 +124,21 @@ export function createKakaoAdapter(): MapAdapter {
     onViewChange(cb) {
       viewChange = cb;
     },
-    showMyLocation(p) {
+    showMyLocation(p, opts = {}) {
+      myLoc = p;
       if (!map) return;
       me?.setMap(null);
       const dot = document.createElement("span");
       dot.className = "mm-me";
       me = new k.CustomOverlay({ position: new k.LatLng(p.lat, p.lng), content: dot, map });
-      map.panTo(new k.LatLng(p.lat, p.lng));
+      if (opts.recenter !== false) map.panTo(new k.LatLng(p.lat, p.lng));
+    },
+    pendingFit() {
+      // Kakao draws as soon as it's mounted: nothing ever waits.
+      return null;
+    },
+    myLocation() {
+      return myLoc;
     },
     destroy() {
       cluster?.clear();
