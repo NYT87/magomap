@@ -106,14 +106,7 @@ async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
 
 importRoutes.post("/import/runs", (c) =>
   handled(c, async () => {
-    let snapshot: ReturnType<typeof kakaoListsToImport>;
-    try {
-      const kakaoUserId = await kakaoIdentity(c);
-      snapshot = kakaoListsToImport(await fromKakaoList(c, kakaoUserId, "/lists"), kakaoUserId);
-    } catch (error) {
-      if (error instanceof UpstreamError) throw error;
-      throw new UpstreamError("kakao_list_unavailable");
-    }
+    const snapshot = await currentSnapshot(c);
     // Checked before startImportRun so refusing doesn't supersede an open run.
     if (await importedSnapshot(c.var.db, c.var.userId, Date.parse(snapshot.importedAt)))
       throw new UpToDateError();
@@ -144,26 +137,33 @@ importRoutes.post("/import/runs", (c) =>
 
 /** kakao-list's current sync for the caller; every failure becomes an UpstreamError. */
 async function currentSnapshot(c: Context<AppEnv>): Promise<ReturnType<typeof kakaoListsToImport>> {
+  let snapshot: ReturnType<typeof kakaoListsToImport>;
   try {
     const kakaoUserId = await kakaoIdentity(c);
-    return kakaoListsToImport(await fromKakaoList(c, kakaoUserId, "/lists"), kakaoUserId);
+    snapshot = kakaoListsToImport(await fromKakaoList(c, kakaoUserId, "/lists"), kakaoUserId);
   } catch (error) {
     if (error instanceof UpstreamError) throw error;
     throw new UpstreamError("kakao_list_unavailable");
   }
+  // An unreadable date would reach the database as NaN.
+  if (!Number.isFinite(Date.parse(snapshot.importedAt)))
+    throw new UpstreamError("kakao_list_unavailable");
+  return snapshot;
 }
 
 importRoutes.get("/import/status", async (c) => {
   const latest = await latestImportRun(c.var.db, c.var.userId);
   let sourceSnapshotAt: number | null = null;
+  let source: "ok" | "no_snapshot" | "unavailable" = "ok";
   try {
     sourceSnapshotAt = Date.parse((await currentSnapshot(c)).importedAt);
   } catch (error) {
     if (!(error instanceof UpstreamError)) throw error;
+    source = error.code === "no_snapshot" ? "no_snapshot" : "unavailable";
   }
   const upToDate =
     sourceSnapshotAt !== null && (await importedSnapshot(c.var.db, c.var.userId, sourceSnapshotAt));
-  return c.json({ latest, sourceSnapshotAt, upToDate });
+  return c.json({ latest, sourceSnapshotAt, upToDate, source });
 });
 
 importRoutes.post("/import/runs/:runId/resume", (c) =>

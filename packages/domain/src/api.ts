@@ -49,6 +49,8 @@ export interface ImportStatus {
   /** kakao-list's current sync for this account; null when it has none or couldn't be reached. */
   sourceSnapshotAt: number | null;
   upToDate: boolean;
+  /** Why `sourceSnapshotAt` is null: kakao-list has no snapshot for this account, or couldn't be read. */
+  source: "ok" | "no_snapshot" | "unavailable";
 }
 
 export interface ResumeList {

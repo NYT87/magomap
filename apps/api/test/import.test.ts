@@ -227,6 +227,7 @@ describe("server-driven import", () => {
       latest: null,
       sourceSnapshotAt: Date.parse("2026-11-19T00:00:00.000Z"),
       upToDate: false,
+      source: "ok",
     });
     await importAll(cookie);
     const after = (await (await status(cookie)).json()) as {
@@ -242,7 +243,36 @@ describe("server-driven import", () => {
     network.use(http.get(`${BASE}/lists`, () => HttpResponse.text("boom", { status: 500 })));
     const res = await status(cookie);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ sourceSnapshotAt: null, upToDate: false });
+    expect(await res.json()).toMatchObject({
+      sourceSnapshotAt: null,
+      upToDate: false,
+      source: "unavailable",
+    });
+  });
+
+  it("status tells apart kakao-list having no snapshot from being unreachable", async () => {
+    const cookie = await devLogin("555");
+    network.use(
+      http.get(`${BASE}/lists`, () => HttpResponse.json({ error: "no_snapshot" }, { status: 404 })),
+    );
+    const res = await status(cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sourceSnapshotAt: null, source: "no_snapshot" });
+  });
+
+  it("treats an unreadable importedAt as kakao-list being unavailable", async () => {
+    const cookie = await devLogin("666");
+    network.use(
+      http.get(`${BASE}/lists`, () =>
+        HttpResponse.json({ ...listsBody(baseContract("666")), importedAt: "not a date" }),
+      ),
+    );
+    const started = await start(cookie);
+    expect(started.res.status).toBe(502);
+    expect(started.body).toEqual({ error: "kakao_list_unavailable" });
+    const res = await status(cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sourceSnapshotAt: null, source: "unavailable" });
   });
 
   it("a new import of an already-imported sync is refused", async () => {
