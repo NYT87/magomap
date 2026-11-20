@@ -32,7 +32,9 @@ function answerOnce(path: string, answer: () => Promise<unknown>) {
 
 beforeEach(() => {
   vi.mocked(apiFetch).mockImplementation(async (p: string) =>
-    p === "/api/import/status" ? { latest: null, sourceSnapshotAt: null, upToDate: false } : {},
+    p === "/api/import/status"
+      ? { latest: null, sourceSnapshotAt: null, upToDate: false, source: "ok" }
+      : {},
   );
 });
 
