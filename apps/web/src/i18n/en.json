@@ -61,6 +61,7 @@
     "server": "Server",
     "built": "built {{date}}",
     "mismatch": "The app is older than the server. Update to get the latest.",
+    "differs": "The app and the server are on different versions.",
     "offline": "Server: offline"
   },
   "map": {
