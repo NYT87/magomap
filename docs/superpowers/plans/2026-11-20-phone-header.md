@@ -2,14 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each task follows `docs/superpowers/build-process.md` (builder → gate → reviewers).
 
-**Goal:** On phones, the map's search bar spans the full width, the sync status is a single icon at the top right that never covers content, the Account and Lists titles sit in the header beside the back arrow, and the Account page lets her choose light, dark or the system theme.
+**Goal:** On phones, the map's search bar spans the full width, the sync status is a single icon at the top right that never covers content, the Account and Lists titles sit in the header beside the back arrow.
 
 **Architecture:**
 - The search bar is pushed in by `right: 72px` in `.mm-map-top` (`apps/web/src/styles/app.css:573`), although the map buttons start below it at `top: 64px`. It becomes full width.
 - The floating badge (`.mm-phone-status`, `app.css:195`) sits outside the map with `z-index: 3`. The list view (`.mm-list-overlay`) lives inside the map, so the badge shows through over the list. It is removed: on the map the sync icon becomes the first button of the map-buttons column (`.mm-map-tools`); on pages it stays in the header, as an icon.
 - `SyncIndicator` gets a `compact` form for phones: one 44 px icon button whose tap opens a sheet with the full status and its actions. Desktop keeps today's pills.
 - `AppLayout`'s phone header can show a page title; Account and Lists use it and drop their own on phones.
-- Dark mode today follows only the system (`@media (prefers-color-scheme: dark)` in `tokens.css`). A `data-theme` attribute on `<html>` lets a saved choice override it.
 
 **Tech Stack:** React 19, wouter, i18next (ko/en), plain CSS (`apps/web/src/styles/app.css`, tokens in `tokens.css`), lucide-react icons, Vitest + Testing Library, Playwright (projects `phone` and `desktop`).
 
@@ -18,6 +17,8 @@
 >
 > same for the lists page, the title is on the content, and it should be on the header. and it is missing the switch theme color, it should be on the accounts page
 
+The theme switch asked for in that message has its own plan: `docs/superpowers/plans/2026-11-20-theme-choice.md`.
+
 ## Decisions (the planner's calls; the owner checks these)
 
 - **Where the icon goes on the map:** top of the map-buttons column, right under the search bar, so it is "top right" and lines up with Layers / My location / List.
@@ -25,7 +26,6 @@
 - **Colours:** the icon keeps today's tone colours (success, warning, error), with the state also in the button's accessible name, so colour isn't the only signal.
 - **Desktop:** unchanged (the side panel header keeps the full pills).
 - **Header titles:** Account and Lists, as asked. Place pages keep the place's name in the page (it can be long). Lists' **New list** button stays at the top of the page content, since the header's right side holds the sync icon.
-- **Theme choice:** a "Theme" select under Language on the Account page with System (default), Light and Dark. It is saved per device (`mm.theme`, like `mm.lang`) and applied before the first paint, so there's no flash. On desktop it's in the same place.
 - **List view on the map:** the map buttons stay over the list, so the list gets right padding equal to the buttons column, and no row is covered.
 
 ## Global Constraints
@@ -46,7 +46,6 @@
 3. **Search results dropdown at full width:** `.mm-map-top .mm-search__results` must still fit the screen and stay above the map buttons when open. (Task 1, e2e.)
 4. **Notch / safe areas:** the search bar and the column keep their `env(safe-area-inset-*)` offsets; nothing slides under the status bar. (Task 1, screenshots.)
 5. **Focus on Account and Lists:** the phone moves focus to the page's `h1` on navigation; with the title in the header, focus must land on that header `h1`, and there must be exactly one `h1`. (Task 3.)
-6. **A saved theme on first load:** Dark chosen on a light-mode phone must open dark with no light flash, and the browser's `theme-color` bar must match. (Task 4.)
 
 ## Reviewers
 
@@ -55,7 +54,6 @@
 | 1 Full-width search, map buttons, list padding | code, ui, ux |
 | 2 Sync icon on phones | code, ui, ux, a11y |
 | 3 Account and Lists titles in the header | code, ui, a11y |
-| 4 Theme choice | code, ui, ux, a11y |
 
 ---
 
@@ -121,30 +119,3 @@
 - [ ] **Step 3: Implement** as specified, using tokens for type and spacing.
 - [ ] **Step 4: Run** the same command and `pnpm --filter @magomap/web e2e -- lists`, then `./scripts/gate.sh main` → `GATE: PASS`. Screenshots of both headers on a phone, both themes, in Korean and English.
 - [ ] **Step 5: Commit** `fix(web): Account and Lists titles sit in the phone header`
-
-### Task 4: Choose the theme on the Account page
-
-**Files:**
-- Create: `apps/web/src/theme.ts`
-- Modify: `apps/web/src/styles/tokens.css` (the dark block at line 78), `apps/web/index.html` (inline script before the stylesheet; `theme-color` meta), `apps/web/src/screens/Account.tsx` (select under Language), `apps/web/src/i18n/en.json`, `ko.json`
-- Test: `apps/web/src/theme.test.ts` (create), `apps/web/src/screens/Account.test.tsx`
-
-**Interfaces:**
-- Produces, in `theme.ts`:
-  - `type ThemeChoice = "system" | "light" | "dark"`
-  - `storedTheme(): ThemeChoice` — reads `localStorage["mm.theme"]`; anything else or a storage error → `"system"`.
-  - `applyTheme(choice: ThemeChoice): void` — `system` removes `data-theme` from `<html>`; `light`/`dark` set it. Also sets `<meta name="theme-color">` to the resolved theme's bar colour (light: today's `#1F6F5C`; dark: the dark `--color-bg` value) and keeps it in step with the system while `system`.
-  - `setTheme(choice: ThemeChoice): void` — saves (try/catch) and applies.
-- `tokens.css`: the dark tokens apply under `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }` **and** under `:root[data-theme="dark"] { … }`; `:root[data-theme="light"]` and `[data-theme="dark"]` set `color-scheme` accordingly. Keep a single source for the dark values (e.g. both selectors on one rule outside the media query is not possible, so the builder may duplicate the block once, with a comment, or use a shared custom-property set — the choice is theirs; the values must not drift).
-- `index.html`: a tiny inline script reading `mm.theme` and setting `data-theme` before CSS loads (no flash).
-- Account: a select labelled `account.theme` "Theme" with options `account.themeSystem` "Same as this device", `account.themeLight` "Light", `account.themeDark` "Dark", styled like the Language select.
-
-- [ ] **Step 1: Write the failing tests**
-  - theme: `defaults to the device's setting` — empty storage → `storedTheme() === "system"`; garbage value → `"system"`.
-  - `applies and remembers a choice` — `setTheme("dark")` → `document.documentElement.dataset.theme === "dark"`, `localStorage["mm.theme"] === "dark"`; `setTheme("system")` → no `data-theme`.
-  - `survives blocked storage` — `localStorage.setItem` throws → `setTheme("light")` still applies `data-theme="light"`.
-  - Account: `chooses the theme` — select "Dark" in the "Theme" field → `data-theme="dark"` on `<html>`.
-- [ ] **Step 2: Run** `pnpm --filter @magomap/web test -- theme Account` — Expected: FAIL.
-- [ ] **Step 3: Implement** as specified.
-- [ ] **Step 4: Run** the same command; then an e2e check in `phone-layout.spec.ts`: `a chosen dark theme opens dark` — `page.emulateMedia({ colorScheme: "light" })`, set `mm.theme = "dark"` via `addInitScript`, load `/` → `html[data-theme="dark"]` and the computed `--color-bg` is the dark value. Then `./scripts/gate.sh main` → `GATE: PASS`. Screenshots of the Account page in Light and Dark on a phone and on desktop.
-- [ ] **Step 5: Commit** `feat(web): choose light, dark or the device's theme`
