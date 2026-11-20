@@ -133,7 +133,7 @@
 - Produces, in `theme.ts`:
   - `type ThemeChoice = "system" | "light" | "dark"`
   - `storedTheme(): ThemeChoice` — reads `localStorage["mm.theme"]`; anything else or a storage error → `"system"`.
-  - `applyTheme(choice: ThemeChoice): void` — `system` removes `data-theme` from `<html>`; `light`/`dark` set it. Also sets `<meta name="theme-color">` to the resolved theme's background (light: today's `#1F6F5C`; dark: the dark `--color-bg` value) and keeps it in step with the system while `system`.
+  - `applyTheme(choice: ThemeChoice): void` — `system` removes `data-theme` from `<html>`; `light`/`dark` set it. Also sets `<meta name="theme-color">` to the resolved theme's bar colour (light: today's `#1F6F5C`; dark: the dark `--color-bg` value) and keeps it in step with the system while `system`.
   - `setTheme(choice: ThemeChoice): void` — saves (try/catch) and applies.
 - `tokens.css`: the dark tokens apply under `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }` **and** under `:root[data-theme="dark"] { … }`; `:root[data-theme="light"]` and `[data-theme="dark"]` set `color-scheme` accordingly. Keep a single source for the dark values (e.g. both selectors on one rule outside the media query is not possible, so the builder may duplicate the block once, with a comment, or use a shared custom-property set — the choice is theirs; the values must not drift).
 - `index.html`: a tiny inline script reading `mm.theme` and setting `data-theme` before CSS loads (no flash).
