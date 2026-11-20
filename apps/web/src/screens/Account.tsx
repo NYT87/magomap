@@ -187,11 +187,10 @@ export function Account({ me }: { me: Me }) {
                 ref={nameInput}
               />
             </label>
-            {nameTooLong && (
-              <p className="mm-note" id={nameLongId}>
-                {t("account.nameTooLong", { max: LIMITS.nickname })}
-              </p>
-            )}
+            {/* Always there, so a screen reader announces the limit the moment it's passed. */}
+            <p className={nameTooLong ? "mm-note" : undefined} id={nameLongId} role="status">
+              {nameTooLong ? t("account.nameTooLong", { max: LIMITS.nickname }) : ""}
+            </p>
             {nameError && (
               <p className="mm-error" role="alert" id={nameErrorId}>
                 {t("account.failed")}

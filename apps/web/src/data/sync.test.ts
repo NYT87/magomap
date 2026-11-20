@@ -418,4 +418,25 @@ describe("sync", () => {
     expect(await db.visit_notes.count()).toBe(0);
     expect(await db.meta.get("cursor")).toBeUndefined();
   });
+
+  it("counts no refusal for a refused change another tab already set aside", async () => {
+    const userId = `s${n}`;
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    let answer = () => {};
+    server.pushGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.failPush = () => 400;
+    const late = syncNow();
+    await new Promise((r) => setTimeout(r, 20));
+    // Another tab got the same refusal first and set the change aside.
+    const otherTab = defineUserDb(userId);
+    await otherTab.outbox.clear();
+    otherTab.close();
+    answer();
+    const result = await late;
+    expect(result.rejected).toBe(0);
+    expect(await db.rejected.count()).toBe(0);
+  });
 });
