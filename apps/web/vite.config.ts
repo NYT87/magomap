@@ -17,7 +17,7 @@ export default defineConfig({
     react(),
     VitePWA({
       strategies: "generateSW",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       injectRegister: false,
       includeAssets: ["icons/*"],
       manifest: {

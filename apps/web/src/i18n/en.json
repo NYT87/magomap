@@ -249,5 +249,10 @@
     "title": "Something went wrong on this screen",
     "body": "Your notes are safe on this device. Reload to continue.",
     "reload": "Reload"
+  },
+  "update": {
+    "ready": "A new version is ready",
+    "now": "Update",
+    "later": "Later"
   }
 }

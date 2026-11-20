@@ -1,6 +1,7 @@
 import type { BuildInfo } from "@magomap/domain";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppUpdate } from "../update/useAppUpdate";
 import { APP_BUILD, useServerBuild } from "../version";
 
 /** The time of a build, or null when missing or not a date. */
@@ -34,6 +35,7 @@ function BuildRow({ label, build }: { label: string; build: BuildInfo }) {
 export function AboutSection({ children }: { children?: ReactNode }) {
   const { t } = useTranslation();
   const server = useServerBuild();
+  const { waiting, update } = useAppUpdate();
   let note: string | null = null;
   if (
     server.state === "ok" &&
@@ -64,6 +66,15 @@ export function AboutSection({ children }: { children?: ReactNode }) {
         {server.state === "offline" && <p className="mm-muted">{t("about.offline")}</p>}
         {note && <p className="mm-note">{note}</p>}
       </div>
+      {waiting && (
+        <button
+          type="button"
+          className="mm-button mm-button--primary mm-about__update"
+          onClick={() => void update()}
+        >
+          {t("update.now")}
+        </button>
+      )}
       {children}
     </section>
   );

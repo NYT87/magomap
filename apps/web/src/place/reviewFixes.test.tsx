@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { openUserDb } from "../data/db";
 import i18n from "../i18n";
+import { runBeforeUpdate } from "../update/beforeUpdate";
 import { NoteEditor } from "./NoteEditor";
 import { PLACE } from "./testData";
 
@@ -33,6 +34,17 @@ describe("note editor", () => {
         timeout: 300,
       },
     );
+  });
+
+  it("Update saves the half-typed note", async () => {
+    const db = openUserDb(`ed${n}`);
+    render(<NoteEditor placeId={PLACE.id} onDone={() => {}} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Note" }), {
+      target: { value: "업데이트 전에 쓴 글" },
+    });
+    // Before the 500 ms timer would have kept it.
+    await runBeforeUpdate();
+    expect((await db.drafts.get(`new:${PLACE.id}`))?.body).toBe("업데이트 전에 쓴 글");
   });
 
   it("keeps the draft when the editor is closed right after typing", async () => {

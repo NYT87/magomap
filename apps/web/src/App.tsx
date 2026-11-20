@@ -13,6 +13,7 @@ import { PageRoutes } from "./routes";
 import { MapScreen } from "./screens/MapScreen";
 import { NotInvited } from "./screens/NotInvited";
 import { SignIn } from "./screens/SignIn";
+import { UpdateBanner } from "./update/UpdateBanner";
 
 function askPersistentStorage() {
   try {
@@ -49,7 +50,15 @@ function Signedin({ me }: { me: Me }) {
     <SyncProvider key={key}>
       <MapPrefsProvider userId={me.userId}>
         <MapStageProvider>
-          <AppLayout map={<MapScreen />} status={<SyncIndicator />}>
+          <AppLayout
+            map={<MapScreen />}
+            status={
+              <div className="mm-status">
+                <SyncIndicator />
+                <UpdateBanner />
+              </div>
+            }
+          >
             <PageRoutes me={me} />
           </AppLayout>
         </MapStageProvider>
