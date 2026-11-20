@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1F6F5C" />
+    <script>
+      // Applies a saved theme before first paint. The dark bar colour repeats DARK_BAR in
+      // src/theme.ts, which is --dark-color-bg in src/styles/tokens.css: keep them in step.
+      var t = null;
+      try {
+        t = localStorage.getItem("mm.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches))
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", "#141816");
+      } catch {
+        // storage blocked: the device's setting applies
+      }
+    </script>
     <meta name="description" content="magomap — your own map of places and visits." />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
