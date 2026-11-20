@@ -18,6 +18,10 @@ Production changes **only when a release is made**. Pushing to `main` deploys no
    Any failing step stops the deploy.
 4. Check **Account → About**: the app and server lines show the new version.
 
+**The D1 bookmark:** the job summary says when the bookmark was taken. On a re-run of the job (after migrations already ran), the new bookmark is *not* a pre-migration one: use the bookmark from the first attempt's summary to go back to before the migrations.
+
+**First rollout (once):** phones still run the old bundle, whose service worker was registered in auto-update mode. That client never tells a waiting worker to take over, so the first release after this change reaches a phone only after the app is fully closed (swiped away) and reopened. An open or backgrounded old app shows no banner. Tell her once to close the app and open it again. From then on the "A new version is ready" banner, or the quiet apply at cold start, works as designed.
+
 **A failed deploy:** first re-run the failed job. Otherwise run the **Release** workflow by hand (Actions → Release → Run workflow, from `main`) with the tag, e.g. `magomap-v0.2.0`. It refuses anything that isn't a release created by Release Please on a commit on `main`.
 
 **Rolling back:** `npx wrangler rollback --env d1`, or the Worker's Deployments page. For the data, restore the bookmark in the job summary: `npx wrangler d1 time-travel restore magomap --env d1 --bookmark=<bookmark>`.

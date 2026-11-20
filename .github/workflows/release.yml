@@ -192,7 +192,7 @@ jobs:
           {
             echo "## D1 bookmark before $TAG"
             echo
-            echo "\`$bookmark\` (taken $(date -u +%FT%TZ), before migrations)"
+            echo "\`$bookmark\` (taken $(date -u +%FT%TZ), just before this run applied migrations; on a re-run after migrations already ran, the first attempt's bookmark is the pre-migration one)"
             echo
             echo "To restore: \`wrangler d1 time-travel restore magomap --env d1 --bookmark=$bookmark\`"
           } >> "$GITHUB_STEP_SUMMARY"
