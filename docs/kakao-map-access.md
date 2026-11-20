@@ -1,0 +1,78 @@
+# Reading Kakao Map — access test results
+
+Phase 0 of the direct Kakao Map sync (`docs/superpowers/specs/2026-11-20-kakao-direct-sync-design.md`). These are the results of tests run on 2026-11-20 with the owner's account, signed in on his computer. The tests used throwaway scripts that are not kept in the repo. No cookie, token or list contents are recorded here.
+
+**Verdict:** `Phone sync: cookie, pending the Worker read and the 7-day lifetime check`. The Kakao Login token route is closed.
+
+## Endpoints
+
+Undocumented `map.kakao.com` endpoints, also described in `kakao-list/docs/kakao-maps-private-api.md`:
+
+- `GET /folder/list` returns `200 { status: { code: "SUCCESS" }, folders: [...] }`. It lists every folder, including folder 0.
+- `GET /favorite/mine/list?folderid=<id>` returns the favourites of one folder.
+
+## 1. The Kakao Login token
+
+Both endpoints answered **403 HTML** with `Authorization: Bearer <access token>` from a real magomap sign-in (scope `openid`). The same happened for `/favorite/timestamp`. The token magomap gets at sign-in doesn't open Kakao Map, so it can't be used for phone sync.
+
+## 2. The Kakao Map cookie (from the owner's computer)
+
+- **One cookie is enough: `_kawlt`**, the Kakao account web login token, set on `.kakao.com`. Taking the other cookies away one at a time changed nothing.
+- **Headers.** From a plain HTTP client, Kakao answers 403 HTML even with the cookie, unless the request also carries browser-like headers: `User-Agent`, `Referer: https://map.kakao.com/`, and `Origin` and `Sec-Fetch-*`. Inside a `map.kakao.com` tab (the extension) the browser sends these itself.
+- **Signed out is a success, not an error.** Without the cookie, `/folder/list` answers **200 SUCCESS with zero folders**. A reader must treat zero folders as "signed out". Treating it as "every list was deleted" would mark every list removed.
+- With the cookie, the owner's account showed 29 folders: 2 with `status: "D"` (deleted) and 23 flagged with `subscribe`.
+- **Not tested yet:** the same requests from Cloudflare's network (a throwaway Worker). Kakao might block or challenge data-centre addresses.
+
+## 3. Lifetime
+
+- `_kawltea`, the cookie's stated expiry, was 2026-11-20 20:00 KST, about 10 hours after it was copied.
+- After that time, the same `_kawlt` still read all 29 folders, so the session outlives its stated expiry.
+- **Not tested yet:** reads after 1, 3 and 7 days without opening Kakao Map.
+
+## 4. Phone edits reaching the web
+
+Not tested yet.
+
+## 5. Data details
+
+### Coordinates
+
+- Favourites carry `x`/`y` in WCONGNAMUL, which is EPSG:5181 scaled by 2.5. Some newer ones also carry Kakao's own **`lat` and `lon` (WGS84)**. Older ones have only `x`/`y`. Use `lat`/`lon` when present, and convert `x`/`y` otherwise.
+- proj4 `+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +units=m +no_defs`, applied to `(x / 2.5, y / 2.5)`, matches Kakao's numbers within 3e-9°. Fixtures in `packages/domain/src/providers/wcongnamul.fixtures.ts`:
+
+  | x | y | lat | lng | source of lat/lng |
+  |---|---|---|---|---|
+  | 471350 | -32433 | 33.37661909 | 126.87684594 | the favourite's own `lat`/`lon` (Jeju) |
+  | 608064 | 1159067 | 37.67127631 | 127.48995646 | Kakao's place-detail endpoint |
+
+- **Negative `y` is valid**: places south of about 33.5°N (southern Jeju) have one. kakao-list used to drop such coordinates; its PR #29 fixed that.
+
+### Folder 0
+
+Folder 0 is **each person's default favourites list**, and `/folder/list` includes it. Every Kakao user has their own folder 0, so magomap gives it a per-person list id, `0~<Kakao Login id>` (`kakaoListExternalId`).
+
+### Favourite types
+
+| type | key | in magomap |
+|---|---|---|
+| `PLACE` | Kakao place id | a place |
+| `ADDRESS` | an address docid (`N…` or `J…`) | a place (kakao-list's `MAGOMAP_PLACE_TYPES`) |
+| `POINT` | none | a pin at its own coordinates |
+| `ROUTE_BICYCLE` | none, and no `x`/`y` (waypoints in `route_form`) | a list item with no pin |
+
+`memo` is missing on some favourites.
+
+### Owner ids
+
+Folder records carry `map_user_id`, but not always `kakao_map_user_id`. The own account is `kakao_map_user_id || map_user_id` of the folders not flagged with `subscribe`, as in kakao-list's extractor.
+
+### Other endpoints, not used
+
+- `/api/v1/mapsearch/srcid?id=<place key>` (place detail) gives lat/lon, category (`cate_name_depth1..3`), `tel` and `new_address`. It could fill in places later, through the extension only.
+- `/api/v1/mapsearch/search_addr?docid=…` (address lookup) answers `403 Gate Token Rejected` outside the Kakao Map page.
+
+## Still open
+
+- **The `seq` of one shared favourite, as seen by the owner and by his wife.** It needs her signed in to Kakao Map on the computer once. If the two differ, the build stops before the mapping work (spec, "Settled after the builder check").
+- Phone edits reaching the endpoint (step 4).
+- The read from a Worker and the multi-day lifetime, both needed before phase 2 (phone sync).

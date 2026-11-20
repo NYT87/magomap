@@ -73,11 +73,11 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
 - Create `docs/kakao-map-access.md`.
 - Create `packages/domain/src/providers/wcongnamul.fixtures.ts`, used by Task 1.
 
-- [ ] **Step 1: Write `docs/kakao-map-access.md`** from the spec's "Phase 0 results": the token result, the one cookie and the headers, zero folders when signed out, the `folders` key, the lifetime so far, coordinates, folder 0, favourite types and owner ids. Never include a cookie, token or list contents.
-- [ ] **Step 2: Fixtures.** Write `export const OWNER_FIXTURES: { x: number; y: number; lat: number; lng: number }[]` into `wcongnamul.fixtures.ts` with the two pairs from phase 0 (`471350, -32433` → `33.37661909, 126.87684594`; `608064, 1159067` → `37.67127631, 127.48995646`).
+- [x] **Step 1: Write `docs/kakao-map-access.md`** from the spec's "Phase 0 results": the token result, the one cookie and the headers, zero folders when signed out, the `folders` key, the lifetime so far, coordinates, folder 0, favourite types and owner ids. Never include a cookie, token or list contents.
+- [x] **Step 2: Fixtures.** Write `export const OWNER_FIXTURES: { x: number; y: number; lat: number; lng: number }[]` into `wcongnamul.fixtures.ts` with the two pairs from phase 0 (`471350, -32433` → `33.37661909, 126.87684594`; `608064, 1159067` → `37.67127631, 127.48995646`).
 - [ ] **Step 3 (owner and his wife): compare one shared favourite's `seq`** as seen by her account and the owner's (both signed in to Kakao Map on the computer, one at a time, reading the same followed folder). **If the `seq`s differ, stop the plan here and tell the owner** (spec, "Settled after the builder check").
 - [ ] **Step 4 (owner, optional now): phone edits.** Add a place to a list in the Kakao Map phone app; within a minute, read that folder and record whether it appears.
-- [ ] **Step 5: Verdict line** in `docs/kakao-map-access.md`: `Phone sync: cookie, pending the Worker read and the 7-day lifetime check` (the token route is closed). The phase 2 plan is written once those two pass.
+- [x] **Step 5: Verdict line** in `docs/kakao-map-access.md`: `Phone sync: cookie, pending the Worker read and the 7-day lifetime check` (the token route is closed). The phase 2 plan is written once those two pass.
 - [ ] **Step 6: Commit** with `docs: Kakao Map access test results`.
 
 ### Task 1: WCONGNAMUL → WGS84 in magomap
