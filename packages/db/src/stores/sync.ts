@@ -284,11 +284,12 @@ async function decidePush(
     writes.get(table)?.set(row.id, row);
     state.get(table)?.set(row.id, row);
   };
-  const granted: string[] = [];
+  // Existing places saved by someone who couldn't see them: their device already shows the place
+  // as saved, so it won't pull everything again; re-stamp the place's shared rows instead.
+  const sharedPlaceIds: string[] = [];
   const ensureMyPlace = (placeId: string) => {
     const id = userPlaceRowId(placeId);
     if (myPlaces.has(id)) return;
-    granted.push(placeId);
     const row: Row = {
       user_id: userId,
       id,
@@ -390,6 +391,7 @@ async function decidePush(
         set(m, "applied");
         continue;
       }
+      if (!canSeePlace(m.id)) sharedPlaceIds.push(m.id);
       ensureMyPlace(m.id);
       // Ordered by when the provider was observed (the signed time), never by the client clock:
       // an older result, however recently pushed, can't undo a newer import or search.
@@ -575,7 +577,7 @@ async function decidePush(
     visit_notes: newer,
     links: newer,
   });
-  statements.push(...grantStatements(db, ctx, { placeIds: granted }));
+  statements.push(...grantStatements(db, ctx, { sharedPlaceIds }));
   statements.push(
     ...bulkUpsertQuery(db, "tombstones", newTombstones, {
       conflict: ["user_id", "table_name", "id"],

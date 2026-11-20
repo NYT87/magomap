@@ -494,16 +494,24 @@ forEachDialect("import (shared)", (makeDb) => {
     expect((await pull(db, WIFE, first.cursor)).rows).toHaveLength(0);
   });
 
-  it("delivers a list someone imported long ago to a new follower", async () => {
+  it("a new follower of a list imported long ago gets it in a full pull, and nothing shared is re-stamped", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A"), item("11", "B")])]);
     await push(db, ME, [up("places", searchedPlace("Z"))], T0);
-    const myCursor = (await pull(db, ME, null)).cursor;
+    await pull(db, ME, null);
+    const seqs = async () => {
+      const out: Record<string, number> = {};
+      for (const t of ["lists", "list_items", "places", "place_sources"] as const)
+        for (const r of await all(db, t)) out[`${t}:${r.id}`] = Number(r.seq);
+      return out;
+    };
+    const before = await seqs();
     await runImport(db, ME, [list("1", [item("10", "A"), item("11", "B")], { followed: true })], {
       at: T0 + 100,
       snapshotMs: 0,
     });
-    const got = (await pull(db, ME, myCursor)).rows.map((r) => `${r.table}:${r.row.id}`);
+    expect(await seqs()).toEqual(before);
+    const got = (await pull(db, ME, null)).rows.map((r) => `${r.table}:${r.row.id}`);
     for (const id of [
       "lists:l_kakao_1",
       "list_items:i_kakao_1_10",

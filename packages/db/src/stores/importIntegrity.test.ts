@@ -231,6 +231,37 @@ forEachDialect("import integrity", (makeDb) => {
     expect(got).toContain("place_sources:s_kakao_Y");
   });
 
+  it("gives followers an existing place newly added to their list", async () => {
+    const db = await setup(makeDb);
+    // Y is written before X, so ME's cursor, past X, is past Y too.
+    await importSnapshot(db, WIFE, [list("2", [item("20", "Y")]), list("1", [item("10", "X")])]);
+    await importSnapshot(db, ME, [list("1", [item("10", "X")], { followed: true })]);
+    const cursor = (await pull(db, ME, null)).cursor;
+    await importSnapshot(
+      db,
+      WIFE,
+      [list("2", [item("20", "Y")]), list("1", [item("10", "X"), item("11", "Y")])],
+      { at: T0 + 50 },
+    );
+    const got = (await pull(db, ME, cursor)).rows.map((r) => `${r.table}:${r.row.id}`);
+    expect(got).toContain("list_items:i_kakao_1_11");
+    expect(got).toContain("places:p_kakao_Y");
+    expect(got).toContain("place_sources:s_kakao_Y");
+  });
+
+  it("gives a user who saves an existing place from search its shared rows", async () => {
+    const db = await setup(makeDb);
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])]);
+    // ME's cursor is past the place: ME pulled a place of their own, saved after it.
+    await push(db, ME, [up("places", searchedPlace("Z"))], T0);
+    const cursor = (await pull(db, ME, null)).cursor;
+    await push(db, ME, [up("places", searchedPlace("A", { signedAt: T0 - 1000 }))], T0 + 50);
+    const got = (await pull(db, ME, cursor)).rows.map((r) => `${r.table}:${r.row.id}`);
+    expect(got).toContain("user_places:up_p_kakao_A");
+    expect(got).toContain("places:p_kakao_A");
+    expect(got).toContain("place_sources:s_kakao_A");
+  });
+
   it("records a newer search observation even when nothing changed", async () => {
     const db = await setup(makeDb);
     const north = 33.46 + 500 / 111_320;

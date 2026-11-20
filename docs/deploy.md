@@ -56,6 +56,10 @@ npx wrangler d1 create magomap --location apac
 
 - Turn on point-in-time recovery: D1 Time Travel is on by default; check the retention in the dashboard.
 
+#### Watching D1 writes
+
+The Free plan allows 100,000 rows written a day, and Cloudflare emails when 90% of it is used. The daily count is in the dashboard under **D1 → magomap → Metrics**. An import only writes what changed: one unchanged import should now cost a few hundred rows. A list or place someone newly gains is not re-written for them; their device pulls everything again once instead.
+
 ### Option B: Postgres with Hyperdrive
 
 Any Postgres 15 or newer works (Neon, Supabase, RDS, or your own).

@@ -1,4 +1,4 @@
-import type { VisitNoteRow } from "@magomap/domain";
+import type { UserListRow, UserPlaceRow, VisitNoteRow } from "@magomap/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxEntry } from "./db";
 import { fakeServer, pulled } from "./testServer";
@@ -19,6 +19,7 @@ beforeEach(() => {
   server.result = (m) => ({ mutationId: m.mutationId, status: "applied" });
   server.failPush = null;
   server.pullPages = [];
+  server.pulls = [];
   server.pullStatus = null;
   server.failCode = "x";
   server.headers = [];
@@ -35,6 +36,24 @@ const note = (id: string, body: string, updatedAt = 5): VisitNoteRow => ({
   editedByUser: false,
   createdAt: 1,
   updatedAt,
+  deletedAt: null,
+});
+
+const access = (listId: string, removedAt: number | null = null): UserListRow => ({
+  id: `ul_${listId}`,
+  listId,
+  role: "follower",
+  removedAt,
+  createdAt: 1,
+  updatedAt: 1,
+  deletedAt: null,
+});
+const saved = (placeId: string): UserPlaceRow => ({
+  id: `up_${placeId}`,
+  placeId,
+  savedAt: 1,
+  createdAt: 1,
+  updatedAt: 1,
   deletedAt: null,
 });
 
@@ -344,5 +363,72 @@ describe("sync", () => {
     expect(await db.place_locations.count()).toBe(1);
     expect((await db.meta.get("cursor"))?.value).toBe("c2");
     await editVisitNote(id, { body: "local 2" });
+  });
+
+  it("pulls everything again once when a new list arrives", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: true },
+      { rows: [], cursor: "c2", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c3", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual([
+      "/api/sync/pull?cursor=c0",
+      "/api/sync/pull?cursor=c1",
+      "/api/sync/pull",
+    ]);
+    expect((await db.meta.get("cursor"))?.value).toBe("c3");
+  });
+
+  it("pulls everything again once when a new place or a restored list arrives", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.user_lists.put(access("l_kakao_2", 5));
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "c1", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull"]);
+
+    server.pulls = [];
+    server.pullPages = [
+      { rows: [pulled("user_places", saved("p_kakao_9"))], cursor: "c2", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c-end", "/api/sync/pull"]);
+  });
+
+  it("does not pull again for lists and places it already had", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.user_lists.put(access("l_kakao_1"));
+    await db.user_places.put(saved("p_kakao_1"));
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      {
+        rows: [
+          pulled("user_lists", access("l_kakao_1", 9)),
+          pulled("user_places", saved("p_kakao_1")),
+        ],
+        cursor: "c1",
+        hasMore: false,
+      },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0"]);
+  });
+
+  it("a first pull on a new device does not pull twice", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull"]);
   });
 });

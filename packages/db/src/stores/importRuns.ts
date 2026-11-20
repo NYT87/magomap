@@ -346,8 +346,8 @@ async function decideChunk(
     if (!writes.has(table)) writes.set(table, new Map());
     writes.get(table)?.set(row.id, row);
   };
-  const grantPlaces: string[] = [];
-  const grantLists: string[] = [];
+  // Existing places newly in this list: everyone who already has the list needs them.
+  const sharedPlaceIds: string[] = [];
   // An unchanged list only records the newer snapshot time, without a new seq. Unchanged places
   // and memberships are left alone: the list's snapshot vouches for them (see newestListSnapshot).
   const touchLists: string[] = [];
@@ -401,6 +401,7 @@ async function decideChunk(
     : run.subscription_known === 1
       ? "owner"
       : (access?.role ?? "follower");
+  // Gaining the list only writes this row: the user's device then pulls everything again once.
   if (!access || access.removed_at != null || access.deleted_at != null || access.role !== role) {
     write("user_lists", {
       user_id: userId,
@@ -414,7 +415,6 @@ async function decideChunk(
       client_updated_at: 0,
       seq: 0,
     });
-    if (!access || access.removed_at != null || access.deleted_at != null) grantLists.push(listId);
   }
 
   // Places, sources, memberships and imported notes. From a list older than the shared one,
@@ -524,14 +524,13 @@ async function decideChunk(
       };
       myPlaces.set(myPlaceId, mine);
       write("user_places", mine);
-      grantPlaces.push(placeId);
     }
 
     const memberId = providerItemRowId(provider, meta.externalId, item.externalId);
     const member = members.get(memberId);
     // Everyone who has this list now sees this place: re-stamp an existing one so they receive it.
     if (listIsCurrent && places.has(placeId) && (!member || member.place_id !== placeId))
-      grantPlaces.push(placeId);
+      sharedPlaceIds.push(placeId);
     if (listIsCurrent && isNewer(snapshotAt, member)) {
       const memberRow: Row = {
         id: memberId,
@@ -613,7 +612,7 @@ async function decideChunk(
         where: sql<boolean>`visit_notes.edited_by_user = 0 AND visit_notes.deleted_at IS NULL`,
       },
     }),
-    ...grantStatements(db, ctx, { placeIds: grantPlaces, listIds: grantLists }),
+    ...grantStatements(db, ctx, { sharedPlaceIds }),
     ...(touchLists.length > 0
       ? [
           db.kysely

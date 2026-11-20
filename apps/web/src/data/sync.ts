@@ -1,5 +1,12 @@
 // Push the outbox, then pull pages; resilient to offline, sign-out, refusals and clock skew.
-import type { AnyRow, Mutation, PullResponse, PushResponse, SyncTable } from "@magomap/domain";
+import type {
+  AnyRow,
+  Mutation,
+  PullResponse,
+  PushResponse,
+  SyncTable,
+  UserListRow,
+} from "@magomap/domain";
 import { userPlaceRowId } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
 import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
@@ -191,34 +198,59 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
 
 // ---------- pull ----------
 
-/** Pulls every page; each page's rows and its cursor are stored together. */
+/**
+ * Pulls every page; each page's rows and its cursor are stored together. A list or place this
+ * device didn't have may hold shared rows written long before its cursor (the server doesn't
+ * re-stamp them), so a pull that started from a cursor and brought one in pulls everything
+ * again, once.
+ */
 export async function pullAll(db: MagomapDexie): Promise<number> {
   let pulled = 0;
-  for (;;) {
-    const cursor = (await db.meta.get("cursor"))?.value;
-    const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
-    let page: PullResponse;
-    try {
-      page = await apiFetch<PullResponse>(`/api/sync/pull${q}`, forDb(db));
-    } catch (error) {
-      throw stopFor(error);
+  const fromCursor = typeof (await db.meta.get("cursor"))?.value === "string";
+  let gained = false;
+  for (let pass = 0; ; pass++) {
+    for (;;) {
+      const cursor = (await db.meta.get("cursor"))?.value;
+      const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
+      let page: PullResponse;
+      try {
+        page = await apiFetch<PullResponse>(`/api/sync/pull${q}`, forDb(db));
+      } catch (error) {
+        throw stopFor(error);
+      }
+      await db.transaction(
+        "rw",
+        [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
+        async () => {
+          const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
+          for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
+            // A local change still on its way wins over what the server had.
+            if (pending.has(`${table}:${row.id}`)) continue;
+            if (pass === 0 && !gained) gained = await gainsAccess(db, table, row);
+            await db.table(table).put(row);
+            pulled += 1;
+          }
+          await db.meta.put({ key: "cursor", value: page.cursor });
+        },
+      );
+      if (!page.hasMore) break;
     }
-    await db.transaction(
-      "rw",
-      [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
-      async () => {
-        const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
-        for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
-          // A local change still on its way wins over what the server had.
-          if (pending.has(`${table}:${row.id}`)) continue;
-          await db.table(table).put(row);
-          pulled += 1;
-        }
-        await db.meta.put({ key: "cursor", value: page.cursor });
-      },
-    );
-    if (!page.hasMore) return pulled;
+    if (pass > 0 || !fromCursor || !gained) return pulled;
+    await db.meta.delete("cursor");
   }
+}
+
+/** A list or place this device didn't have, or a list it had been taken out of. */
+async function gainsAccess(db: MagomapDexie, table: SyncTable, row: AnyRow): Promise<boolean> {
+  if (table === "user_places") return (await db.user_places.get(row.id)) === undefined;
+  if (table !== "user_lists") return false;
+  const before = await db.user_lists.get(row.id);
+  if (!before) return true;
+  const next = row as UserListRow;
+  return (
+    (before.removedAt != null && next.removedAt == null) ||
+    (before.deletedAt != null && next.deletedAt == null)
+  );
 }
 
 // ---------- syncNow ----------
