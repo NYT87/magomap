@@ -120,6 +120,11 @@ pnpm deploy:d1        # builds the app, then deploys; or: pnpm deploy:postgres
 curl https://<your-domain>/api/health   # → {"ok":true,"db":"d1","version":"dev","commit":"unknown",…}
 ```
 
+**The Postgres setup deploys to its own Worker, `magomap-postgres`**, never over the live `magomap` one. Before its first real deploy:
+- set its own secrets with `--env postgres`;
+- set its `KAKAO_REDIRECT_URI` to its own `workers.dev` host (`https://magomap-postgres.<subdomain>.workers.dev/api/auth/kakao/callback`), and register that URI in the Kakao console;
+- fill `ALLOWED_KAKAO_USER_IDS` under `[env.postgres.vars]`. Empty means open sign-up.
+
 A hand deploy reports version `dev` and commit `unknown` from the server, so it is easy to tell apart from a release.
 
 To roll back, run `npx wrangler rollback --env d1`, or use the Worker's Deployments page.
