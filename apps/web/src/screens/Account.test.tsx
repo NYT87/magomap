@@ -246,4 +246,14 @@ describe("Account", () => {
     renderAccount({}, { ...me, displayName: null });
     expect(screen.getByRole("heading", { level: 2, name: "Kakao account" })).toBeInTheDocument();
   });
+
+  it("shows every account action as an outlined button", async () => {
+    await i18n.changeLanguage("en");
+    renderAccount();
+    for (const name of ["Sign out", "Sign out on every device", "Delete account"]) {
+      const b = screen.getByRole("button", { name });
+      expect(b.className).toMatch(/mm-button--(secondary|danger-outline)/);
+      expect(b.className).not.toMatch(/tertiary|danger-text/);
+    }
+  });
 });

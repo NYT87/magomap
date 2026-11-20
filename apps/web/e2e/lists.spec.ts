@@ -46,3 +46,23 @@ test("an old link to the import page lands on Account", async ({ page, context }
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole("heading", { name: "Import from kakao-list" })).toBeVisible();
 });
+
+test("the account actions are outlined buttons, at the bottom of the panel on desktop", async ({
+  page,
+  context,
+}, info) => {
+  await devLogin(context, "111");
+  await page.goto("/account");
+  for (const name of ["Sign out", "Sign out on every device", "Delete account"]) {
+    const style = await page
+      .getByRole("button", { name, exact: true })
+      .evaluate((el) => getComputedStyle(el).borderTopStyle);
+    expect(style).not.toBe("none");
+  }
+  if (info.project.name === "desktop") {
+    const body = await page.locator(".mm-panel__body").boundingBox();
+    const box = await page.getByRole("button", { name: "Delete account" }).boundingBox();
+    expect(body && box).toBeTruthy();
+    if (body && box) expect(body.y + body.height - (box.y + box.height)).toBeLessThanOrEqual(48);
+  }
+});
