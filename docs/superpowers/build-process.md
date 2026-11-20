@@ -112,6 +112,15 @@ VERDICT: PASS | CHANGES
 | 03 · 2 Raw coordinates, type, flags (kakao-list) | code |
 | 03 · 3 magomap endpoint (kakao-list) | code, security |
 | 03 · 4 Go-live | the owner, with `docs/launch-checklist.md` |
+| kakao-direct-sync · 0 Kakao Map access test | the owner |
+| kakao-direct-sync · 1 Coordinate converter | code |
+| kakao-direct-sync · 2 Raw Kakao Map adapter | code |
+| kakao-direct-sync · 3 Older imports keep roles | code (most capable model) |
+| kakao-direct-sync · 4 Kakao Map account binding | code, security |
+| kakao-direct-sync · 5 Upload-run API | code (most capable model), security |
+| kakao-direct-sync · 6 Extension | code, security |
+| kakao-direct-sync · 7 Sync in Account | code, ui, ux, a11y |
+| kakao-direct-sync · 8 Ship | the owner |
 
 **Models.**
 - The builder and `reviewer-security` use the most capable model.

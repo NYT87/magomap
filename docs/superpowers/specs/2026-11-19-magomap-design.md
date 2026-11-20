@@ -42,7 +42,7 @@ A map app, installed on the phone as a PWA, for keeping a personal record of pla
 
 - Trips, sharing, Google login (designed-for, not built; see "Ready for phase 2").
 - Editing Kakao notes, or changing Kakao lists' membership from `magomap`. Kakao data is read-only here; editing it stays in Kakao Map / the `kakao-list` extension.
-- Talking to Kakao Map's private endpoints directly. Only the `kakao-list` extension does that.
+- ~~Talking to Kakao Map's private endpoints directly. Only the `kakao-list` extension does that.~~ Reversed on 2026-11-20: see `2026-11-20-kakao-direct-sync-design.md`.
 - Offline map downloads. Map tiles need a connection (already-viewed areas may come from the browser cache).
 - Photos in diary entries. *(Builder's note: designer's call to keep scope down; easy to add later as an attachment table.)*
 - Multi-user editing of the same data, real-time collaboration.
@@ -447,5 +447,5 @@ Adding a provider means adding an adapter. The schema stays the same.
 
 - Exact UI styling. It should be light and calm and familiar to Kakao Map users, like `kakao-list`.
 - Pagination sizes and debounce timings.
-- The WCONGNAMUL → WGS84 conversion. This belongs in `kakao-list`; `magomap` receives lat/lng.
+- The WCONGNAMUL → WGS84 conversion. This belongs in `kakao-list`; `magomap` receives lat/lng. (For the direct Kakao Map sync, magomap converts too: see `2026-11-20-kakao-direct-sync-design.md`.)
 - Test tooling details beyond "both DB dialects are tested, and the sync and import rules have tests".
