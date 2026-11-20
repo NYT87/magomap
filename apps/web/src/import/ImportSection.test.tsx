@@ -156,4 +156,39 @@ describe("ImportSection", () => {
     const upToDate = await screen.findByText(/Up to date with your kakao-list sync/);
     expect(upToDate.closest("[aria-live='polite']")).not.toBeNull();
   });
+
+  it("moves focus off the pressed button while importing", async () => {
+    status({ latest: run(), sourceSnapshotAt: SNAP, upToDate: false });
+    runImport.mockReturnValue(new Promise(() => {}));
+    const { container } = render(<ImportSection />);
+    const button = await screen.findByRole("button", { name: "Continue import" });
+    button.focus();
+    await userEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    const active = document.activeElement;
+    expect(active).not.toBe(button);
+    expect(active).not.toBe(document.body);
+    expect(container.contains(active)).toBe(true);
+  });
+
+  it("leaves focus alone if she moved on during the import", async () => {
+    status({ latest: run(), sourceSnapshotAt: SNAP, upToDate: false });
+    let finish: (v: unknown) => void = () => {};
+    runImport.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(
+      <>
+        <ImportSection />
+        <input aria-label="elsewhere" />
+      </>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Continue import" }));
+    const other = screen.getByLabelText("elsewhere");
+    other.focus();
+    finish({});
+    await screen.findByText("Import finished");
+    await waitFor(() =>
+      expect(api.mock.calls.filter((c) => c[0] === "/api/import/status")).toHaveLength(2),
+    );
+    expect(document.activeElement).toBe(other);
+  });
 });

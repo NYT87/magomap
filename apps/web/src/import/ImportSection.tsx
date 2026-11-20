@@ -51,6 +51,7 @@ export function ImportSection() {
   const [state, setState] = useState<State>({ kind: "idle" });
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const region = useRef<HTMLDivElement>(null);
+  const section = useRef<HTMLElement>(null);
   const [freshStart, setFreshStart] = useState(false);
 
   const readStatus = () => apiFetch<ImportStatus>("/api/import/status").then(setStatus, () => {});
@@ -63,6 +64,10 @@ export function ImportSection() {
   const start = async (resumeRunId?: string) => {
     setFreshStart(false);
     setState({ kind: "running", current: 0, total: 0 });
+    // The pressed button is about to be disabled: move focus to the results region.
+    if (section.current?.contains(document.activeElement)) {
+      region.current?.focus({ preventScroll: true });
+    }
     const release = holdScreenOn();
     try {
       const summary = await runImport(
@@ -78,8 +83,16 @@ export function ImportSection() {
     } finally {
       release();
       await readStatus();
-      // The buttons change when an import ends; keep keyboard focus in the section.
-      region.current?.focus({ preventScroll: true });
+      // Keep focus from dropping to the page when the buttons change, but never pull it back
+      // from a control she moved to during the import.
+      const active = document.activeElement;
+      const lost =
+        !active ||
+        active === document.body ||
+        (section.current?.contains(active) &&
+          active instanceof HTMLButtonElement &&
+          active.disabled);
+      if (lost) region.current?.focus({ preventScroll: true });
     }
   };
 
@@ -91,7 +104,7 @@ export function ImportSection() {
   const resumable = stopped !== null && !newer && !upToDate && state.kind !== "done";
   const running = state.kind === "running";
   return (
-    <section className="mm-card mm-stack" aria-labelledby={headingId}>
+    <section className="mm-card mm-stack" aria-labelledby={headingId} ref={section}>
       <h2 className="mm-h4" id={headingId}>
         {t("import.title")}
       </h2>
