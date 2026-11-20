@@ -194,14 +194,6 @@ a {
   box-shadow: var(--shadow);
 }
 
-.mm-phone-status {
-  position: absolute;
-  top: calc(64px + env(safe-area-inset-top));
-  left: var(--space-md);
-  right: 80px;
-  z-index: 3;
-}
-
 .mm-page {
   position: absolute;
   inset: 0;
@@ -628,6 +620,12 @@ a {
   flex-direction: column;
   gap: var(--space-sm);
   pointer-events: none;
+}
+
+.mm-map-notes__live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
 .mm-note {
@@ -1469,10 +1467,6 @@ a {
   min-width: 0;
 }
 
-.mm-phone-status .mm-sync {
-  justify-content: flex-start;
-}
-
 .mm-sync__pill {
   display: inline-flex;
   align-items: center;
@@ -1489,10 +1483,6 @@ a {
   font-weight: 500;
   line-height: 1.35;
   text-decoration: none;
-}
-
-.mm-phone-status .mm-sync__pill {
-  box-shadow: var(--shadow);
 }
 
 .mm-sync__pill[data-tone="ok"] svg {
@@ -1514,6 +1504,64 @@ a {
   color: var(--color-error);
   border-color: var(--color-error);
   cursor: pointer;
+}
+
+/* Phones: one icon instead of the pills. 44 px, centred in the 48 px map-buttons column. */
+.mm-sync--compact {
+  position: relative;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+.mm-sync__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.mm-sync__icon[data-tone="ok"] svg {
+  color: var(--color-success);
+}
+
+.mm-sync__icon[data-tone="warn"] {
+  border-color: var(--color-warning);
+}
+
+.mm-sync__icon[data-tone="warn"] svg {
+  color: var(--color-warning);
+}
+
+.mm-sync__dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-error);
+  border: 2px solid var(--color-bg);
+  border-radius: 50%;
+  box-sizing: content-box;
+  transform: translate(25%, -25%);
+}
+
+.mm-sync__sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.mm-sync__sheet > p {
+  margin: 0;
 }
 
 .mm-rejected {
@@ -1579,10 +1627,6 @@ a {
   min-width: 0;
 }
 
-.mm-phone-status .mm-status {
-  align-items: flex-start;
-}
-
 /* Nothing waiting: the slot takes no space but stays in the accessibility tree, so its live
    region is already there when the message appears (display: none would miss the announcement). */
 .mm-update-slot:not(:has(.mm-update)) {
@@ -1612,8 +1656,15 @@ a {
   font-size: 14px;
 }
 
-.mm-phone-status .mm-update {
+/* On the phone map the banner sits in the notes stack; the stack itself ignores touches. */
+.mm-map-notes .mm-update {
+  pointer-events: auto;
   box-shadow: var(--shadow);
+}
+
+/* On phone pages it is a strip under the header. */
+.mm-page__notice .mm-update {
+  margin: var(--space-sm) var(--space-md) 0;
 }
 
 .mm-update__icon {

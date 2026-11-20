@@ -71,36 +71,83 @@ function RejectedSheet({ onClose }: { onClose: () => void }) {
 }
 
 /** One calm line about whether her changes are safe and on the server. */
-export function SyncIndicator() {
+export function SyncIndicator({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
   const status = useSyncStatus();
   const online = useOnline();
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState<"sync" | "rejected" | null>(null);
   const n = status.unsynced;
 
+  const size = compact ? 20 : 16;
   let tone: "ok" | "busy" | "warn" | "error" = "ok";
-  let icon = <Check aria-hidden size={16} strokeWidth={2} />;
+  let icon = <Check aria-hidden size={size} strokeWidth={2} />;
   let text = t("sync.synced");
   if (!online || status.state === "offline") {
     tone = "warn";
-    icon = <CloudOff aria-hidden size={16} strokeWidth={2} />;
+    icon = <CloudOff aria-hidden size={size} strokeWidth={2} />;
     text = n > 0 ? t("sync.offlineSaved", { count: n }) : t("sync.offline");
   } else if (status.state === "needs_signin") {
     tone = "warn";
-    icon = <LogIn aria-hidden size={16} strokeWidth={2} />;
+    icon = <LogIn aria-hidden size={size} strokeWidth={2} />;
     text = n > 0 ? t("sync.needsSignin", { count: n }) : t("sync.needsSigninNone");
   } else if (status.state === "error") {
     tone = "warn";
-    icon = <CloudOff aria-hidden size={16} strokeWidth={2} />;
+    icon = <CloudOff aria-hidden size={size} strokeWidth={2} />;
     text = t("sync.error");
   } else if (status.state === "clock_ahead") {
     tone = "warn";
-    icon = <AlertTriangle aria-hidden size={16} strokeWidth={2} />;
+    icon = <AlertTriangle aria-hidden size={size} strokeWidth={2} />;
     text = t("sync.clockAhead");
   } else if (status.state === "syncing" || n > 0) {
     tone = "busy";
-    icon = <Loader aria-hidden size={16} strokeWidth={2} />;
+    icon = <Loader aria-hidden size={size} strokeWidth={2} />;
     text = t("sync.syncing");
+  }
+
+  if (compact) {
+    return (
+      <div className="mm-sync mm-sync--compact">
+        {/* The same live region as below: it stays mounted, so every change is announced. */}
+        <span className="mm-visually-hidden" role="status">
+          {text}
+        </span>
+        <button
+          type="button"
+          className="mm-sync__icon"
+          data-tone={tone}
+          aria-label={text}
+          onClick={() => setSheet("sync")}
+        >
+          {icon}
+          {status.rejected > 0 && <span className="mm-sync__dot" aria-hidden />}
+        </button>
+        {sheet === "sync" && (
+          <Sheet title={t("sync.title")} onClose={() => setSheet(null)}>
+            <div className="mm-sync__sheet">
+              <p>{text}</p>
+              {status.state === "needs_signin" && (
+                <a href="/api/auth/kakao/start" className="mm-sync__pill mm-sync__pill--action">
+                  <LogIn aria-hidden size={16} strokeWidth={2} />
+                  {t("sync.signIn")}
+                </a>
+              )}
+              {status.rejected > 0 && (
+                <button
+                  type="button"
+                  className="mm-sync__pill"
+                  data-tone="error"
+                  onClick={() => setSheet("rejected")}
+                >
+                  <AlertTriangle aria-hidden size={16} strokeWidth={2} />
+                  {t("sync.rejected", { count: status.rejected })}
+                </button>
+              )}
+            </div>
+          </Sheet>
+        )}
+        {sheet === "rejected" && <RejectedSheet onClose={() => setSheet(null)} />}
+      </div>
+    );
   }
 
   return (
@@ -129,13 +176,13 @@ export function SyncIndicator() {
           type="button"
           className="mm-sync__pill"
           data-tone="error"
-          onClick={() => setSheet(true)}
+          onClick={() => setSheet("rejected")}
         >
-          <AlertTriangle aria-hidden size={16} strokeWidth={2} />
+          <AlertTriangle aria-hidden size={size} strokeWidth={2} />
           {t("sync.rejected", { count: status.rejected })}
         </button>
       )}
-      {sheet && <RejectedSheet onClose={() => setSheet(false)} />}
+      {sheet === "rejected" && <RejectedSheet onClose={() => setSheet(null)} />}
     </div>
   );
 }

@@ -234,6 +234,8 @@
     }
   },
   "sync": {
+    "title": "Sync",
+    "signIn": "Sign in again",
     "synced": "Synced",
     "syncing": "Syncing…",
     "offline": "Offline",

@@ -234,6 +234,8 @@
     }
   },
   "sync": {
+    "title": "동기화",
+    "signIn": "다시 로그인",
     "synced": "동기화됨",
     "syncing": "동기화 중…",
     "offline": "오프라인",

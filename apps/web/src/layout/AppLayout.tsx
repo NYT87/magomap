@@ -1,5 +1,5 @@
 import { ArrowLeft, List, Map as MapIcon, UserRound } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { useLayout } from "./useLayout";
@@ -11,8 +11,18 @@ interface Props {
   map: ReactNode;
   /** The routed page (ignored at "/" on phones, where the map is the page). */
   children: ReactNode;
-  /** Shown in the header on every screen (the sync indicator). */
+  /** The sync indicator: in the header on desktop and on phone pages (the map has its own). */
   status?: ReactNode;
+  /** A notice that stays mounted: under the status on desktop, under the header on phone pages,
+   *  and where the map renders `<NoticeSlot />` on the phone map. */
+  notice?: ReactNode;
+}
+
+const NoticeContext = createContext<ReactNode>(null);
+
+/** Where the phone map shows the layout's notice (in its notes above the nav). */
+export function NoticeSlot() {
+  return <>{useContext(NoticeContext)}</>;
 }
 
 const NAV = [
@@ -44,7 +54,7 @@ function Nav({ current }: { current: string }) {
 }
 
 /** Phone: full-screen map, pages over it with back. Desktop: a side panel beside the map. */
-export function AppLayout({ map, children, status }: Props) {
+export function AppLayout({ map, children, status, notice }: Props) {
   const layout = useLayout();
   const [location, navigate] = useLocation();
   const { t } = useTranslation();
@@ -100,7 +110,10 @@ export function AppLayout({ map, children, status }: Props) {
               <img src="/icons/favicon.svg" alt="" width={28} height={28} />
               <span>{t("app.name")}</span>
             </Link>
-            {status}
+            <div className="mm-status">
+              {status}
+              {notice}
+            </div>
           </header>
           <Nav current={location} />
           <div className="mm-panel__body">{children}</div>
@@ -114,13 +127,10 @@ export function AppLayout({ map, children, status }: Props) {
     <div className="mm-shell mm-shell--phone">
       {/* One map element throughout (no remount); hidden from everyone while a page covers it. */}
       <main className="mm-map" hidden={!atRoot}>
-        {map}
+        <NoticeContext.Provider value={atRoot ? notice : null}>{map}</NoticeContext.Provider>
       </main>
       {atRoot ? (
-        <>
-          <div className="mm-phone-status">{status}</div>
-          <Nav current={location} />
-        </>
+        <Nav current={location} />
       ) : (
         <main className="mm-page" ref={page}>
           <header className="mm-page__header">
@@ -130,6 +140,7 @@ export function AppLayout({ map, children, status }: Props) {
             </button>
             {status}
           </header>
+          <div className="mm-page__notice">{notice}</div>
           <div className="mm-page__body">{children}</div>
         </main>
       )}
