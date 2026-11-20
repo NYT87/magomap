@@ -1,5 +1,5 @@
 // The server-driven Kakao import: the app only says "next page"; the server fetches from kakao-list.
-import type { ApiErrorCode, ImportSummary } from "@magomap/domain";
+import { type ApiErrorCode, type ImportSummary, LIMITS } from "@magomap/domain";
 import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
 import { currentDb, dbUserId } from "../data/db";
 import { syncNow } from "../data/sync";
@@ -52,7 +52,13 @@ type ResumeLists = (RunLists[number] & { pagesDone: number; finished: boolean })
  */
 export async function runImport(
   onProgress: (p: { listIndex: number; listCount: number }) => void,
-  opts: { resumeRunId?: string; onFreshStart?: () => void } = {},
+  opts: {
+    resumeRunId?: string;
+    /** Called once the run is known, started or continued. */
+    onRun?: (runId: string) => void;
+    /** Called when kakao-list synced since the stopped run, so the import began again. */
+    onFreshStart?: () => void;
+  } = {},
 ): Promise<ImportSummary> {
   const account = dbUserId(currentDb());
   let run: { runId: string; lists: ResumeLists } | undefined;
@@ -63,7 +69,8 @@ export async function runImport(
       const code = codeOf(error);
       if (code !== "snapshot_changed" && code !== "run_closed")
         throw new ImportError("start", code);
-      opts.onFreshStart?.();
+      // A closed run just means there is nothing to continue; only a newer sync is worth saying.
+      if (code === "snapshot_changed") opts.onFreshStart?.();
     }
   }
   if (!run) {
@@ -79,6 +86,7 @@ export async function runImport(
       throw new ImportError("start", codeOf(error));
     }
   }
+  opts.onRun?.(run.runId);
   const base = `/api/import/runs/${encodeURIComponent(run.runId)}`;
   for (const [listIndex, list] of run.lists.entries()) {
     if (list.finished) continue;
@@ -86,7 +94,7 @@ export async function runImport(
     const at = `${base}/lists/${encodeURIComponent(list.externalId)}`;
     try {
       // A list stopped after its last page only needs its finish call.
-      const pageCount = Math.max(1, Math.ceil(list.itemCount / 500));
+      const pageCount = Math.max(1, Math.ceil(list.itemCount / LIMITS.importChunkItems));
       for (let page = list.pagesDone; page < pageCount; page++) {
         const res = await post<{ done: boolean }>(account, `${at}/pages/${page}`);
         if (res.done) break;

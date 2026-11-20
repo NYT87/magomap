@@ -206,6 +206,24 @@ describe("runImport", () => {
       ]);
     });
 
+    it("tells which run it works on, whether continued or started", async () => {
+      server([{ externalId: "101", itemCount: 1 }]);
+      const onRun = vi.fn();
+      await runImport(() => {}, { resumeRunId: "r1", onRun });
+      await runImport(() => {}, { onRun });
+      expect(onRun.mock.calls).toEqual([["r1"], ["r1"]]);
+    });
+
+    it("starts fresh without saying 'newer sync' when the run was already closed", async () => {
+      server([{ externalId: "101", itemCount: 1 }], (path) =>
+        path.endsWith("/resume") ? new ApiError(409, { error: "run_closed" }) : null,
+      );
+      const onFreshStart = vi.fn();
+      await runImport(() => {}, { resumeRunId: "r1", onFreshStart });
+      expect(onFreshStart).not.toHaveBeenCalled();
+      expect(api.mock.calls[1]?.[0]).toBe("/api/import/runs");
+    });
+
     it("reports other resume errors as a failed start", async () => {
       server(lists, (path) =>
         path.endsWith("/resume") ? new ApiError(502, { error: "kakao_list_unavailable" }) : null,
