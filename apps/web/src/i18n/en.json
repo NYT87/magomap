@@ -256,6 +256,7 @@
   "update": {
     "ready": "A new version is ready",
     "now": "Update",
-    "later": "Later"
+    "later": "Later",
+    "updating": "Updating…"
   }
 }
