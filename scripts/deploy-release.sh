@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # Builds the web app and deploys the Worker (D1) for one release.
-# Usage: scripts/deploy-release.sh <version> <sha>
-#   <version>  the release version, e.g. 0.2.0; must equal the root package.json version
-#   <sha>      the release commit (40 hex characters); must be the checked-out commit
-# The web build and the Worker get the same commit (7 characters) and build time, so one
-# release shows identical app and server lines in Account.
-# Wrangler reads CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment; this
-# script never prints them. Exits non-zero on any failure, before building when a check fails.
+#
+# Usage:
+#   scripts/deploy-release.sh build  <version> <sha>             builds apps/web/dist; prints the build time
+#   scripts/deploy-release.sh deploy <version> <sha> <built-at>  deploys the already-built apps/web/dist
+#   scripts/deploy-release.sh <version> <sha>                    both, in one go (manual/emergency use)
+#
+#   <version>   the release version, e.g. 0.2.0; must equal the root package.json version
+#   <sha>       the release commit (40 hex characters); must be the checked-out commit
+#   <built-at>  the build time printed by `build` (UTC, YYYY-MM-DDTHH:MM:SSZ)
+#
+# The web build and the Worker get the same commit (7 characters) and build time, so one release
+# shows identical app and server lines in Account. CI builds in a job without secrets and deploys
+# in another, so `build` and `deploy` are separate steps there.
+# Wrangler reads CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment; this script
+# never prints them. Exits non-zero on any failure, before building or deploying when a check fails.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,8 +22,16 @@ fail() {
   echo "deploy-release: $1" >&2
   exit 1
 }
+usage="usage: scripts/deploy-release.sh [build|deploy] <version> <sha> [<built-at>]"
 
-[[ $# -eq 2 ]] || fail "usage: scripts/deploy-release.sh <version> <sha>"
+mode=all
+case "${1:-}" in
+  build | deploy) mode=$1; shift ;;
+esac
+case "$mode" in
+  build | all) [[ $# -eq 2 ]] || fail "$usage" ;;
+  deploy) [[ $# -eq 3 ]] || fail "$usage" ;;
+esac
 version=$1
 sha=$2
 
@@ -29,11 +45,33 @@ head=$(git rev-parse HEAD)
 [[ "$sha" == "$head" ]] || fail "sha $sha is not the checked-out commit $head"
 
 APP_COMMIT=${sha:0:7}
-APP_BUILT_AT=$(date -u +%FT%TZ)
+if [[ "$mode" == deploy ]]; then
+  APP_BUILT_AT=$3
+  [[ "$APP_BUILT_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+    fail "built-at '$APP_BUILT_AT' is not YYYY-MM-DDTHH:MM:SSZ"
+  [[ -f apps/web/dist/index.html ]] || fail "apps/web/dist has no built app; run the build step first"
+  # Cloudflare reads these from the asset folder as config (headers, redirects, ignore rules).
+  # The app ships none, so one appearing means the build was tampered with.
+  for control in _headers _redirects _routes.json .assetsignore; do
+    [[ ! -e "apps/web/dist/$control" ]] || fail "apps/web/dist/$control is not expected in the built app"
+  done
+else
+  APP_BUILT_AT=$(date -u +%FT%TZ)
+fi
 export APP_COMMIT APP_BUILT_AT
-echo "deploy-release: magomap $version, commit $APP_COMMIT, built $APP_BUILT_AT"
 
-pnpm --filter @magomap/web build
+if [[ "$mode" != deploy ]]; then
+  echo "deploy-release: building magomap $version, commit $APP_COMMIT, built $APP_BUILT_AT" >&2
+  # Build output goes to stderr: in `build` mode stdout carries only the build time.
+  pnpm --filter @magomap/web build >&2
+fi
+
+if [[ "$mode" == build ]]; then
+  echo "$APP_BUILT_AT"
+  exit 0
+fi
+
+echo "deploy-release: deploying magomap $version, commit $APP_COMMIT, built $APP_BUILT_AT" >&2
 pnpm --filter @magomap/api exec wrangler deploy --env d1 \
   --var "APP_VERSION:$version" \
   --var "APP_COMMIT:$APP_COMMIT" \

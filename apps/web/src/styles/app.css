@@ -1579,8 +1579,15 @@ a {
   align-items: flex-start;
 }
 
-.mm-update-slot:empty:not(:focus) {
-  display: none;
+/* Nothing waiting: the slot takes no space but stays in the accessibility tree, so its live
+   region is already there when the message appears (display: none would miss the announcement). */
+.mm-update-slot:not(:has(.mm-update)) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .mm-update-slot:focus {
