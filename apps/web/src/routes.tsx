@@ -1,8 +1,7 @@
 import type { Me } from "@magomap/domain";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 import { PlaceScreen } from "./place/PlaceScreen";
 import { Account } from "./screens/Account";
-import { ImportScreen } from "./screens/ImportScreen";
 import { ListScreen } from "./screens/ListScreen";
 import { ListsScreen } from "./screens/ListsScreen";
 import { HomePanel } from "./screens/MapScreen";
@@ -18,8 +17,9 @@ export function PageRoutes({ me }: { me: Me }) {
         <ListsScreen />
       </Route>
       <Route path="/lists/:id">{(p) => <ListScreen id={decodeURIComponent(p.id)} />}</Route>
+      {/* Import lives in Account now; old links still land there. */}
       <Route path="/import">
-        <ImportScreen />
+        <Redirect to="/account" replace />
       </Route>
       <Route path="/places/:id">
         {(p) => <PlaceScreen key={p.id} id={decodeURIComponent(p.id)} />}

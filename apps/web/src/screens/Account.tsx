@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { closeUserDb, dbName, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
+import { ImportSection } from "../import/ImportSection";
 
 type Dialog =
   | null
@@ -94,6 +95,8 @@ export function Account({ me }: { me: Me }) {
         <p className="mm-muted">{t("account.kakao")}</p>
         <p className="mm-muted">{t("account.linkGoogle")}</p>
       </section>
+
+      <ImportSection />
 
       <section className="mm-card">
         <label className="mm-field">

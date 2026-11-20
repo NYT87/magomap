@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import "../i18n";
+import i18n from "../i18n";
 import { setViewportWidth } from "../test/setup";
 import { AppLayout } from "./AppLayout";
 
@@ -38,5 +38,16 @@ describe("AppLayout", () => {
     renderAt("/", 390);
     expect(screen.queryByText("place page")).toBeNull();
     expect(screen.getByTestId("map")).toBeInTheDocument();
+  });
+
+  it("has Map, Lists and Account tabs, and no Import tab", async () => {
+    await i18n.changeLanguage("en");
+    renderAt("/account", 1440);
+    const nav = screen.getByRole("navigation");
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual(["Map", "Lists", "Account"]);
   });
 });

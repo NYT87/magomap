@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import { NetworkError } from "../api/client";
 import { SyncContext, type SyncControls } from "../data/SyncContext";
@@ -15,6 +15,22 @@ vi.mock("../api/client", async (orig) => {
   return { ...actual, apiFetch: vi.fn(async () => ({})) };
 });
 const { apiFetch } = await import("../api/client");
+
+/** Answers one API path once with `answer`; every other call gets the default empty reply. */
+function answerOnce(path: string, answer: () => Promise<unknown>) {
+  let used = false;
+  vi.mocked(apiFetch).mockImplementation(async (p: string) => {
+    if (p === path && !used) {
+      used = true;
+      return answer();
+    }
+    return {};
+  });
+}
+
+beforeEach(() => {
+  vi.mocked(apiFetch).mockImplementation(async () => ({}));
+});
 
 const me = { userId: "u1", displayName: "지은", identities: [{ provider: "kakao" as const }] };
 
@@ -97,7 +113,7 @@ describe("Account", () => {
 
   it("says plainly that signing out needs a connection", async () => {
     await i18n.changeLanguage("en");
-    vi.mocked(apiFetch).mockRejectedValueOnce(new NetworkError());
+    answerOnce("/api/auth/logout", () => Promise.reject(new NetworkError()));
     const user = userEvent.setup();
     renderAccount();
     await user.click(screen.getByRole("button", { name: "Sign out" }));
@@ -129,7 +145,8 @@ describe("Account", () => {
     await i18n.changeLanguage("en");
     openUserDb("u1");
     let answer: (v: unknown) => void = () => {};
-    vi.mocked(apiFetch).mockImplementationOnce(
+    answerOnce(
+      "/api/account",
       () =>
         new Promise((r) => {
           answer = r;
@@ -189,7 +206,8 @@ describe("Account", () => {
     await i18n.changeLanguage("en");
     openUserDb("u1");
     let answer: (v: unknown) => void = () => {};
-    vi.mocked(apiFetch).mockImplementationOnce(
+    answerOnce(
+      "/api/auth/logout",
       () =>
         new Promise((r) => {
           answer = r;
@@ -204,5 +222,14 @@ describe("Account", () => {
     openUserDb("u1");
     answer({});
     await waitFor(() => expect(window.location.pathname).toBe("/signin"));
+  });
+
+  it("offers importing from kakao-list", async () => {
+    await i18n.changeLanguage("en");
+    renderAccount();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Import from kakao-list" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import from kakao-list" })).toBeInTheDocument();
   });
 });

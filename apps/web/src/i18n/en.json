@@ -6,7 +6,6 @@
   "nav": {
     "map": "Map",
     "lists": "Lists",
-    "import": "Import",
     "account": "Account",
     "back": "Back",
     "menu": "Menu"
@@ -158,9 +157,9 @@
     "newTab": "(opens in a new tab)"
   },
   "import": {
-    "title": "Import from Kakao",
+    "title": "Import from kakao-list",
     "lead": "Bring in your Kakao Map lists from kakao-list. Your notes here are never changed by an import.",
-    "start": "Import from Kakao",
+    "start": "Import from kakao-list",
     "again": "Import again",
     "running": "Importing list {{current}} of {{total}}…",
     "starting": "Getting your lists from kakao-list…",

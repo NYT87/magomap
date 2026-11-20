@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, List, Map as MapIcon, UserRound } from "lucide-react";
+import { ArrowLeft, List, Map as MapIcon, UserRound } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
@@ -18,7 +18,6 @@ interface Props {
 const NAV = [
   { href: "/", key: "nav.map", Icon: MapIcon },
   { href: "/lists", key: "nav.lists", Icon: List },
-  { href: "/import", key: "nav.import", Icon: Download },
   { href: "/account", key: "nav.account", Icon: UserRound },
 ] as const;
 
@@ -74,7 +73,7 @@ export function AppLayout({ map, children, status }: Props) {
   // The window title follows the screen; on phones, focus moves to the new page's heading.
   useEffect(() => {
     const section = location.split("/")[1] ?? "";
-    const key = { lists: "nav.lists", import: "nav.import", account: "nav.account" }[section];
+    const key = { lists: "nav.lists", account: "nav.account" }[section];
     document.title = key ? `${t(key)} – ${t("app.name")}` : t("app.name");
   }, [location, t]);
   const page = useRef<HTMLElement>(null);

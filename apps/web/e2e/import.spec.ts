@@ -8,7 +8,8 @@ test("re-imports keep notes, mark removed favourites and show previous locations
   await setVariant(page, { name: "base" });
   await devLogin(context, "111");
   await importFromKakao(page);
-  await expect(page.locator(".mm-card").first()).toContainText(/added|already up to date/);
+  const importSection = page.getByRole("region", { name: "Import from kakao-list" });
+  await expect(importSection).toContainText(/added|already up to date/);
 
   // The favourite disappears from Kakao: the place stays, marked, with its note.
   await setVariant(page, { name: "withoutFavourite", args: ["9001"] });

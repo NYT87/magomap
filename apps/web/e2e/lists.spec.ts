@@ -39,3 +39,10 @@ test("the Lists tab is where lists are switched on and off the map", async ({
     await expect(page.locator(".mm-panel__body").getByText(BADA_TITLE)).toHaveCount(0);
   }
 });
+
+test("an old link to the import page lands on Account", async ({ page, context }) => {
+  await devLogin(context, "111");
+  await page.goto("/import");
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.getByRole("heading", { name: "Import from kakao-list" })).toBeVisible();
+});
