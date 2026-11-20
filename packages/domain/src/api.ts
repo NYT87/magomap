@@ -11,6 +11,12 @@ export interface PublicConfig {
   devLoginEnabled: boolean;
 }
 
+export interface BuildInfo {
+  version: string;
+  commit: string;
+  builtAt: string | null;
+}
+
 export interface SearchResult {
   provider: string;
   externalId: string;

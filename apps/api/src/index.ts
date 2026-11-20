@@ -1,4 +1,4 @@
-import type { PublicConfig } from "@magomap/domain";
+import type { BuildInfo, PublicConfig } from "@magomap/domain";
 import { Hono } from "hono";
 import { sql } from "kysely";
 import { authRoutes } from "./auth/routes";
@@ -15,7 +15,13 @@ app.use("*", withDb);
 
 app.get("/health", async (c) => {
   await sql`SELECT 1`.execute(c.var.db.kysely);
-  return c.json({ ok: true, db: c.env.DB_DRIVER });
+  const build: BuildInfo = {
+    version: c.env.APP_VERSION || "dev",
+    commit: c.env.APP_COMMIT || "unknown",
+    builtAt: c.env.APP_BUILT_AT || null,
+  };
+  c.header("Cache-Control", "no-store");
+  return c.json({ ok: true, db: c.env.DB_DRIVER, ...build });
 });
 
 app.get("/config", (c) => {
