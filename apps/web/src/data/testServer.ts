@@ -11,6 +11,8 @@ export interface FakeServer {
   pullPages: PullResponse[];
   /** The path of every pull request, in order. */
   pulls: string[];
+  /** When set, the pull with this number (1 = first) fails as a dropped connection. */
+  failPullAt: number | null;
   pullStatus: number | null;
   /** Error code in the body of a failed push (default "x"). */
   failCode: string;
@@ -28,6 +30,7 @@ export function fakeServer(): FakeServer {
     failPush: null,
     pullPages: [],
     pulls: [],
+    failPullAt: null,
     pullStatus: null,
     failCode: "x",
     pushGate: null,
@@ -46,6 +49,7 @@ export function fakeServer(): FakeServer {
       }
       if (path.startsWith("/api/sync/pull")) {
         server.pulls.push(path);
+        if (server.pulls.length === server.failPullAt) throw new NetworkError();
         if (server.pullStatus === 401) throw new UnauthorizedError();
         const page = server.pullPages.shift() ?? { rows: [], cursor: "c-end", hasMore: false };
         return page as T;

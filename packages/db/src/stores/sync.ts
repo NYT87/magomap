@@ -284,8 +284,9 @@ async function decidePush(
     writes.get(table)?.set(row.id, row);
     state.get(table)?.set(row.id, row);
   };
-  // Existing places saved by someone who couldn't see them: their device already shows the place
-  // as saved, so it won't pull everything again; re-stamp the place's shared rows instead.
+  // Existing places saved from search that no list of the user's shows: the device already shows
+  // the place as saved (even if the server saved it too, from an import), so it won't pull
+  // everything again; re-stamp the place's shared rows instead (a few rows per save).
   const sharedPlaceIds: string[] = [];
   const ensureMyPlace = (placeId: string) => {
     const id = userPlaceRowId(placeId);
@@ -391,7 +392,7 @@ async function decidePush(
         set(m, "applied");
         continue;
       }
-      if (!canSeePlace(m.id)) sharedPlaceIds.push(m.id);
+      if (!listedPlaces.has(m.id)) sharedPlaceIds.push(m.id);
       ensureMyPlace(m.id);
       // Ordered by when the provider was observed (the signed time), never by the client clock:
       // an older result, however recently pushed, can't undo a newer import or search.

@@ -20,6 +20,7 @@ beforeEach(() => {
   server.failPush = null;
   server.pullPages = [];
   server.pulls = [];
+  server.failPullAt = null;
   server.pullStatus = null;
   server.failCode = "x";
   server.headers = [];
@@ -371,16 +372,33 @@ describe("sync", () => {
     await db.meta.put({ key: "cursor", value: "c0" });
     server.pullPages = [
       { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: true },
-      { rows: [], cursor: "c2", hasMore: false },
-      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c3", hasMore: false },
+      // The full pull, straight away: the rest of the cursor's pages would come again anyway.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: true },
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "f2", hasMore: false },
     ];
     await pullAll(db);
     expect(server.pulls).toEqual([
       "/api/sync/pull?cursor=c0",
-      "/api/sync/pull?cursor=c1",
       "/api/sync/pull",
+      "/api/sync/pull?cursor=f1",
     ]);
-    expect((await db.meta.get("cursor"))?.value).toBe("c3");
+    expect((await db.meta.get("cursor"))?.value).toBe("f2");
+  });
+
+  it("still pulls everything after a pull that brought a new list was cut off", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: true },
+    ];
+    server.failPullAt = 2;
+    await expect(pullAll(db)).rejects.toThrow();
+    expect(await db.user_lists.get("ul_l_kakao_1")).toBeTruthy();
+    server.pulls = [];
+    server.failPullAt = null;
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull"]);
   });
 
   it("pulls everything again once when a new place or a restored list arrives", async () => {

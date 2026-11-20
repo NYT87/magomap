@@ -99,6 +99,7 @@
     "showPrevious": "Show previous locations",
     "count_one": "{{count}} place",
     "count_other": "{{count}} places",
+    "downloading": "Downloading…",
     "by": "by {{name}}",
     "hint": "Your Kakao lists show up here after you import them from kakao-list in Account.",
     "toggle": "Show {{name}} on the map"
@@ -220,6 +221,7 @@
     "deleteBody": "The list goes away, but its places are kept, with their notes and links.",
     "readOnly": "From Kakao, read-only. Change it in Kakao Map, then import again.",
     "empty": "No places in this list yet.",
+    "downloading": "Still downloading this list's places…",
     "removed": "Removed from Kakao",
     "notFound": "This list isn't on this device.",
     "colors": {

@@ -201,42 +201,44 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
 /**
  * Pulls every page; each page's rows and its cursor are stored together. A list or place this
  * device didn't have may hold shared rows written long before its cursor (the server doesn't
- * re-stamp them), so a pull that started from a cursor and brought one in pulls everything
- * again, once.
+ * re-stamp them). So when a pull that started from a cursor brings one in, that page drops the
+ * cursor instead of storing it, and the pull goes on from the start, once. An interruption then
+ * resumes the full pull rather than forgetting it was needed.
  */
 export async function pullAll(db: MagomapDexie): Promise<number> {
   let pulled = 0;
-  const fromCursor = typeof (await db.meta.get("cursor"))?.value === "string";
-  let gained = false;
-  for (let pass = 0; ; pass++) {
-    for (;;) {
-      const cursor = (await db.meta.get("cursor"))?.value;
-      const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
-      let page: PullResponse;
-      try {
-        page = await apiFetch<PullResponse>(`/api/sync/pull${q}`, forDb(db));
-      } catch (error) {
-        throw stopFor(error);
-      }
-      await db.transaction(
-        "rw",
-        [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
-        async () => {
-          const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
-          for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
-            // A local change still on its way wins over what the server had.
-            if (pending.has(`${table}:${row.id}`)) continue;
-            if (pass === 0 && !gained) gained = await gainsAccess(db, table, row);
-            await db.table(table).put(row);
-            pulled += 1;
-          }
-          await db.meta.put({ key: "cursor", value: page.cursor });
-        },
-      );
-      if (!page.hasMore) break;
+  let mayRestart = typeof (await db.meta.get("cursor"))?.value === "string";
+  for (;;) {
+    const cursor = (await db.meta.get("cursor"))?.value;
+    const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
+    let page: PullResponse;
+    try {
+      page = await apiFetch<PullResponse>(`/api/sync/pull${q}`, forDb(db));
+    } catch (error) {
+      throw stopFor(error);
     }
-    if (pass > 0 || !fromCursor || !gained) return pulled;
-    await db.meta.delete("cursor");
+    let restart = false;
+    await db.transaction(
+      "rw",
+      [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
+      async () => {
+        const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
+        for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
+          // A local change still on its way wins over what the server had.
+          if (pending.has(`${table}:${row.id}`)) continue;
+          if (mayRestart && !restart) restart = await gainsAccess(db, table, row);
+          await db.table(table).put(row);
+          pulled += 1;
+        }
+        if (restart) await db.meta.delete("cursor");
+        else await db.meta.put({ key: "cursor", value: page.cursor });
+      },
+    );
+    if (restart) {
+      mayRestart = false;
+      continue;
+    }
+    if (!page.hasMore) return pulled;
   }
 }
 

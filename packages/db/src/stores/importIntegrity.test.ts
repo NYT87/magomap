@@ -262,6 +262,36 @@ forEachDialect("import integrity", (makeDb) => {
     expect(got).toContain("place_sources:s_kakao_A");
   });
 
+  it("gives a search save its shared rows when an import already saved the place unseen", async () => {
+    const db = await setup(makeDb);
+    // A is in WIFE's list 2 only; ME follows list 1, which holds B.
+    await importSnapshot(db, WIFE, [list("1", [item("10", "B")]), list("2", [item("20", "A")])], {
+      snapshot: T0 + 100,
+    });
+    await importSnapshot(db, ME, [list("1", [item("10", "B")], { followed: true })], {
+      at: T0 + 10,
+      snapshot: T0 + 100,
+    });
+    await push(db, ME, [up("places", searchedPlace("Z"))], T0 + 20);
+    const cursor = (await pull(db, ME, null)).cursor;
+    // An older snapshot of list 1 with a note on A: ME saves A, though no list ME has shows it.
+    await importSnapshot(
+      db,
+      ME,
+      [list("1", [item("11", "A", { localNote: "맛있음" })], { followed: true })],
+      { at: T0 + 30, snapshot: T0 },
+    );
+    expect((await pull(db, ME, cursor)).rows.map((r) => `${r.table}:${r.row.id}`)).not.toContain(
+      "places:p_kakao_A",
+    );
+    // Meanwhile the device had saved A from search offline (so it already has its user_places
+    // row): this push is what has to bring A's shared rows.
+    await push(db, ME, [up("places", searchedPlace("A", { signedAt: T0 - 1000 }))], T0 + 40);
+    const got = (await pull(db, ME, cursor)).rows.map((r) => `${r.table}:${r.row.id}`);
+    expect(got).toContain("places:p_kakao_A");
+    expect(got).toContain("place_sources:s_kakao_A");
+  });
+
   it("records a newer search observation even when nothing changed", async () => {
     const db = await setup(makeDb);
     const north = 33.46 + 500 / 111_320;
