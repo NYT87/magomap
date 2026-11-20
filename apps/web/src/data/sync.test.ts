@@ -729,6 +729,8 @@ describe("sync", () => {
     await pullAll(db);
     expect(server.pulls).toEqual(["/api/sync/pull", "/api/sync/pull?cursor=f1"]);
     expect((await db.meta.get("cursor"))?.value).toBe("f2");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+    expect(await db.meta.get("cursorGen")).toBeUndefined();
   });
 
   it("restarts for a new list after another tab overtook its download of everything", async () => {
@@ -790,5 +792,47 @@ describe("sync", () => {
     await late;
     expect(server.pulls).toEqual(["/api/sync/pull", "/api/sync/pull?cursor=c9", "/api/sync/pull"]);
     expect((await db.meta.get("cursor"))?.value).toBe("f2");
+  });
+
+  it("restarts again for a list that reaches it after another tab overtook its restart", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      // From c0: a new list, so a restart.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+      // The restarted page: overtaken, dropped.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: false },
+      // From the other tab's c30: a list granted after its download.
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "c31", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "f9", hasMore: false },
+    ];
+    const held = () => {
+      let open = () => {};
+      server.pullGate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return open;
+    };
+    const first = held();
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    const second = held();
+    first();
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(2));
+    // Another tab finished a download of everything meanwhile.
+    await db.meta.put({ key: "cursor", value: "c30" });
+    await db.meta.delete("fullPull");
+    server.pullGate = null;
+    second();
+    await late;
+    expect(server.pulls).toEqual([
+      "/api/sync/pull?cursor=c0",
+      "/api/sync/pull",
+      "/api/sync/pull?cursor=c30",
+      "/api/sync/pull",
+    ]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f9");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
   });
 });

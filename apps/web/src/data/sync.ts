@@ -238,8 +238,10 @@ export async function pullAll(
   let fullPass = false;
   let restarted = false;
   for (;;) {
-    const gen = await cursorGen(db);
-    const cursor = (await db.meta.get("cursor"))?.value;
+    const { cursor, gen } = await db.transaction("r", db.meta, async () => ({
+      cursor: (await db.meta.get("cursor"))?.value,
+      gen: await cursorGen(db),
+    }));
     const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
     let page: PullResponse;
     try {
@@ -284,7 +286,11 @@ export async function pullAll(
       },
     );
     if (moved) {
+      // Overtaken: this pull is no longer one download of everything, and a restart it made
+      // earlier doesn't cover lists that reach it from the other tab's cursor. Each gain restarts
+      // at most once: the restarting page stores the list row.
       fullPass = false;
+      restarted = false;
       continue;
     }
     if (q === "") fullPass = true;
