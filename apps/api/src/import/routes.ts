@@ -14,7 +14,12 @@ import {
   startImportRun,
 } from "@magomap/db/stores/importRuns";
 import { LIMITS } from "@magomap/domain";
-import { KAKAO, kakaoItemsToImport, kakaoListsToImport } from "@magomap/domain/providers/kakao";
+import {
+  KAKAO,
+  kakaoFolderIdOf,
+  kakaoItemsToImport,
+  kakaoListsToImport,
+} from "@magomap/domain/providers/kakao";
 import { type Context, Hono } from "hono";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
@@ -46,11 +51,12 @@ async function kakaoIdentity(c: Context<AppEnv>): Promise<string> {
 /** GET from kakao-list for the caller's own Kakao id; never follows redirects (the secret stays put). */
 async function fromKakaoList(
   c: Context<AppEnv>,
+  kakaoUserId: string,
   path: string,
   query: Record<string, string> = {},
 ): Promise<unknown> {
   const url = new URL(`/api/integrations/magomap${path}`, c.env.KAKAO_LIST_URL);
-  url.searchParams.set("kakaoUserId", await kakaoIdentity(c));
+  url.searchParams.set("kakaoUserId", kakaoUserId);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
   let res: Response;
   try {
@@ -97,7 +103,8 @@ importRoutes.post("/import/runs", (c) =>
   handled(c, async () => {
     let snapshot: ReturnType<typeof kakaoListsToImport>;
     try {
-      snapshot = kakaoListsToImport(await fromKakaoList(c, "/lists"));
+      const kakaoUserId = await kakaoIdentity(c);
+      snapshot = kakaoListsToImport(await fromKakaoList(c, kakaoUserId, "/lists"), kakaoUserId);
     } catch (error) {
       if (error instanceof UpstreamError) throw error;
       throw new UpstreamError("kakao_list_unavailable");
@@ -137,13 +144,18 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/pages/:index", (c) =>
     const pages = Math.max(1, Math.ceil((meta?.itemCount ?? 0) / PAGE));
     if (!meta || !Number.isSafeInteger(index) || index < 0 || index >= pages)
       throw new RunNotFoundError();
+    // kakao-list knows the list by its Kakao folder id (folder 0 is "0~<user>" here).
+    const folderId = kakaoFolderIdOf(externalId);
+    if (folderId === undefined) throw new RunNotFoundError();
     let page: ReturnType<typeof kakaoItemsToImport>;
     try {
+      const kakaoUserId = await kakaoIdentity(c);
       page = kakaoItemsToImport(
-        await fromKakaoList(c, `/lists/${encodeURIComponent(externalId)}/items`, {
+        await fromKakaoList(c, kakaoUserId, `/lists/${folderId}/items`, {
           offset: String(index * PAGE),
           limit: String(PAGE),
         }),
+        kakaoUserId,
       );
     } catch (error) {
       if (error instanceof UpstreamError) throw error;

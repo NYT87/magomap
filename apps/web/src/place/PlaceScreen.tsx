@@ -34,7 +34,11 @@ export function PlaceScreen({ id }: { id: string }) {
 
   // Kakao links only for real Kakao places (never for custom pins).
   const kakao = sources?.find((s) => s.provider === "kakao" && !s.externalId.startsWith("pin:"));
-  const links = kakao ? kakaoLinks(kakao.externalId) : null;
+  const point =
+    place.lat != null && place.lng != null
+      ? { title: place.title, lat: place.lat, lng: place.lng }
+      : undefined;
+  const links = kakao ? kakaoLinks(kakao.externalId, point) : null;
 
   return (
     <div className="mm-screen mm-place">
@@ -52,9 +56,9 @@ export function PlaceScreen({ id }: { id: string }) {
               target={layout === "phone" ? undefined : "_blank"}
               rel="noopener noreferrer"
               onClick={(e) => {
-                if (layout !== "phone" || !kakao) return;
+                if (layout !== "phone") return;
                 e.preventDefault();
-                openKakaoPlace(kakao.externalId);
+                openKakaoPlace(links);
               }}
             >
               {t("place.openKakao")}

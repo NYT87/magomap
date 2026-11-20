@@ -215,4 +215,40 @@ describe("server-driven import", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it("keeps each person's folder 0 (default favourites) as their own list", async () => {
+    const zero = (user: string, seq: string): ReturnType<typeof baseContract> => {
+      const c = baseContract(user);
+      const [list] = c.lists;
+      const [item] = list?.items ?? [];
+      if (!list || !item) throw new Error("fixture changed");
+      return {
+        ...c,
+        lists: [{ ...list, kakaoFolderId: 0, items: [{ ...item, favoriteSeq: seq }] }],
+      };
+    };
+    const runAll = async (user: string, seq: string) => {
+      const cookie = await devLogin(user);
+      const seen = serveKakaoList(zero(user, seq));
+      const { body } = await start(cookie);
+      expect(body.lists.map((l) => l.externalId)).toEqual([`0~${user}`]);
+      const at = `/api/import/runs/${body.runId}/lists/${encodeURIComponent(`0~${user}`)}`;
+      expect((await call(`${at}/pages/0`, post(cookie))).status).toBe(200);
+      // kakao-list still knows it as folder 0.
+      expect(seen.at(-1)).toMatchObject({ user, url: "/api/integrations/magomap/lists/0/items" });
+      expect((await call(`${at}/finish`, post(cookie))).status).toBe(200);
+      expect((await call(`/api/import/runs/${body.runId}/complete`, post(cookie))).status).toBe(
+        200,
+      );
+      return cookie;
+    };
+    const first = await runAll("111", "7001");
+    await runAll("222", "7002");
+    const pulled = JSON.stringify(
+      await (await call("/api/sync/pull", { headers: { cookie: first } })).json(),
+    );
+    expect(pulled).toContain("l_kakao_0%7E111");
+    expect(pulled).not.toContain("l_kakao_0%7E222");
+    expect(pulled).not.toContain('"l_kakao_0"');
+  });
 });
