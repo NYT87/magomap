@@ -1,6 +1,7 @@
 import type { Me } from "@magomap/domain";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ACCOUNT_CHANGED, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
+import { deviceKeys } from "../data/deviceKeys";
 
 const KEY = "mm.me";
 
@@ -18,7 +19,7 @@ export const ME_CHANGED = "mm:me-changed";
 export const notifyMeChanged = () => window.dispatchEvent(new Event(ME_CHANGED));
 
 /** Where this device keeps an account's name, so it can be named after its session ends. */
-export const accountNameKey = (userId: string) => `mm.name.${userId}`;
+export const accountNameKey = deviceKeys.name;
 
 /** The name of the account whose data this device holds, if it has one. */
 export function accountName(userId: string): string | null {

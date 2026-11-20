@@ -378,6 +378,24 @@ a {
   width: 100%;
 }
 
+/* A checkbox with its label: the whole row is the target. */
+.mm-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 44px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.mm-check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--color-pine);
+}
+
 .mm-button--danger-outline {
   color: var(--color-error);
   background: transparent;

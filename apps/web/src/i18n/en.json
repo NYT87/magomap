@@ -57,7 +57,9 @@
     "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap.",
     "editName": "Edit name",
     "nameLabel": "Nickname",
-    "save": "Save"
+    "save": "Save",
+    "removeData": "Also remove my data from this device",
+    "removeDataKept": "Your unsynced changes will stay on this device, so its data won't be removed."
   },
   "about": {
     "title": "About",

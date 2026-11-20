@@ -339,4 +339,100 @@ describe("Account", () => {
       expect(screen.getByRole("textbox", { name: "Nickname" })).toBeInTheDocument();
     });
   });
+
+  describe("remove my data from this device", () => {
+    const keys = ["mm.visibleLists.u1", "mm.showPrevious.u1", "mm.mapProvider.u1", "mm.name.u1"];
+    const seedDevice = async () => {
+      await makeDb();
+      for (const k of keys) localStorage.setItem(k, "x");
+      localStorage.setItem("mm.lang", "en");
+    };
+    const leftOnDevice = () => keys.filter((k) => localStorage.getItem(k) !== null);
+
+    it("removes this account's data from the device when asked", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(
+        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
+      expect(leftOnDevice()).toEqual([]);
+      expect(localStorage.getItem("mm.lang")).toBe("en");
+    });
+
+    it('keeps the data when changes are unsynced, even after "Sign out anyway"', async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 2, syncNow: vi.fn(async () => {}) });
+      await user.click(
+        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(dialog).toHaveTextContent(
+        "Your unsynced changes will stay on this device, so its data won't be removed.",
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out anyway" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
+      );
+      expect(await Dexie.exists("magomap-u1")).toBe(true);
+      expect(leftOnDevice()).toEqual(keys);
+    });
+
+    it("keeps the data by default", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      expect(
+        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
+      ).not.toBeChecked();
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith("/api/auth/logout", expect.anything()),
+      );
+      expect(await Dexie.exists("magomap-u1")).toBe(true);
+    });
+
+    it("still signs out when something keeps the database open", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      // A connection that never lets go (another tab, say): the deletion has to wait for it.
+      const held = await new Promise<IDBDatabase>((ok) => {
+        const r = indexedDB.open("magomap-u1");
+        r.onsuccess = () => ok(r.result);
+      });
+      window.history.pushState(null, "", "/account");
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(
+        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => expect(window.location.pathname).toBe("/signin"), { timeout: 6_000 });
+      // What the device remembers for the account is gone already; the database follows.
+      expect(leftOnDevice()).toEqual([]);
+      held.close();
+      await waitFor(async () => expect(await Dexie.exists("magomap-u1")).toBe(false));
+    });
+
+    it("keeps the data when the server sign-out fails", async () => {
+      await i18n.changeLanguage("en");
+      await seedDevice();
+      answerOnce("/api/auth/logout", () => Promise.reject(new Error("boom")));
+      const user = userEvent.setup();
+      renderAccount({ unsynced: 0 });
+      await user.click(
+        screen.getByRole("checkbox", { name: "Also remove my data from this device" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't reach the server/);
+      expect(await Dexie.exists("magomap-u1")).toBe(true);
+    });
+  });
 });

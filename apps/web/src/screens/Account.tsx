@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
 import { forgetMe, notifyMeChanged } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { closeUserDb, dbName, openDbOrNull } from "../data/db";
+import { closeUserDb, dbName, forgetAccountOnDevice, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
@@ -68,6 +68,9 @@ export function Account({ me }: { me: Me }) {
     navigate("/signin");
   };
 
+  // "Also remove my data from this device": off by default, never remembered.
+  const [removeData, setRemoveData] = useState(false);
+
   const signOut = async (everywhere: boolean, force = false) => {
     setError(null);
     // Another account opened while waiting (another tab signed in): this screen is gone. A fresh
@@ -93,8 +96,11 @@ export function Account({ me }: { me: Me }) {
     try {
       setBusy(true);
       await apiFetch(everywhere ? "/api/auth/logout-all" : "/api/auth/logout", forMe("POST"));
-      // The local database is kept: unsynced changes go out at the next sign-in here.
-      if (!switched()) leave();
+      if (switched()) return;
+      // Removed only when everything reached the server ("Sign out anyway" keeps unsynced data).
+      // Otherwise the local database is kept: unsynced changes go out at the next sign-in here.
+      if (removeData && !force) await forgetAccountOnDevice(me.userId);
+      leave();
     } catch (e) {
       setError(e instanceof NetworkError ? t("account.signOutOffline") : t("account.failed"));
     } finally {
@@ -220,6 +226,15 @@ export function Account({ me }: { me: Me }) {
       <AboutSection />
 
       <section className="mm-stack mm-account-actions">
+        <label className="mm-check">
+          <input
+            type="checkbox"
+            checked={removeData}
+            disabled={busy}
+            onChange={(e) => setRemoveData(e.target.checked)}
+          />
+          <span>{t("account.removeData")}</span>
+        </label>
         <button
           type="button"
           className="mm-button mm-button--secondary mm-button--wide"
@@ -283,6 +298,7 @@ export function Account({ me }: { me: Me }) {
         >
           {dialog.count > 0 && <p>{t("account.unsyncedBody", { count: dialog.count })}</p>}
           {dialog.rejected > 0 && <p>{t("account.rejectedNote", { count: dialog.rejected })}</p>}
+          {removeData && <p>{t("account.removeDataKept")}</p>}
         </ConfirmDialog>
       )}
 

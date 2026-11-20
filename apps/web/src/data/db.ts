@@ -15,6 +15,7 @@ import type {
 } from "@magomap/domain";
 import Dexie, { type EntityTable } from "dexie";
 import { ACCOUNT_CHANGED, setRequestAccount } from "../api/client";
+import { accountDeviceKeys } from "./deviceKeys";
 
 export interface OutboxEntry {
   seq?: number;
@@ -161,4 +162,23 @@ export function closeUserDb(userId?: string) {
     current = null;
     setRequestAccount(null);
   }
+}
+
+/**
+ * Removes an account from this device: its database and what the device remembers for it
+ * (lists shown, map choice, name). Device-wide settings stay. Only for data already on the server.
+ */
+export async function forgetAccountOnDevice(userId: string): Promise<void> {
+  for (const key of accountDeviceKeys(userId)) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // storage blocked: nothing was stored
+    }
+  }
+  closeUserDb(userId);
+  // Another connection (another tab, a sync finishing) holds the deletion until it lets go. The
+  // browser keeps the request and completes it then; sign-out doesn't wait more than a moment.
+  const deleting = Dexie.delete(dbName(userId)).catch(() => {});
+  await Promise.race([deleting, new Promise((resolve) => setTimeout(resolve, 2_000))]);
 }
