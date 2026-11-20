@@ -1,8 +1,10 @@
 import type { ImportItem, ImportList } from "@magomap/domain";
 import { importedNoteRowId } from "@magomap/domain/ids";
+import { sql } from "kysely";
 import { expect, it } from "vitest";
 import type { Db, Statement } from "../core";
-import { forEachDialect } from "../testing/dbs";
+import { migrate } from "../migrate";
+import { forEachDialect, migrationsDir } from "../testing/dbs";
 import {
   completeImportRun,
   finishImportList,
@@ -578,6 +580,156 @@ forEachDialect("import (shared)", (makeDb) => {
       .execute();
     expect(running).toHaveLength(1);
     expect((await latestImportRun(db, WIFE))?.status).toBe("running");
+  });
+});
+
+forEachDialect("import seen pages", (makeDb) => {
+  const pages = (db: Db, runId: string) =>
+    db.kysely
+      .selectFrom("import_run_pages")
+      .selectAll()
+      .where("run_id", "=", runId)
+      .orderBy("external_id")
+      .orderBy("page")
+      .execute();
+  const removed = async (db: Db) =>
+    (await all(db, "list_items")).filter((i) => i.removed_at_provider != null).map((i) => i.id);
+
+  it("a page retried with the same items is seen once", async () => {
+    const db = await setup(makeDb);
+    const items = [item("10", "A"), item("11", "B")];
+    await runImport(db, WIFE, [list("1", items)]);
+    const { runId } = await startRun(db, WIFE, 1, { "1": 2 });
+    await importListChunk(db, WIFE, runId, "1", 0, items, T0 + 1);
+    await importListChunk(db, WIFE, runId, "1", 0, items, T0 + 1);
+    await finishImportList(db, WIFE, runId, "1", T0 + 1);
+    expect(await removed(db)).toEqual([]);
+    const seen = await pages(db, runId);
+    expect(seen.map((p) => [p.user_id, p.external_id, p.page])).toEqual([[WIFE, "1", 0]]);
+    expect(JSON.parse(seen[0]?.item_ids ?? "[]")).toEqual(["i_kakao_1_10", "i_kakao_1_11"]);
+    await completeImportRun(db, WIFE, runId, T0 + 2);
+    expect(await pages(db, runId)).toEqual([]);
+  });
+
+  it("marks only items missing from every page of the list removed", async () => {
+    const db = await setup(makeDb);
+    const items = ["10", "11", "12", "13", "14"].map((e) => item(e, `P${e}`));
+    await runImport(db, WIFE, [list("1", items)], { chunk: 2 });
+    // Three pages: the item count is the provider's, the pages hold what it sent.
+    const { runId } = await startRun(db, WIFE, 1, { "1": 1001 });
+    await importListChunk(db, WIFE, runId, "1", 0, items.slice(0, 2), T0 + 1);
+    await importListChunk(db, WIFE, runId, "1", 1, [], T0 + 1);
+    await importListChunk(db, WIFE, runId, "1", 2, items.slice(4), T0 + 1);
+    await finishImportList(db, WIFE, runId, "1", T0 + 1);
+    expect((await removed(db)).sort()).toEqual(["i_kakao_1_12", "i_kakao_1_13"]);
+    expect((await pages(db, runId)).map((p) => p.page)).toEqual([0, 1, 2]);
+  });
+
+  it("deletes a superseded run's pages when the next run starts", async () => {
+    const db = await setup(makeDb);
+    const first = await startRun(db, WIFE, 1);
+    await importListChunk(db, WIFE, first.runId, "1", 0, [item("10", "A")], T0 + 1);
+    const other = await startRun(db, ME, 1);
+    await importListChunk(db, ME, other.runId, "1", 0, [item("10", "A")], T0 + 1);
+    expect(await pages(db, first.runId)).toHaveLength(1);
+    await startRun(db, WIFE, 2);
+    expect(await pages(db, first.runId)).toEqual([]);
+    expect(await pages(db, other.runId)).toHaveLength(1);
+  });
+});
+
+forEachDialect("import seen pages migration", (makeDb) => {
+  it("a run started before the migration ends as superseded and marks nothing removed", async () => {
+    const db = await makeDb({ through: "0001_init.sql" });
+    await addUser(db, WIFE);
+    const base = { created_at: T0, updated_at: T0, deleted_at: null, client_updated_at: 0, seq: 1 };
+    await db.kysely
+      .insertInto("lists")
+      .values({
+        ...base,
+        id: "l_kakao_1",
+        provider: "kakao",
+        external_id: "1",
+        name: "리스트 1",
+        description: null,
+        color: null,
+        owner_name: null,
+        removed_at_provider: null,
+        provider_snapshot_at: T0,
+      })
+      .execute();
+    await db.kysely
+      .insertInto("list_items")
+      .values(
+        ["10", "11"].map((e, position) => ({
+          ...base,
+          id: `i_kakao_1_${e}`,
+          list_id: "l_kakao_1",
+          place_id: `p_kakao_P${e}`,
+          position,
+          added_at: T0,
+          external_id: e,
+          provider_note: null,
+          provider_color: null,
+          removed_at_provider: null,
+          provider_snapshot_at: T0,
+        })),
+      )
+      .execute();
+    await db.kysely
+      .insertInto("import_runs")
+      .values({
+        user_id: WIFE,
+        id: "old-run",
+        provider: "kakao",
+        started_at: T0 + 1,
+        finished_at: null,
+        status: "running",
+        complete: 1,
+        subscription_known: 1,
+        snapshot_at: T0 + 1,
+        summary_json: null,
+        error: null,
+      })
+      .execute();
+    await db.kysely
+      .insertInto("import_run_lists")
+      .values({
+        user_id: WIFE,
+        run_id: "old-run",
+        external_id: "1",
+        position: 0,
+        name: "리스트 1",
+        description: null,
+        owner_name: null,
+        followed: 0,
+        item_count: 2,
+        pages_done: 1,
+        finished: 0,
+      })
+      .execute();
+    await sql`INSERT INTO import_seen (user_id, run_id, list_item_id) VALUES (${WIFE}, 'old-run', 'i_kakao_1_10')`.execute(
+      db.kysely,
+    );
+
+    expect(await migrate(db, migrationsDir(db.dialect))).toEqual(["0002_import_run_pages.sql"]);
+
+    const run = await db.kysely
+      .selectFrom("import_runs")
+      .selectAll()
+      .where("id", "=", "old-run")
+      .executeTakeFirstOrThrow();
+    expect(run.status).toBe("superseded");
+    expect(Number(run.finished_at)).toBeGreaterThan(0);
+    await expect(finishImportList(db, WIFE, "old-run", "1", T0 + 2)).rejects.toBeInstanceOf(
+      RunClosedError,
+    );
+    expect((await all(db, "list_items")).map((i) => [i.id, i.removed_at_provider])).toEqual([
+      ["i_kakao_1_10", null],
+      ["i_kakao_1_11", null],
+    ]);
+    expect(await db.kysely.selectFrom("import_run_lists").selectAll().execute()).toEqual([]);
+    expect(await migrate(db, migrationsDir(db.dialect))).toEqual([]);
   });
 });
 

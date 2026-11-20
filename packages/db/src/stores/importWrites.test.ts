@@ -34,8 +34,7 @@ async function setup(makeDb: () => Promise<Db>) {
 }
 
 forEachDialect("import write budget", (makeDb) => {
-  // gate-allow: passes after Task 2/3 of the import-writes plan
-  it.fails("an unchanged re-import with a newer snapshot stays within the write budget", async () => {
+  it("an unchanged re-import with a newer snapshot stays within the write budget", async () => {
     const db = await setup(makeDb);
     const big = Array.from({ length: 600 }, (_, i) => item(String(i + 1)));
     const small = ["1001", "1002", "1003"].map((e) => item(e));

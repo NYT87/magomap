@@ -56,10 +56,13 @@ export interface ImportRunListsTable {
   finished: number;
 }
 
-export interface ImportSeenTable {
+/** The list items one page of a running import held (`item_ids`: a JSON array of `list_items.id`). */
+export interface ImportRunPagesTable {
   user_id: string;
   run_id: string;
-  list_item_id: string;
+  external_id: string;
+  page: number;
+  item_ids: string;
 }
 
 export interface SyncStateTable {
@@ -211,7 +214,7 @@ export interface Database {
   tombstones: TombstonesTable;
   import_runs: ImportRunsTable;
   import_run_lists: ImportRunListsTable;
-  import_seen: ImportSeenTable;
+  import_run_pages: ImportRunPagesTable;
   sync_state: SyncStateTable;
   places: PlacesTable;
   place_sources: PlaceSourcesTable;

@@ -203,6 +203,19 @@ export async function startImportRun(
     async (ctx) => ({
       statements: [
         db.kysely
+          .deleteFrom("import_run_pages")
+          .where("user_id", "=", userId)
+          .where(
+            "run_id",
+            "in",
+            db.kysely
+              .selectFrom("import_runs")
+              .select("id")
+              .where("user_id", "=", userId)
+              .where("status", "=", "running"),
+          )
+          .where(ctx.guard),
+        db.kysely
           .deleteFrom("import_run_lists")
           .where("user_id", "=", userId)
           .where(
@@ -269,7 +282,7 @@ export async function importListChunk(
         ownerName: progress.owner_name ?? undefined,
         followed: progress.followed === 1,
       };
-      const decided = await decideChunk(db, userId, runId, meta, items, now, ctx);
+      const decided = await decideChunk(db, userId, runId, meta, pageIndex, items, now, ctx);
       decided.statements.push(
         db.kysely
           .updateTable("import_run_lists")
@@ -290,6 +303,7 @@ async function decideChunk(
   userId: string,
   runId: string,
   meta: Omit<ImportList, "items">,
+  pageIndex: number,
   items: ImportItem[],
   now: number,
   ctx: WriteContext,
@@ -582,7 +596,14 @@ async function decideChunk(
     }
   }
 
-  const seen = itemIds.map((id) => ({ user_id: userId, run_id: runId, list_item_id: id }));
+  // One row per page, whatever its size: a retried page replaces what it saw.
+  const seen = {
+    user_id: userId,
+    run_id: runId,
+    external_id: meta.externalId,
+    page: pageIndex,
+    item_ids: JSON.stringify(itemIds),
+  };
   const statements: Statement[] = [
     ...writeStatements(db, ctx, writes, {
       places: { update: IMPORT_PLACE_COLUMNS },
@@ -602,9 +623,9 @@ async function decideChunk(
             .where(ctx.guard),
         ]
       : []),
-    ...bulkUpsertQuery(db, "import_seen", seen, {
-      conflict: ["user_id", "run_id", "list_item_id"],
-      update: [],
+    ...bulkUpsertQuery(db, "import_run_pages", [seen], {
+      conflict: ["user_id", "run_id", "external_id", "page"],
+      update: ["item_ids"],
       guard: ctx.guard,
     }),
     saveState(db, userId, runId, { ...state, summary: add(state.summary, counts) }, ctx),
@@ -634,7 +655,13 @@ export async function finishImportList(
       const list = (await readByIds(db, userId, "lists", [listId])).get(listId);
       const snapshotAt = Number(run.snapshot_at);
       // Unseen items not already protected by a newer snapshot; the removal records this snapshot.
-      const notSeen = sql<boolean>`list_id = ${listId} AND (provider_snapshot_at IS NULL OR provider_snapshot_at < ${snapshotAt}) AND id NOT IN (SELECT list_item_id FROM import_seen WHERE user_id = ${userId} AND run_id = ${runId})`;
+      // The ids every page of this list held in this run.
+      const thisList = sql`p.user_id = ${userId} AND p.run_id = ${runId} AND p.external_id = ${externalId}`;
+      const seenIds =
+        db.dialect === "sqlite"
+          ? sql`SELECT j.value FROM import_run_pages p, json_each(p.item_ids) j WHERE ${thisList}`
+          : sql`SELECT jsonb_array_elements_text(p.item_ids::jsonb) FROM import_run_pages p WHERE ${thisList}`;
+      const notSeen = sql<boolean>`list_id = ${listId} AND (provider_snapshot_at IS NULL OR provider_snapshot_at < ${snapshotAt}) AND id NOT IN (${seenIds})`;
       // An incomplete or older snapshot may hold a partial or outdated list: it never marks removals.
       const removing =
         run.complete === 1 && isNewer(Number(run.snapshot_at), list)
@@ -771,7 +798,7 @@ export async function completeImportRun(
       const summary = add(state.summary, { listsRemoved: removed });
       statements.push(
         db.kysely
-          .deleteFrom("import_seen")
+          .deleteFrom("import_run_pages")
           .where("user_id", "=", userId)
           .where("run_id", "=", runId)
           .where(ctx.guard),
