@@ -8,7 +8,8 @@
     "./ids": "./src/ids.ts",
     "./location": "./src/location.ts",
     "./limits": "./src/limits.ts",
-    "./providers/kakao": "./src/providers/kakao.ts"
+    "./providers/kakao": "./src/providers/kakao.ts",
+    "./providers/kakaoMap": "./src/providers/kakaoMap.ts"
   },
   "scripts": {
     "test": "vitest run",
