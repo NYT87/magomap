@@ -834,5 +834,8 @@ describe("sync", () => {
     ]);
     expect((await db.meta.get("cursor"))?.value).toBe("f9");
     expect(await db.meta.get("fullPull")).toBeUndefined();
+    // Each restart stored the list it was for, so neither restarts again.
+    expect(await db.user_lists.get("ul_l_kakao_1")).toBeDefined();
+    expect(await db.user_lists.get("ul_l_kakao_2")).toBeDefined();
   });
 });
