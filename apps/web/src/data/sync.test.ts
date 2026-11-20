@@ -8,7 +8,7 @@ vi.mock("../api/client", async (orig) => {
   const actual = await orig<typeof import("../api/client")>();
   return { ...actual, apiFetch: (path: string, init?: RequestInit) => server.fetch(path, init) };
 });
-const { closeUserDb, openUserDb } = await import("./db");
+const { closeUserDb, defineUserDb, forgetAccountOnDevice, openUserDb } = await import("./db");
 const { addVisitNote, editVisitNote } = await import("./writes");
 const { startSyncTriggers, syncNow, syncState } = await import("./sync");
 
@@ -23,6 +23,7 @@ beforeEach(() => {
   server.failCode = "x";
   server.headers = [];
   server.pushGate = null;
+  server.pullGate = null;
 });
 const open = () => openUserDb(`s${n}`);
 const note = (id: string, body: string, updatedAt = 5): VisitNoteRow => ({
@@ -344,5 +345,31 @@ describe("sync", () => {
     expect(await db.place_locations.count()).toBe(1);
     expect((await db.meta.get("cursor"))?.value).toBe("c2");
     await editVisitNote(id, { body: "local 2" });
+  });
+
+  it("never brings removed data back with a pull another tab started before the removal", async () => {
+    const userId = `s${n}`;
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    await syncNow();
+    // Another tab: its own connection, with a pull on its way.
+    const otherTab = defineUserDb(userId);
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [pulled("visit_notes", note("n_late", "late"))], cursor: "c9", hasMore: false },
+    ];
+    const { pullAll } = await import("./sync");
+    const late = pullAll(otherTab).catch((e: unknown) => e);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await forgetAccountOnDevice(userId)).toBe("removed");
+    answer();
+    await late;
+    expect(await otherTab.visit_notes.count()).toBe(0);
+    expect(await otherTab.meta.get("cursor")).toBeUndefined();
+    otherTab.close();
+    expect(db.hasBeenClosed()).toBe(true);
   });
 });

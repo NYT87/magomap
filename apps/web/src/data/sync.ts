@@ -194,6 +194,9 @@ async function pushBatch(db: MagomapDexie, entries: OutboxEntry[], t: PushTally)
 /** Pulls every page; each page's rows and its cursor are stored together. */
 export async function pullAll(db: MagomapDexie): Promise<number> {
   let pulled = 0;
+  // The account's data removed from this device meanwhile (sign-out in another tab): what comes
+  // back from the server is dropped, never written over the emptied tables.
+  const removal = (await db.meta.get("removal"))?.value;
   for (;;) {
     const cursor = (await db.meta.get("cursor"))?.value;
     const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
@@ -207,6 +210,7 @@ export async function pullAll(db: MagomapDexie): Promise<number> {
       "rw",
       [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
       async () => {
+        if ((await db.meta.get("removal"))?.value !== removal) throw new Stop("needs_signin");
         const pending = new Set((await db.outbox.toArray()).map((e) => `${e.table}:${e.id}`));
         for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
           // A local change still on its way wins over what the server had.

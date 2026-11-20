@@ -45,7 +45,8 @@ export interface Draft {
 }
 
 export interface MetaEntry {
-  key: "cursor" | "lastSyncAt";
+  /** "removal": changes each time the account's data is removed from this device. */
+  key: "cursor" | "lastSyncAt" | "removal";
   value: string | number;
 }
 
@@ -92,8 +93,8 @@ export function subscribeDbReplacements(fn: () => void): () => void {
   return () => replacedListeners.delete(fn);
 }
 
-/** An account's database: its tables (not opened yet). */
-function defineUserDb(userId: string): MagomapDexie {
+/** An account's database: its tables (not opened yet). Exported for tests only. */
+export function defineUserDb(userId: string): MagomapDexie {
   const db = new Dexie(dbName(userId)) as MagomapDexie;
   db.version(1).stores({
     places: "id",
@@ -183,8 +184,11 @@ export type RemovalResult = "removed" | "kept";
  * both are empty, empties every table. The browser runs it atomically and in order with any other
  * tab's writes, so a change written elsewhere can't slip in between the check and the clearing.
  * The (now empty) database itself stays: deleting the file can wait on other tabs indefinitely.
+ * The same transaction leaves a new removal mark: a pull another tab started earlier compares it
+ * before writing what it fetched, and drops it instead of bringing the data back.
  * - "kept": something is unsent or refused, or the database couldn't be read; nothing is removed.
- * - "removed": every table is empty, and what the device remembers for the account is gone.
+ * - "removed": every table is empty (but for the mark), and what the device remembers for the
+ *   account is gone.
  */
 export async function forgetAccountOnDevice(userId: string): Promise<RemovalResult> {
   const known = instances.get(dbName(userId));
@@ -201,6 +205,7 @@ export async function forgetAccountOnDevice(userId: string): Promise<RemovalResu
       if (cancelled) throw new Error("removal cancelled");
       clearingStarted = true;
       await Promise.all(db.tables.map((table) => table.clear()));
+      await db.meta.put({ key: "removal", value: crypto.randomUUID() });
       return false;
     });
     clearing.catch(() => {});
