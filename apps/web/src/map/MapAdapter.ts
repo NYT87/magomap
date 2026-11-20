@@ -21,6 +21,10 @@ export interface MapAdapter {
   fitTo(points: LatLng[]): void;
   panTo(point: LatLng): void;
   getCenter(): LatLng;
+  /** Leaflet-style zoom (0–19), whichever map this is. */
+  getZoom(): number;
+  /** Called after the map stops moving (the user's drag or zoom, or a fit). */
+  onViewChange(cb: () => void): void;
   onSelect(cb: (markerId: string) => void): void;
   showMyLocation(p: LatLng): void;
   destroy(): void;

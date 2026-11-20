@@ -22,7 +22,9 @@ describe("loadMapAdapter", () => {
   });
 
   it("falls back to Leaflet when the Kakao script never loads", async () => {
-    const a = await loadMapAdapter(withKey, { timeoutMs: 50 });
+    // Its own key: the SDK load is cached per key, and this one must reach the timeout.
+    const a = await loadMapAdapter({ ...withKey, kakaoJavascriptKey: "slow" }, { timeoutMs: 50 });
+    expect(document.querySelector("script[src*='appkey=slow']")).not.toBeNull();
     expect(a.provider).toBe("leaflet");
   });
 });
