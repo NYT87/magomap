@@ -308,6 +308,7 @@ async function run(
     const entries = await db.outbox.orderBy("seq").toArray();
     for (const batch of batches(entries)) await pushBatch(db, batch, t);
     await db.transaction("rw", db.meta, async () => {
+      if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
       // After a refusal, the server's copies come back in full, replacing refused local edits.
       if (t.repull) await db.meta.delete("cursor");
       // An app from before PULL_EPOCH may have been given a list without pulling its older rows:
@@ -319,7 +320,10 @@ async function run(
     });
     const pulled = await pullAll(db, { removal });
     const now = Date.now();
-    await db.meta.put({ key: "lastSyncAt", value: now });
+    await db.transaction("rw", db.meta, async () => {
+      if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
+      await db.meta.put({ key: "lastSyncAt", value: now });
+    });
     const to = t.clockAhead ? "clock_ahead" : "idle";
     report(to, now);
     return { result: { pushed: t.pushed, pulled, rejected: t.rejected }, to };

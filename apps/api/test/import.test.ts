@@ -336,6 +336,18 @@ describe("server-driven import", () => {
     expect((await start(cookie)).res.status).toBe(200);
   });
 
+  it("an empty nickname is filled even when the import is refused as up to date", async () => {
+    // An account no other test uses.
+    serveKakaoList(baseContract("888"), { ownerNickname: "지은" });
+    const cookie = await devLogin("888");
+    await importAll(cookie);
+    await call("/api/me", json(cookie, "PATCH", { displayName: "" }));
+    expect(await nameOf(cookie)).toBeNull();
+    const again = await start(cookie);
+    expect(again.res.status).toBe(409);
+    expect(await nameOf(cookie)).toBe("지은");
+  });
+
   it("resume returns each list's progress while the sync is unchanged", async () => {
     const cookie = await devLogin("111");
     serveKakaoList();

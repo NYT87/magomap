@@ -547,7 +547,8 @@ describe("sync", () => {
     answer();
     await late;
     expect(await db.visit_notes.count()).toBe(0);
-    expect(await db.meta.get("cursor")).toBeUndefined();
+    // Nothing but the removal mark is written back.
+    expect(await db.meta.toArray()).toEqual([{ key: "removal", value: "r1" }]);
   });
 
   it("counts no refusal for a refused change another tab already set aside", async () => {
