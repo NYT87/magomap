@@ -63,6 +63,11 @@ test("the account actions are outlined buttons, at the bottom of the panel on de
     const body = await page.locator(".mm-panel__body").boundingBox();
     const box = await page.getByRole("button", { name: "Delete account" }).boundingBox();
     expect(body && box).toBeTruthy();
-    if (body && box) expect(body.y + body.height - (box.y + box.height)).toBeLessThanOrEqual(48);
+    if (body && box) {
+      // At the bottom, and still inside the panel (not pushed below it).
+      const gap = body.y + body.height - (box.y + box.height);
+      expect(gap).toBeGreaterThanOrEqual(0);
+      expect(gap).toBeLessThanOrEqual(48);
+    }
   }
 });
