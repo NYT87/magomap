@@ -25,6 +25,8 @@
 
 **Spec:** the owner's request of 2026-11-20 after the Cloudflare "91% of the daily D1 free tier rows_written" email: "write the plan for the fix". The goal is to stay on the free plan, including once direct Kakao sync (`docs/superpowers/specs/2026-11-20-kakao-direct-sync-design.md`) imports several times a day. The numbers above are from the D1 analytics API on 2026-11-20.
 
+**Not tied to kakao-list.** The kakao-list import is temporary, but everything here lives in the shared `importRuns` store and the sync layer. The direct Kakao Map sync reuses that store unchanged (its spec, "Upload runs"; its plan, `importRuns` is reused for start, chunk, finish and complete). Nothing in this plan touches the kakao-list routes. Build this before direct sync: that plan's `importRuns` task (per-user latest snapshot) then lands on the cheaper code, rather than the two editing `decideChunk` at the same time.
+
 ## Global Constraints
 
 - **Behaviour stays the same.** Every existing test in `packages/db/src/stores/importRuns.test.ts`, `importIntegrity.test.ts`, `sharedReview.test.ts`, `pull.test.ts` and `sync.test.ts` keeps passing unchanged, except the one Task 4 names (it is replaced by an equivalent end-to-end assertion, never just deleted).
