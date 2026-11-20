@@ -16,7 +16,7 @@ Every text size in the web app is a fixed pixel value (`body` 16px, 40 `font-siz
 ## Non-goals
 
 - The marketing homepage (`apps/homepage`): separate site, untouched.
-- Map content: pins and clusters (inline SVG, no text sizes) and the map providers' own controls (Kakao Map, Leaflet attribution).
+- Map content: pins and clusters (the cluster count stays 13px inside its fixed circle) and the map providers' own controls (Kakao Map, Leaflet zoom and attribution).
 - An in-app text-size setting (approach C).
 - Changing spacing, radii or icon sizes to rem; only text, and the boxes that hold text, adapt.
 
