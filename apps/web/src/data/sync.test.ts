@@ -687,4 +687,79 @@ describe("sync", () => {
     expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull?cursor=c5"]);
     expect((await db.meta.get("cursor"))?.value).toBe("c6");
   });
+
+  it("drops a page whose cursor was deleted and reached again by another tab", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.user_lists.put(access("l_kakao_1"));
+    await db.meta.put({ key: "cursor", value: "f1" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      // The late page: from before the other tab's restart.
+      { rows: [pulled("user_lists", access("l_kakao_2"))], cursor: "f2", hasMore: false },
+      { rows: [], cursor: "f9", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab restarted (the cursor deleted), then its first page brought it back to f1.
+    await db.meta.delete("cursor");
+    await db.meta.put({ key: "cursorGen", value: 1 });
+    await db.meta.put({ key: "cursor", value: "f1" });
+    server.pullGate = null;
+    answer();
+    await late;
+    // The late page was dropped: neither its list nor its cursor, and no restart.
+    expect(await db.user_lists.get("ul_l_kakao_2")).toBeUndefined();
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=f1", "/api/sync/pull?cursor=f1"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f9");
+  });
+
+  it("doesn't restart again a pull another tab already sent back to the start", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [], cursor: "c1", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    await db.meta.delete("cursor");
+    server.pullGate = null;
+    answer();
+    await late;
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f1");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
+
+  it("restarts for a new list when a pull from scratch was overtaken and goes on from a cursor", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [], cursor: "f1", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c10", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f2", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab finished the full download first.
+    await db.meta.put({ key: "cursor", value: "c9" });
+    server.pullGate = null;
+    answer();
+    await late;
+    expect(server.pulls).toEqual(["/api/sync/pull", "/api/sync/pull?cursor=c9", "/api/sync/pull"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f2");
+  });
 });

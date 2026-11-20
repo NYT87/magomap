@@ -233,9 +233,13 @@ export async function pullAll(
   // The account's data removed from this device meanwhile (sign-out in another tab): what comes
   // back from the server is dropped, never written over the emptied tables.
   const since = from ? from.removal : await removalMark(db);
-  let mayRestart = typeof (await db.meta.get("cursor"))?.value === "string";
+  // A new list may restart the pull from scratch once, unless this pull is already downloading
+  // everything (it committed a page fetched without a cursor).
+  let fullPass = false;
+  let restarted = false;
   for (;;) {
     const cursor = (await db.meta.get("cursor"))?.value;
+    const gen = await cursorGen(db);
     const q = typeof cursor === "string" ? `?cursor=${encodeURIComponent(cursor)}` : "";
     let page: PullResponse;
     try {
@@ -254,7 +258,7 @@ export async function pullAll(
       [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
       async () => {
         if ((await removalMark(db)) !== since) throw new Stop("needs_signin");
-        if ((await db.meta.get("cursor"))?.value !== cursor) {
+        if ((await db.meta.get("cursor"))?.value !== cursor || (await cursorGen(db)) !== gen) {
           moved = true;
           return;
         }
@@ -262,11 +266,13 @@ export async function pullAll(
         for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
           // A local change still on its way wins over what the server had.
           if (pending.has(`${table}:${row.id}`)) continue;
-          if (mayRestart && q !== "" && !restart) restart = await gainsAccess(db, table, row);
+          if (!restarted && !fullPass && q !== "" && !restart) {
+            restart = await gainsAccess(db, table, row);
+          }
           await db.table(table).put(row);
           pulled += 1;
         }
-        if (restart) await db.meta.delete("cursor");
+        if (restart) await dropCursor(db);
         else await db.meta.put({ key: "cursor", value: page.cursor });
         // A download of everything (no cursor, or restarted for a new list) is remembered until
         // its last page is in, so a list still arriving after a failed sync doesn't say "empty".
@@ -277,13 +283,24 @@ export async function pullAll(
         }
       },
     );
+    if (moved) continue;
+    if (q === "") fullPass = true;
     if (restart) {
-      mayRestart = false;
+      restarted = true;
+      fullPass = true;
       continue;
     }
-    if (moved) continue;
     if (!page.hasMore) return pulled;
   }
+}
+
+/** How many times the cursor was deleted: a page commits only if neither cursor nor this moved. */
+const cursorGen = async (db: MagomapDexie) => (await db.meta.get("cursorGen"))?.value ?? 0;
+
+/** Deletes the cursor (inside a meta transaction), so the next pull downloads everything. */
+async function dropCursor(db: MagomapDexie) {
+  await db.meta.delete("cursor");
+  await db.meta.put({ key: "cursorGen", value: Number(await cursorGen(db)) + 1 });
 }
 
 /**
@@ -327,11 +344,11 @@ async function run(
     await db.transaction("rw", db.meta, async () => {
       if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
       // After a refusal, the server's copies come back in full, replacing refused local edits.
-      if (t.repull) await db.meta.delete("cursor");
+      if (t.repull) await dropCursor(db);
       // An app from before PULL_EPOCH may have been given a list without pulling its older rows:
       // its cursor is dropped once, so the device pulls everything one time.
       if ((await db.meta.get("pullEpoch"))?.value !== PULL_EPOCH) {
-        await db.meta.delete("cursor");
+        await dropCursor(db);
         await db.meta.put({ key: "pullEpoch", value: PULL_EPOCH });
       }
     });
