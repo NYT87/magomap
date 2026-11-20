@@ -14,14 +14,12 @@ export interface SyncStatus {
  * Whether a list's places may still be on their way: "downloading" while a sync runs, "waiting"
  * when a download of everything was cut off (a failed sync) and the next sync finishes it.
  */
-export function useListArrival(): "downloading" | "waiting" | null {
+export function useListArrival(): "downloading" | "waiting" | "unknown" | null {
   const syncing = useSyncExternalStore(subscribeSync, syncState).state === "syncing";
-  const owed = useLiveQuery(
-    async () => (await currentDb().meta.get("fullPull")) !== undefined,
-    [],
-    false,
-  );
+  const owed = useLiveQuery(async () => (await currentDb().meta.get("fullPull")) !== undefined);
   if (syncing) return "downloading";
+  // Not read yet (a first render): say nothing rather than "empty" for a moment.
+  if (owed === undefined) return "unknown";
   return owed ? "waiting" : null;
 }
 

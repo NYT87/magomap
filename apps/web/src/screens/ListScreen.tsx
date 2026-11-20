@@ -58,7 +58,9 @@ export function ListScreen({ id }: { id: string }) {
       {rows.length === 0 ? (
         <p className="mm-muted">
           {list?.provider != null && arrival
-            ? t(arrival === "downloading" ? "lists.downloading" : "lists.downloadWaiting")
+            ? arrival === "unknown"
+              ? ""
+              : t(arrival === "downloading" ? "lists.downloading" : "lists.downloadWaiting")
             : t("lists.empty")}
         </p>
       ) : (

@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { ListPicker, type PickerList } from "./ListPicker";
 
-const sync = vi.hoisted(() => ({ arrival: null as "downloading" | "waiting" | null }));
+const sync = vi.hoisted(() => ({
+  arrival: null as "downloading" | "waiting" | "unknown" | null,
+}));
 vi.mock("../data/useSyncStatus", () => ({ useListArrival: () => sync.arrival }));
 
 import { MapPrefsProvider } from "./mapPrefs";
@@ -112,7 +114,7 @@ describe("ListPicker", () => {
       ...sections,
       subscribed: [{ list: list("새 리스트", "kakao"), count: 0, color: "#2464ad" }],
     };
-    const view = (arrival: "downloading" | "waiting" | null) => {
+    const view = (arrival: "downloading" | "waiting" | "unknown" | null) => {
       sync.arrival = arrival;
       return render(
         <MapPrefsProvider userId="u-dl">
@@ -130,8 +132,30 @@ describe("ListPicker", () => {
     expect(group()).toHaveTextContent("Downloads at the next sync");
     expect(group()).not.toHaveTextContent("0 places");
     second.unmount();
+    // Not read yet: neither "0 places" nor "waiting" for that moment.
+    const third = view("unknown");
+    expect(group()).not.toHaveTextContent("0 places");
+    expect(group()).not.toHaveTextContent("Downloads at the next sync");
+    third.unmount();
     view(null);
     expect(group()).toHaveTextContent("0 places");
+    sync.arrival = null;
+  });
+
+  it("an own empty list still says 0 places while a download is owed", async () => {
+    await i18n.changeLanguage("en");
+    sync.arrival = "waiting";
+    render(
+      <MapPrefsProvider userId="u-own">
+        <ListPicker
+          sections={{
+            ...sections,
+            mine: [{ list: list("빈 리스트", null), count: 0, color: "#2464ad" }],
+          }}
+        />
+      </MapPrefsProvider>,
+    );
+    expect(screen.getByText("빈 리스트").closest("li")).toHaveTextContent("0 places");
     sync.arrival = null;
   });
 });

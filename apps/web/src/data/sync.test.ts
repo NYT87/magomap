@@ -612,4 +612,54 @@ describe("sync", () => {
     await expect(pullAll(db)).rejects.toThrow();
     expect(await db.meta.get("fullPull")).toBeUndefined();
   });
+
+  it("clears the full download when the restarted pull is a single page", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.meta.put({ key: "cursor", value: "c0" });
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+    expect((await db.meta.get("cursor"))?.value).toBe("f1");
+  });
+
+  it("a single-page download of everything never owes one", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "c1", hasMore: false },
+    ];
+    await pullAll(db);
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
+
+  it("a page that lands after another tab restarted the download doesn't undo the restart", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    await db.user_lists.put(access("l_kakao_1"));
+    await db.meta.put({ key: "cursor", value: "c0" });
+    let answer = () => {};
+    server.pullGate = new Promise((resolve) => {
+      answer = resolve;
+    });
+    server.pullPages = [
+      { rows: [], cursor: "c1", hasMore: false },
+      { rows: [], cursor: "f1", hasMore: false },
+    ];
+    const late = pullAll(db);
+    await vi.waitFor(() => expect(server.pulls).toHaveLength(1));
+    // Another tab gained a list meanwhile: it dropped the cursor and owes a full download.
+    await db.meta.delete("cursor");
+    await db.meta.put({ key: "fullPull", value: 1 });
+    server.pullGate = null;
+    answer();
+    await late;
+    // This tab pulled again from the start, and the full download finished.
+    expect(server.pulls).toEqual(["/api/sync/pull?cursor=c0", "/api/sync/pull"]);
+    expect((await db.meta.get("cursor"))?.value).toBe("f1");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
 });

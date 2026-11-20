@@ -13,7 +13,9 @@ describe("useListArrival", () => {
   it("says downloading while a sync runs, and waiting while a full download is owed", async () => {
     const db = openUserDb("arrival");
     const { result, rerender } = renderHook(() => useListArrival());
-    expect(result.current).toBeNull();
+    // Not read yet on the first render.
+    expect(result.current).toBe("unknown");
+    await waitFor(() => expect(result.current).toBeNull());
     await db.meta.put({ key: "fullPull", value: 1 });
     await waitFor(() => expect(result.current).toBe("waiting"));
     sync.state = "syncing";

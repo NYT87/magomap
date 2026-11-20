@@ -244,6 +244,9 @@ export async function pullAll(
       throw stopFor(error);
     }
     let restart = false;
+    // Another tab moved the cursor while this page was on its way (its own pull, or a restart for
+    // a new list): keep the rows, but pull again from where the cursor is now.
+    let moved = false;
     await db.transaction(
       "rw",
       [db.outbox, db.meta, ...ROW_TABLES.map((n) => db.table(n))],
@@ -257,6 +260,8 @@ export async function pullAll(
           await db.table(table).put(row);
           pulled += 1;
         }
+        moved = !restart && (await db.meta.get("cursor"))?.value !== cursor;
+        if (moved) return;
         if (restart) await db.meta.delete("cursor");
         else await db.meta.put({ key: "cursor", value: page.cursor });
         // A download of everything (no cursor, or restarted for a new list) is remembered until
@@ -272,6 +277,7 @@ export async function pullAll(
       mayRestart = false;
       continue;
     }
+    if (moved) continue;
     if (!page.hasMore) return pulled;
   }
 }

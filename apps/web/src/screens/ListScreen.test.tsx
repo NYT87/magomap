@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { ListScreen } from "./ListScreen";
 
-const sync = vi.hoisted(() => ({ arrival: null as "downloading" | "waiting" | null }));
+const sync = vi.hoisted(() => ({
+  arrival: null as "downloading" | "waiting" | "unknown" | null,
+}));
 vi.mock("../data/useSyncStatus", () => ({ useListArrival: () => sync.arrival }));
 const { openUserDb } = await import("../data/db");
 
@@ -53,5 +55,15 @@ describe("ListScreen", () => {
     sync.arrival = null;
     render(<ListScreen id="l_kakao_1" />);
     expect(await screen.findByText("No places in this list yet.")).toBeInTheDocument();
+  });
+
+  it("an own empty list still says empty while a download is owed", async () => {
+    await i18n.changeLanguage("en");
+    const db = openUserDb("list-screen-own");
+    await db.lists.put({ ...kakaoList, id: "l_own", provider: null, externalId: null });
+    sync.arrival = "waiting";
+    render(<ListScreen id="l_own" />);
+    expect(await screen.findByText("No places in this list yet.")).toBeInTheDocument();
+    sync.arrival = null;
   });
 });
