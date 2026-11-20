@@ -16,7 +16,8 @@ function htmlFiles(dir: string, root = dir): string[] {
   });
 }
 
-const twinOf = (page: string) => (page.startsWith("en/") ? page.slice(3) : `en/${page}`);
+// English is the default at the root; Korean lives under ko/.
+const twinOf = (page: string) => (page.startsWith("ko/") ? page.slice(3) : `ko/${page}`);
 
 /** Where an internal href lands in the built folder, or null for external links. */
 function target(href: string): string | null {
@@ -32,9 +33,9 @@ export function checkPages(dir: string, appUrl: string): string[] {
   for (const page of pages) {
     if (!pages.includes(twinOf(page))) {
       problems.push(
-        page.startsWith("en/")
-          ? `${page} has no Korean twin (${twinOf(page)})`
-          : `${page} has no English twin (${twinOf(page)})`,
+        page.startsWith("ko/")
+          ? `${page} has no English twin (${twinOf(page)})`
+          : `${page} has no Korean twin (${twinOf(page)})`,
       );
     }
     const html = readFileSync(join(dir, page), "utf8");

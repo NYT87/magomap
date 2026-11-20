@@ -12,7 +12,8 @@ const inject = (): Plugin => ({
     html.replaceAll("%APP_URL%", APP_URL).replaceAll("%SITE_URL%", SITE_URL),
 });
 
-const pages = ["", "get-started/", "privacy/", "en/", "en/get-started/", "en/privacy/"];
+// English is the default at the root; Korean lives under ko/.
+const pages = ["", "get-started/", "privacy/", "ko/", "ko/get-started/", "ko/privacy/"];
 
 export default defineConfig({
   base: "/magomap/",

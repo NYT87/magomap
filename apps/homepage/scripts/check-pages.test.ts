@@ -10,10 +10,10 @@ describe("check-pages", () => {
 
   it("names a page that exists in only one language, a dead link, and a wrong app link", () => {
     const problems = checkPages(dir("broken"), "https://app.test/");
-    expect(problems).toContain("en/privacy/index.html has no Korean twin (privacy/index.html)");
-    expect(problems).toContain("en/index.html links to a missing page: /magomap/en/missing/");
+    expect(problems).toContain("ko/privacy/index.html has no English twin (privacy/index.html)");
+    expect(problems).toContain("ko/index.html links to a missing page: /magomap/ko/missing/");
     expect(problems).toContain(
-      "en/privacy/index.html: an 'Open magomap' link goes to https://elsewhere.test/, not https://app.test/",
+      "ko/privacy/index.html: an 'Open magomap' link goes to https://elsewhere.test/, not https://app.test/",
     );
   });
 });
