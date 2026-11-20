@@ -59,7 +59,7 @@
     "mapBy": "Map: {{name}}",
     "myLocation": "Show my location",
     "locationDenied": "Location is off for this site. You can turn it on in your browser settings.",
-    "layers": "Lists on the map",
+    "layers": "Lists",
     "listView": "Show as a list",
     "mapView": "Show the map",
     "noLocation_one": "{{count}} place has no location yet. Update it in kakao-list, then import again.",
@@ -70,12 +70,11 @@
     "openPlace": "Open place",
     "close": "Close",
     "placesTitle": "Places on the map",
-    "empty": "No places on the map yet. Search for one, or import your Kakao lists.",
+    "empty": "No places on the map yet. Search for one, or import your lists from kakao-list in Account.",
     "previousLabel": "{{title}}, previous location until {{date}}",
     "hasPrevious": "Moved. Open it to see where it was."
   },
   "picker": {
-    "title": "Lists on the map",
     "mine": "My lists",
     "kakao": "Kakao lists",
     "kakaoSubscribed": "Subscribed in Kakao",

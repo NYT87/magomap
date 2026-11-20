@@ -59,7 +59,7 @@
     "mapBy": "지도: {{name}}",
     "myLocation": "내 위치 보기",
     "locationDenied": "이 사이트의 위치 권한이 꺼져 있어요. 브라우저 설정에서 켤 수 있어요.",
-    "layers": "지도에 보일 리스트",
+    "layers": "리스트",
     "listView": "목록으로 보기",
     "mapView": "지도로 보기",
     "noLocation_one": "위치가 아직 없는 장소가 {{count}}곳 있어요. kakao-list에서 업데이트한 뒤 다시 가져와 주세요.",
@@ -70,12 +70,11 @@
     "openPlace": "장소 열기",
     "close": "닫기",
     "placesTitle": "지도에 있는 장소",
-    "empty": "아직 지도에 장소가 없어요. 장소를 검색하거나 카카오 리스트를 가져와 보세요.",
+    "empty": "아직 지도에 장소가 없어요. 장소를 검색하거나 계정에서 kakao-list 리스트를 가져와 보세요.",
     "previousLabel": "{{title}}, {{date}}까지 있던 이전 위치",
     "hasPrevious": "옮겨 간 장소예요. 열어서 이전 위치를 볼 수 있어요."
   },
   "picker": {
-    "title": "지도에 보일 리스트",
     "mine": "내 리스트",
     "kakao": "카카오 리스트",
     "kakaoSubscribed": "카카오에서 구독 중",
