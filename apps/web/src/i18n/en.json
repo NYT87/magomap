@@ -234,6 +234,8 @@
     }
   },
   "sync": {
+    "title": "Sync",
+    "signIn": "Sign in again",
     "synced": "Synced",
     "syncing": "Syncing…",
     "offline": "Offline",
@@ -244,6 +246,8 @@
     "needsSigninNone": "Sign in again to keep syncing",
     "error": "Can't reach the server — retrying",
     "clockAhead": "Your phone's clock is ahead — changes are saved here and will sync once it's corrected",
+    "waiting_one": "{{count}} change waiting to sync",
+    "waiting_other": "{{count}} changes waiting to sync",
     "rejected_one": "{{count}} change couldn't be saved",
     "rejected_other": "{{count}} changes couldn't be saved",
     "rejectedTitle": "Changes that couldn't be saved",

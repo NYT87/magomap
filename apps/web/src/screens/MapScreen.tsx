@@ -2,6 +2,8 @@ import { Layers, List as ListIcon, LocateFixed, Map as MapIcon } from "lucide-re
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
+import { SyncIndicator } from "../components/SyncIndicator";
+import { NoticeSlot } from "../layout/AppLayout";
 import { useLayout } from "../layout/useLayout";
 import { useMapStage } from "../map/MapStage";
 import { MapView } from "../map/MapView";
@@ -49,6 +51,7 @@ export function MapScreen() {
             <SearchBar />
           </div>
           <div className="mm-map-tools">
+            <SyncIndicator compact />
             <button type="button" className="mm-fab" onClick={() => navigate("/lists")}>
               <Layers aria-hidden size={22} strokeWidth={1.75} />
               <span className="mm-visually-hidden">{t("map.layers")}</span>
@@ -73,12 +76,15 @@ export function MapScreen() {
               </span>
             </button>
           </div>
-          <div className="mm-map-notes" aria-live="polite">
-            {denied && <p className="mm-note">{t("map.locationDenied")}</p>}
-            <MissingLocationNote count={data?.withoutLocation ?? 0} />
-            {data && data.shownPlaces.length === 0 && !asList && (
-              <p className="mm-note">{t("map.empty")}</p>
-            )}
+          <div className="mm-map-notes">
+            <div className="mm-map-notes__live" aria-live="polite">
+              {denied && <p className="mm-note">{t("map.locationDenied")}</p>}
+              <MissingLocationNote count={data?.withoutLocation ?? 0} />
+              {data && data.shownPlaces.length === 0 && !asList && (
+                <p className="mm-note">{t("map.empty")}</p>
+              )}
+            </div>
+            <NoticeSlot />
           </div>
           {asList && data && (
             <div className="mm-list-overlay">

@@ -7,6 +7,7 @@ import { SyncIndicator } from "./components/SyncIndicator";
 import { SyncProvider } from "./data/SyncProvider";
 import { useUserDb } from "./data/useUserDb";
 import { AppLayout } from "./layout/AppLayout";
+import { useLayout } from "./layout/useLayout";
 import { MapStageProvider } from "./map/MapStage";
 import { MapPrefsProvider } from "./map/mapPrefs";
 import { PageRoutes } from "./routes";
@@ -47,18 +48,15 @@ function Signedin({ me }: { me: Me }) {
   // Each account has its own local database; signing out keeps it for the next sign-in. A new
   // account, or a database replaced under us, starts everything below over.
   const { key } = useUserDb(me.userId);
+  const layout = useLayout();
   return (
     <SyncProvider key={key}>
       <MapPrefsProvider userId={me.userId}>
         <MapStageProvider>
           <AppLayout
             map={<MapScreen />}
-            status={
-              <div className="mm-status">
-                <SyncIndicator />
-                <UpdateBanner />
-              </div>
-            }
+            status={<SyncIndicator compact={layout === "phone"} />}
+            notice={<UpdateBanner />}
           >
             <PageRoutes me={me} />
           </AppLayout>

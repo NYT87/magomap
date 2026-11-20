@@ -8,6 +8,7 @@ import { NetworkError } from "../api/client";
 import { SyncContext, type SyncControls } from "../data/SyncContext";
 import i18n from "../i18n";
 import { MapPrefsProvider } from "../map/mapPrefs";
+import { setViewportWidth } from "../test/setup";
 import { Account } from "./Account";
 
 const { closeUserDb, openDbOrNull, openUserDb } = await import("../data/db");
@@ -66,6 +67,17 @@ async function makeDb() {
 }
 
 describe("Account", () => {
+  it("shows its title in the page on desktop, and leaves it to the header on phones", async () => {
+    await i18n.changeLanguage("en");
+    setViewportWidth(1440);
+    renderAccount();
+    expect(screen.getByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument();
+    cleanup();
+    setViewportWidth(390);
+    renderAccount();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+  });
+
   it("deletes the account only after the shown word is typed", async () => {
     await i18n.changeLanguage("en");
     await makeDb();
