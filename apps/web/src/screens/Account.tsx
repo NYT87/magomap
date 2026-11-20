@@ -1,6 +1,6 @@
 import type { Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
@@ -12,6 +12,7 @@ import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
+import { onThemeChange, setTheme, storedTheme, type ThemeChoice } from "../theme";
 import { AboutSection } from "./AboutSection";
 
 type Dialog =
@@ -25,6 +26,8 @@ export function Account({ me }: { me: Me }) {
   const mapHintId = useId();
   const sync = useSyncControls();
   const [, navigate] = useLocation();
+  // Follows this tab and other tabs (followTheme applies the change itself).
+  const theme = useSyncExternalStore(onThemeChange, storedTheme);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -114,6 +117,20 @@ export function Account({ me }: { me: Me }) {
             <option value="en" lang="en">
               English
             </option>
+          </select>
+        </label>
+        <label className="mm-field">
+          <span className="mm-field__label">{t("account.theme")}</span>
+          <select
+            className="mm-input"
+            value={theme}
+            onChange={(e) => {
+              setTheme(e.target.value as ThemeChoice);
+            }}
+          >
+            <option value="system">{t("account.themeSystem")}</option>
+            <option value="light">{t("account.themeLight")}</option>
+            <option value="dark">{t("account.themeDark")}</option>
           </select>
         </label>
         <label className="mm-field">

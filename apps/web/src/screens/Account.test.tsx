@@ -1,5 +1,5 @@
 import type { Me } from "@magomap/domain";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -278,5 +278,48 @@ describe("Account", () => {
     cleanup();
     renderAccount();
     expect(screen.getByRole("combobox", { name: "Map" })).toHaveValue("osm");
+  });
+  describe("theme", () => {
+    beforeEach(() => {
+      localStorage.removeItem("mm.theme");
+      delete document.documentElement.dataset.theme;
+    });
+
+    it("chooses the theme", async () => {
+      await i18n.changeLanguage("en");
+      const user = userEvent.setup();
+      renderAccount();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Dark");
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(localStorage.getItem("mm.theme")).toBe("dark");
+    });
+
+    it("shows the saved choice", async () => {
+      await i18n.changeLanguage("en");
+      localStorage.setItem("mm.theme", "light");
+      renderAccount();
+      expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("light");
+    });
+
+    it("follows a change made in another tab", async () => {
+      await i18n.changeLanguage("en");
+      renderAccount();
+      const theme = screen.getByRole("combobox", { name: "Theme" });
+      expect(theme).toHaveValue("system");
+      localStorage.setItem("mm.theme", "dark");
+      act(() => {
+        window.dispatchEvent(new StorageEvent("storage", { key: "mm.theme", newValue: "dark" }));
+      });
+      expect(theme).toHaveValue("dark");
+    });
+
+    it("defaults to the device", async () => {
+      await i18n.changeLanguage("en");
+      renderAccount();
+      const theme = screen.getByRole("combobox", { name: "Theme" });
+      expect(theme).toHaveValue("system");
+      expect(screen.getByRole("option", { name: "Same as this device" })).toBeInTheDocument();
+      expect(theme).toHaveDisplayValue("Same as this device");
+    });
   });
 });

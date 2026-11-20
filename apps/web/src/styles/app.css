@@ -1335,15 +1335,14 @@ a {
   font-size: 13px;
 }
 
-/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue. */
-@media (prefers-color-scheme: dark) {
-  .mm-kakao-note__text {
-    border-inline-start-color: color-mix(
-      in srgb,
-      var(--note-color, var(--color-border)) 75%,
-      #ffffff
-    );
-  }
+/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue.
+   --kakao-note-lighten is 0% in light and set with the dark tokens (tokens.css). */
+.mm-kakao-note__text {
+  border-inline-start-color: color-mix(
+    in srgb,
+    var(--note-color, var(--color-border)),
+    #ffffff var(--kakao-note-lighten, 0%)
+  );
 }
 
 .mm-inline-form {
