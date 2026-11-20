@@ -131,6 +131,24 @@ describe("paged kakao-list endpoints", () => {
     });
   });
 
+  it("passes on the account's own nickname, trimmed and cut to 40", () => {
+    expect(kakaoListsToImport({ ...listsBody, ownerNickname: " 지은 " }, "111").ownerNickname).toBe(
+      "지은",
+    );
+    const long = "가".repeat(60);
+    expect(kakaoListsToImport({ ...listsBody, ownerNickname: long }, "111").ownerNickname).toBe(
+      "가".repeat(40),
+    );
+  });
+
+  it("drops a nickname it can't use, and still reads every list", () => {
+    for (const bad of ["", "   ", 123, "a\u0000b"]) {
+      const snapshot = kakaoListsToImport({ ...listsBody, ownerNickname: bad }, "111");
+      expect(snapshot.ownerNickname).toBeUndefined();
+      expect(snapshot.lists).toHaveLength(1);
+    }
+  });
+
   it("maps one page of items", () => {
     expect(kakaoItemsToImport(itemsBody, "111")).toEqual({
       externalId: "101",

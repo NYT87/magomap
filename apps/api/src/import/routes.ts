@@ -13,6 +13,7 @@ import {
   runSnapshot,
   startImportRun,
 } from "@magomap/db/stores/importRuns";
+import { fillDisplayName } from "@magomap/db/stores/users";
 import { LIMITS } from "@magomap/domain";
 import {
   KAKAO,
@@ -108,6 +109,10 @@ importRoutes.post("/import/runs", (c) =>
     } catch (error) {
       if (error instanceof UpstreamError) throw error;
       throw new UpstreamError("kakao_list_unavailable");
+    }
+    // The account's name, only while it's empty; done now, so a stopped import doesn't delay it.
+    if (snapshot.ownerNickname) {
+      await fillDisplayName(c.var.db, c.var.userId, snapshot.ownerNickname);
     }
     let started: { runId: string };
     try {

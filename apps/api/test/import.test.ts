@@ -14,7 +14,7 @@ const post = (cookie: string, body: unknown = {}) => ({
 });
 
 /** A stand-in kakao-list that serves the fixture for any user, checking the secret. */
-function serveKakaoList(contract = baseContract("111")) {
+function serveKakaoList(contract = baseContract("111"), extra: Record<string, unknown> = {}) {
   const seen: { auth: string; user: string; url: string }[] = [];
   network.use(
     http.get(`${BASE}/lists`, ({ request }) => {
@@ -24,7 +24,7 @@ function serveKakaoList(contract = baseContract("111")) {
         user: url.searchParams.get("kakaoUserId") ?? "",
         url: url.pathname,
       });
-      return HttpResponse.json(listsBody(contract));
+      return HttpResponse.json({ ...listsBody(contract), ...extra });
     }),
     http.get(`${BASE}/lists/:folderId/items`, ({ request, params }) => {
       const url = new URL(request.url);
@@ -56,6 +56,56 @@ async function start(cookie: string) {
     },
   };
 }
+
+const json = (cookie: string, method: string, body: unknown) => ({
+  method,
+  headers: { "content-type": "application/json", cookie },
+  body: JSON.stringify(body),
+});
+const nameOf = async (cookie: string) =>
+  (
+    (await (await call("/api/me", { headers: { cookie } })).json()) as {
+      displayName: string | null;
+    }
+  ).displayName;
+
+describe("account nickname from kakao-list", () => {
+  it("an import fills an empty nickname from kakao-list", async () => {
+    serveKakaoList(baseContract("111"), { ownerNickname: "지은" });
+    const cookie = await devLogin("111");
+    await start(cookie);
+    expect(await nameOf(cookie)).toBe("지은");
+  });
+
+  it("a typed nickname survives imports", async () => {
+    serveKakaoList(baseContract("111"), { ownerNickname: "지은" });
+    const cookie = await devLogin("111");
+    expect((await call("/api/me", json(cookie, "PATCH", { displayName: "Jose" }))).status).toBe(
+      200,
+    );
+    await start(cookie);
+    expect(await nameOf(cookie)).toBe("Jose");
+  });
+
+  it("a cleared nickname is filled again", async () => {
+    serveKakaoList(baseContract("111"), { ownerNickname: "지은" });
+    const cookie = await devLogin("111");
+    await call("/api/me", json(cookie, "PATCH", { displayName: "Jose" }));
+    const cleared = await call("/api/me", json(cookie, "PATCH", { displayName: "  " }));
+    expect(((await cleared.json()) as { displayName: string | null }).displayName).toBeNull();
+    await start(cookie);
+    expect(await nameOf(cookie)).toBe("지은");
+  });
+
+  it("a nickname kakao-list can't give doesn't stop the import", async () => {
+    serveKakaoList(baseContract("222"), { ownerNickname: 42 });
+    // An account no other test has named (accounts carry over between tests in this file).
+    const cookie = await devLogin("222");
+    const { res } = await start(cookie);
+    expect(res.status).toBe(200);
+    expect(await nameOf(cookie)).toBeNull();
+  });
+});
 
 describe("server-driven import", () => {
   it("starts a run from the caller's own kakao-list data, sending the secret", async () => {
