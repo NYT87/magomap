@@ -11,11 +11,24 @@ body,
   margin: 0;
 }
 
+/* The device's text size: the browser default, or on Safari the system Text Size (Dynamic Type). */
+html {
+  font-size: 100%;
+}
+
+@supports (font: -apple-system-body) {
+  html {
+    /* Through a variable: the linter wants a generic family after a font, and a family would void this value. */
+    --device-font: -apple-system-body;
+    font: var(--device-font);
+  }
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: var(--text-base-size);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -120,7 +133,7 @@ a {
   min-height: 44px;
   color: var(--color-text);
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   text-decoration: none;
   flex: none;
@@ -161,7 +174,7 @@ a {
   gap: 2px;
   min-height: 56px;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   text-decoration: none;
   border-radius: var(--radius-button);
@@ -247,7 +260,7 @@ a {
   min-width: 0;
   margin-inline-end: auto;
   padding: var(--space-xs) var(--space-sm);
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 700;
   line-height: 1.3;
   white-space: normal;
@@ -259,19 +272,19 @@ a {
 }
 
 .mm-screen__title {
-  font-size: 26px;
+  font-size: var(--text-5xl);
   font-weight: 700;
   line-height: 1.25;
 }
 
 @media (min-width: 768px) {
   .mm-screen__title {
-    font-size: 24px;
+    font-size: var(--text-4xl);
   }
 }
 
 .mm-h4 {
-  font-size: 17px;
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.4;
 }
@@ -302,13 +315,13 @@ a {
 
 .mm-muted {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 
 .mm-error {
   color: var(--color-error);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-field {
@@ -319,7 +332,7 @@ a {
 
 .mm-field__label {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-input {
@@ -466,7 +479,7 @@ a {
 }
 
 .mm-dialog__title {
-  font-size: 20px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -509,14 +522,14 @@ a {
 }
 
 .mm-welcome__title {
-  font-size: 26px;
+  font-size: var(--text-5xl);
   font-weight: 700;
   line-height: 1.3;
 }
 
 .mm-welcome__lead {
   color: var(--color-text-secondary);
-  font-size: 17px;
+  font-size: var(--text-lg);
   line-height: 1.65;
 }
 
@@ -550,7 +563,7 @@ a {
   color: var(--color-text-secondary);
   background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   border-radius: var(--radius-pill);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   pointer-events: none;
 }
@@ -698,7 +711,7 @@ a {
   border-left: 3px solid var(--color-clay);
   border-radius: var(--radius-button);
   box-shadow: var(--shadow);
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.5;
   pointer-events: auto;
 }
@@ -743,7 +756,7 @@ a {
 
 .mm-moved-hint {
   color: var(--color-clay);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-place-row__title {
@@ -816,7 +829,7 @@ a {
 
 .mm-picker__title {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
@@ -832,7 +845,7 @@ a {
   background: none;
   border: 0;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   cursor: pointer;
 }
@@ -1070,14 +1083,14 @@ a {
   color: var(--color-pine);
   background: color-mix(in srgb, var(--color-pine) 12%, transparent);
   border-radius: var(--radius-pill);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
 .mm-button--small {
   min-height: 44px;
   padding: 6px 14px;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 /* ---------- Place page ---------- */
@@ -1168,14 +1181,14 @@ a {
 }
 
 .mm-section__title {
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 600;
   line-height: 1.35;
 }
 
 @media (min-width: 768px) {
   .mm-section__title {
-    font-size: 20px;
+    font-size: var(--text-2xl);
   }
 }
 
@@ -1205,24 +1218,24 @@ a {
 
 .mm-entry__date {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
 .mm-entry__where {
   color: var(--color-clay);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-entry__body {
-  font-size: 17px;
+  font-size: var(--text-lg);
   line-height: 1.65;
   white-space: pre-wrap;
 }
 
 @media (min-width: 768px) {
   .mm-entry__body {
-    font-size: 18px;
+    font-size: var(--text-xl);
   }
 }
 
@@ -1242,7 +1255,7 @@ a {
 
 .mm-entry__state {
   color: var(--color-warning);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
 }
 
@@ -1278,7 +1291,7 @@ a {
 
 .mm-editor__body {
   min-height: 160px;
-  font-size: 17px;
+  font-size: var(--text-lg);
   line-height: 1.65;
   resize: vertical;
 }
@@ -1314,7 +1327,7 @@ a {
   margin: 0;
   padding-left: var(--space-lg);
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-links {
@@ -1382,7 +1395,7 @@ a {
 
 .mm-chip__name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-chip[data-removed] .mm-chip__name {
@@ -1392,7 +1405,7 @@ a {
 
 .mm-chip__meta {
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* A place's lists, each with its Kakao note quoted under it in the list's Kakao colour. */
@@ -1424,7 +1437,7 @@ a {
 .mm-kakao-note__text {
   padding-inline-start: var(--space-sm);
   color: var(--color-text);
-  font-size: 16px;
+  font-size: var(--text-base-size);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1432,7 +1445,7 @@ a {
 }
 
 .mm-kakao-note__hint {
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue.
@@ -1576,7 +1589,7 @@ a {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   line-height: 1.35;
   text-decoration: none;
@@ -1736,12 +1749,12 @@ a {
 .mm-about__label {
   min-width: 4.5em;
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mm-about__value {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: var(--text-ms);
   user-select: text;
   overflow-wrap: anywhere;
 }
@@ -1782,7 +1795,7 @@ a {
   background: var(--color-bg);
   border: 1px solid var(--color-pine);
   border-radius: var(--radius-card);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 /* On the phone map the banner sits in the notes stack; the stack itself ignores touches. */
