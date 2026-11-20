@@ -1,5 +1,5 @@
 import type { Me } from "@magomap/domain";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dexie from "dexie";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -299,6 +299,18 @@ describe("Account", () => {
       localStorage.setItem("mm.theme", "light");
       renderAccount();
       expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("light");
+    });
+
+    it("follows a change made in another tab", async () => {
+      await i18n.changeLanguage("en");
+      renderAccount();
+      const theme = screen.getByRole("combobox", { name: "Theme" });
+      expect(theme).toHaveValue("system");
+      localStorage.setItem("mm.theme", "dark");
+      act(() => {
+        window.dispatchEvent(new StorageEvent("storage", { key: "mm.theme", newValue: "dark" }));
+      });
+      expect(theme).toHaveValue("dark");
     });
 
     it("defaults to the device", async () => {

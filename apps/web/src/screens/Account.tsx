@@ -1,6 +1,6 @@
 import type { Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
@@ -27,6 +27,14 @@ export function Account({ me }: { me: Me }) {
   const sync = useSyncControls();
   const [, navigate] = useLocation();
   const [theme, setThemeChoice] = useState<ThemeChoice>(storedTheme);
+  // Another tab can change the theme while this one is open (followTheme applies it): follow it here too.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "mm.theme" || e.key === null) setThemeChoice(storedTheme());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
