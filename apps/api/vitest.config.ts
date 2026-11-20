@@ -20,6 +20,8 @@ export default defineConfig(async () => {
             ALLOWED_KAKAO_USER_IDS: "111,222",
             ALLOW_DEV_LOGIN: "true",
             KAKAO_JAVASCRIPT_KEY: "test-js-key",
+            // The d1 environment points at the deployed kakao-list; tests use the mocked one.
+            KAKAO_LIST_URL: "http://localhost:8788",
           },
         },
       }),
