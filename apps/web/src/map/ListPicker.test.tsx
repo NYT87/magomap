@@ -61,4 +61,44 @@ describe("ListPicker", () => {
     renderPicker("u3");
     expect(screen.getAllByRole("switch", { name: /빵집/ }).at(-1)).toBeChecked();
   });
+
+  it("opens a list from its row, and its switch only toggles the map", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+    window.history.pushState(null, "", "/lists");
+    renderPicker("u4");
+    expect(screen.getByRole("link", { name: /카페/ })).toHaveAttribute(
+      "href",
+      "/lists/%EC%B9%B4%ED%8E%98",
+    );
+    expect(screen.getByRole("link", { name: /Saved, not in a list/ })).toHaveAttribute(
+      "href",
+      "/lists/__saved",
+    );
+    await user.click(screen.getByRole("switch", { name: "Show 카페 on the map" }));
+    expect(screen.getByRole("switch", { name: "Show 카페 on the map" })).not.toBeChecked();
+    expect(window.location.pathname).toBe("/lists");
+  });
+
+  it("leaves out a section with nothing in it", async () => {
+    await i18n.changeLanguage("en");
+    render(
+      <MapPrefsProvider userId="u5">
+        <ListPicker sections={{ ...sections, mine: [], savedNotInList: 0 }} />
+      </MapPrefsProvider>,
+    );
+    expect(screen.queryByRole("group", { name: "My lists" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Kakao lists" })).toBeInTheDocument();
+  });
+
+  it("shows the hint when there are no lists at all", async () => {
+    await i18n.changeLanguage("en");
+    render(
+      <MapPrefsProvider userId="u6">
+        <ListPicker sections={{ mine: [], provider: [], subscribed: [], savedNotInList: 0 }} />
+      </MapPrefsProvider>,
+    );
+    expect(screen.queryAllByRole("group")).toHaveLength(0);
+    expect(screen.getByText(/from kakao-list in Account/)).toBeInTheDocument();
+  });
 });

@@ -86,8 +86,8 @@
     "count_one": "{{count}} place",
     "count_other": "{{count}} places",
     "by": "by {{name}}",
-    "none": "None yet",
-    "hint": "Your Kakao lists show up here after you import them."
+    "hint": "Your Kakao lists show up here after you import them from kakao-list in Account.",
+    "toggle": "Show {{name}} on the map"
   },
   "search": {
     "label": "Search places",

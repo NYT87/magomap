@@ -86,8 +86,8 @@
     "count_one": "{{count}}곳",
     "count_other": "{{count}}곳",
     "by": "{{name}} 님의 리스트",
-    "none": "아직 없어요",
-    "hint": "카카오 리스트는 가져오기를 하면 여기에 나타나요."
+    "hint": "카카오 리스트는 계정에서 kakao-list 가져오기를 하면 여기에 나타나요.",
+    "toggle": "지도에 {{name}} 표시"
   },
   "search": {
     "label": "장소 검색",

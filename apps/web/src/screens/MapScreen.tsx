@@ -90,7 +90,7 @@ export function MapScreen() {
           )}
           {sheet && data && (
             <Sheet title={t("picker.title")} onClose={() => setSheet(false)}>
-              <ListPicker sections={data.sections} heading={false} />
+              <ListPicker sections={data.sections} />
             </Sheet>
           )}
         </>
