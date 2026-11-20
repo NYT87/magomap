@@ -26,11 +26,24 @@ const summary = {
 function server(
   lists: { externalId: string; itemCount: number }[],
   fail?: (path: string) => unknown,
+  resume?: { externalId: string; pagesDone: number; finished: boolean }[],
 ) {
   api.mockImplementation(async (path: string) => {
     const err = fail?.(path);
     if (err) throw err;
     if (path === "/api/import/runs") return { runId: "r1", lists };
+    if (path.endsWith("/resume")) {
+      return {
+        runId: "r1",
+        lists: lists.map((l) => ({
+          name: l.externalId,
+          pagesDone: 0,
+          finished: false,
+          ...resume?.find((r) => r.externalId === l.externalId),
+          ...l,
+        })),
+      };
+    }
     const page = /\/lists\/([^/]+)\/pages\/(\d+)$/.exec(path);
     if (page) {
       const list = lists.find((l) => l.externalId === page[1]);
@@ -130,5 +143,65 @@ describe("runImport", () => {
     );
     expect(accounts.length).toBeGreaterThan(0);
     expect(new Set(accounts)).toEqual(new Set(["imp-a"]));
+  });
+
+  describe("continuing a run", () => {
+    const lists = [
+      { externalId: "A", itemCount: 3 },
+      { externalId: "B", itemCount: 1200 },
+      { externalId: "C", itemCount: 3 },
+    ];
+    const done = [
+      { externalId: "A", pagesDone: 1, finished: true },
+      { externalId: "B", pagesDone: 1, finished: false },
+    ];
+
+    it("continues a run: skips finished lists and starts a half-done list at its next page", async () => {
+      server(lists, undefined, done);
+      await runImport(() => {}, { resumeRunId: "r1" });
+      expect(api.mock.calls.map((c) => c[0])).toEqual([
+        "/api/import/runs/r1/resume",
+        "/api/import/runs/r1/lists/B/pages/1",
+        "/api/import/runs/r1/lists/B/pages/2",
+        "/api/import/runs/r1/lists/B/finish",
+        "/api/import/runs/r1/lists/C/pages/0",
+        "/api/import/runs/r1/lists/C/finish",
+        "/api/import/runs/r1/complete",
+      ]);
+      expect(sync).toHaveBeenCalledTimes(1);
+    });
+
+    it("counts progress from the lists already done", async () => {
+      server(lists, undefined, done);
+      const progress = vi.fn();
+      await runImport(progress, { resumeRunId: "r1" });
+      expect(progress.mock.calls[0]?.[0]).toEqual({ listIndex: 1, listCount: 3 });
+    });
+
+    it("starts fresh when kakao-list synced since the run stopped", async () => {
+      server([{ externalId: "101", itemCount: 1 }], (path) =>
+        path.endsWith("/resume") ? new ApiError(409, { error: "snapshot_changed" }) : null,
+      );
+      const onFreshStart = vi.fn();
+      await runImport(() => {}, { resumeRunId: "r1", onFreshStart });
+      expect(onFreshStart).toHaveBeenCalledTimes(1);
+      expect(api.mock.calls.map((c) => c[0])).toEqual([
+        "/api/import/runs/r1/resume",
+        "/api/import/runs",
+        "/api/import/runs/r1/lists/101/pages/0",
+        "/api/import/runs/r1/lists/101/finish",
+        "/api/import/runs/r1/complete",
+      ]);
+    });
+
+    it("reports other resume errors as a failed start", async () => {
+      server(lists, (path) =>
+        path.endsWith("/resume") ? new ApiError(502, { error: "kakao_list_unavailable" }) : null,
+      );
+      await expect(runImport(() => {}, { resumeRunId: "r1" })).rejects.toMatchObject({
+        step: "start",
+        code: "kakao_list_unavailable",
+      });
+    });
   });
 });

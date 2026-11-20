@@ -42,26 +42,50 @@ async function post<T>(account: string, path: string, body?: unknown): Promise<T
   }
 }
 
+type RunLists = { externalId: string; name: string; itemCount: number }[];
+type ResumeLists = (RunLists[number] & { pagesDone: number; finished: boolean })[];
+
 /**
- * Starts a run, imports every list page by page, finishes each list, then completes the run.
- * If anything fails, the run is never completed, so nothing is marked as removed from Kakao.
+ * Starts a run (or continues a stopped one), imports every list page by page, finishes each list,
+ * then completes the run. If anything fails, the run is never completed, so nothing is marked
+ * as removed from Kakao.
  */
 export async function runImport(
   onProgress: (p: { listIndex: number; listCount: number }) => void,
+  opts: { resumeRunId?: string; onFreshStart?: () => void } = {},
 ): Promise<ImportSummary> {
   const account = dbUserId(currentDb());
-  let run: { runId: string; lists: { externalId: string; name: string; itemCount: number }[] };
-  try {
-    run = await post(account, "/api/import/runs", { provider: "kakao" });
-  } catch (error) {
-    throw new ImportError("start", codeOf(error));
+  let run: { runId: string; lists: ResumeLists } | undefined;
+  if (opts.resumeRunId) {
+    try {
+      run = await post(account, `/api/import/runs/${encodeURIComponent(opts.resumeRunId)}/resume`);
+    } catch (error) {
+      const code = codeOf(error);
+      if (code !== "snapshot_changed" && code !== "run_closed")
+        throw new ImportError("start", code);
+      opts.onFreshStart?.();
+    }
+  }
+  if (!run) {
+    try {
+      const fresh = await post<{ runId: string; lists: RunLists }>(account, "/api/import/runs", {
+        provider: "kakao",
+      });
+      run = {
+        runId: fresh.runId,
+        lists: fresh.lists.map((l) => ({ ...l, pagesDone: 0, finished: false })),
+      };
+    } catch (error) {
+      throw new ImportError("start", codeOf(error));
+    }
   }
   const base = `/api/import/runs/${encodeURIComponent(run.runId)}`;
   for (const [listIndex, list] of run.lists.entries()) {
+    if (list.finished) continue;
     onProgress({ listIndex, listCount: run.lists.length });
     const at = `${base}/lists/${encodeURIComponent(list.externalId)}`;
     try {
-      for (let page = 0; ; page++) {
+      for (let page = list.pagesDone; ; page++) {
         const res = await post<{ done: boolean }>(account, `${at}/pages/${page}`);
         if (res.done) break;
       }
