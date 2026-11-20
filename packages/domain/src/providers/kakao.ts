@@ -59,6 +59,23 @@ export type KakaoListContract = z.infer<typeof kakaoListContractSchema>;
 const defined = <T extends object>(value: T): T =>
   Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
 
+/**
+ * A Kakao list's external id. Folder ids are global at Kakao, except folder 0: every user's own
+ * default favourites. That one is keyed per person (by their Kakao Login id), so two people's
+ * default lists never become one shared list.
+ */
+export function kakaoListExternalId(folderId: number, kakaoUserId: string): string {
+  return folderId === 0 ? `0~${kakaoUserId}` : String(folderId);
+}
+
+/** The Kakao folder id behind a list's external id, or undefined if it isn't one. */
+export function kakaoFolderIdOf(externalId: string): number | undefined {
+  if (/^0~[^~]+$/.test(externalId)) return 0;
+  if (!/^[1-9]\d{0,15}$/.test(externalId)) return undefined;
+  const id = Number(externalId);
+  return Number.isSafeInteger(id) ? id : undefined;
+}
+
 /** Validates kakao-list's contract and maps it to the neutral import. Throws on an invalid contract. */
 export function kakaoContractToImport(raw: unknown): ImportContract {
   const c = kakaoListContractSchema.parse(raw);
@@ -69,7 +86,7 @@ export function kakaoContractToImport(raw: unknown): ImportContract {
     subscriptionKnown: c.subscriptionKnown ?? false,
     lists: c.lists.map((l) =>
       defined({
-        externalId: String(l.kakaoFolderId),
+        externalId: kakaoListExternalId(l.kakaoFolderId, c.kakaoUserId),
         name: l.name,
         description: l.description,
         followed: l.subscribed,
@@ -135,7 +152,8 @@ export const kakaoItemsSchema = z.object({
 export type KakaoLists = z.infer<typeof kakaoListsSchema>;
 export type KakaoItems = z.infer<typeof kakaoItemsSchema>;
 
-export function kakaoListsToImport(raw: unknown): ImportListsSnapshot {
+/** `kakaoUserId` is the importing user's own Kakao Login id (it keys their folder 0). */
+export function kakaoListsToImport(raw: unknown, kakaoUserId: string): ImportListsSnapshot {
   const c = kakaoListsSchema.parse(raw);
   return {
     provider: KAKAO,
@@ -144,7 +162,7 @@ export function kakaoListsToImport(raw: unknown): ImportListsSnapshot {
     subscriptionKnown: c.subscriptionKnown ?? false,
     lists: c.lists.map((l) =>
       defined({
-        externalId: String(l.kakaoFolderId),
+        externalId: kakaoListExternalId(l.kakaoFolderId, kakaoUserId),
         name: l.name,
         description: l.description,
         followed: l.subscribed,
@@ -155,10 +173,10 @@ export function kakaoListsToImport(raw: unknown): ImportListsSnapshot {
   };
 }
 
-export function kakaoItemsToImport(raw: unknown): ImportItemsPage {
+export function kakaoItemsToImport(raw: unknown, kakaoUserId: string): ImportItemsPage {
   const c = kakaoItemsSchema.parse(raw);
   return {
-    externalId: String(c.kakaoFolderId),
+    externalId: kakaoListExternalId(c.kakaoFolderId, kakaoUserId),
     importedAt: c.importedAt,
     total: c.total,
     offset: c.offset,
