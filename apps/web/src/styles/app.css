@@ -1466,3 +1466,29 @@ a {
   background: var(--color-surface);
   border-radius: var(--radius-card);
 }
+
+/* Account > About: the values are text to select and copy, not controls. */
+.mm-about__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+}
+
+.mm-about__what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mm-about__label {
+  min-width: 4.5em;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.mm-about__value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  user-select: text;
+  overflow-wrap: anywhere;
+}

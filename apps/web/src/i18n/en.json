@@ -55,6 +55,14 @@
     "mapHint": "Automatic uses Kakao Map in Korea and OpenStreetMap elsewhere.",
     "mapKakaoUnavailable": "Kakao Map isn't available right now, so the map shows OpenStreetMap."
   },
+  "about": {
+    "title": "About",
+    "app": "App",
+    "server": "Server",
+    "built": "built {{date}}",
+    "mismatch": "The app is older than the server. Update to get the latest.",
+    "offline": "Server: offline"
+  },
   "map": {
     "providerKakao": "Kakao Map",
     "providerOsm": "OpenStreetMap",

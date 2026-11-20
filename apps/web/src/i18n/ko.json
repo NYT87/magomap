@@ -55,6 +55,14 @@
     "mapHint": "자동은 한국에서는 카카오맵을, 다른 곳에서는 OpenStreetMap을 써요.",
     "mapKakaoUnavailable": "지금은 카카오맵을 쓸 수 없어서 OpenStreetMap을 보여 줘요."
   },
+  "about": {
+    "title": "버전 정보",
+    "app": "앱",
+    "server": "서버",
+    "built": "{{date}} 빌드",
+    "mismatch": "앱이 서버보다 오래된 버전이에요. 업데이트하면 최신 버전을 쓸 수 있어요.",
+    "offline": "서버: 연결 안 됨"
+  },
   "map": {
     "providerKakao": "카카오맵",
     "providerOsm": "OpenStreetMap",

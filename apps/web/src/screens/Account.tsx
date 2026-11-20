@@ -12,6 +12,7 @@ import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
+import { AboutSection } from "./AboutSection";
 
 type Dialog =
   | null
@@ -133,6 +134,8 @@ export function Account({ me }: { me: Me }) {
         </p>
         {kakaoAvailable === false && <p className="mm-note">{t("account.mapKakaoUnavailable")}</p>}
       </section>
+
+      <AboutSection />
 
       <section className="mm-stack mm-account-actions">
         <button
