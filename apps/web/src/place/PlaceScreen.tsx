@@ -73,9 +73,10 @@ export function PlaceScreen({ id }: { id: string }) {
         </div>
         <MovedNote placeId={id} />
       </header>
+      {/* The lists a place is in (and its Kakao notes) first: they say why it's saved. */}
+      <Memberships placeId={id} />
       <Diary placeId={id} />
       <Links placeId={id} />
-      <Memberships placeId={id} />
     </div>
   );
 }
