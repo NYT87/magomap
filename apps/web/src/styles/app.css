@@ -242,6 +242,21 @@ a {
   gap: var(--space-lg);
 }
 
+.mm-page__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-section__head--end {
+  justify-content: flex-end;
+}
+
 .mm-screen__title {
   font-size: 26px;
   font-weight: 700;

@@ -10,6 +10,7 @@ import { closeUserDb, dbName, openDbOrNull } from "../data/db";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
+import { useLayout } from "../layout/useLayout";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
 import { onThemeChange, setTheme, storedTheme, type ThemeChoice } from "../theme";
@@ -22,6 +23,7 @@ type Dialog =
 
 export function Account({ me }: { me: Me }) {
   const { t, i18n } = useTranslation();
+  const layout = useLayout();
   const { mapChoice, setMapChoice, kakaoAvailable } = useMapPrefs();
   const mapHintId = useId();
   const sync = useSyncControls();
@@ -95,7 +97,7 @@ export function Account({ me }: { me: Me }) {
 
   return (
     <div className="mm-screen mm-account">
-      <h1 className="mm-screen__title">{t("account.title")}</h1>
+      {layout === "desktop" && <h1 className="mm-screen__title">{t("account.title")}</h1>}
       {/* Only signed-in people see Account: the card just says who it is. */}
       <section className="mm-card">
         <h2 className="mm-h4">{me.displayName || t("account.unnamed")}</h2>

@@ -25,6 +25,12 @@ export function NoticeSlot() {
   return <>{useContext(NoticeContext)}</>;
 }
 
+/** Pages whose title sits in the phone header, by exact path. */
+const HEADER_TITLES: Record<string, string> = {
+  "/account": "account.title",
+  "/lists": "lists.title",
+};
+
 const NAV = [
   { href: "/", key: "nav.map", Icon: MapIcon },
   { href: "/lists", key: "nav.lists", Icon: List },
@@ -59,6 +65,7 @@ export function AppLayout({ map, children, status, notice }: Props) {
   const [location, navigate] = useLocation();
   const { t } = useTranslation();
   const atRoot = location === "/";
+  const titleKey = HEADER_TITLES[location];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -138,6 +145,7 @@ export function AppLayout({ map, children, status, notice }: Props) {
               <ArrowLeft aria-hidden size={22} strokeWidth={1.75} />
               <span className="mm-visually-hidden">{t("nav.back")}</span>
             </button>
+            {titleKey && <h1 className="mm-page__title">{t(titleKey)}</h1>}
             {status}
           </header>
           <div className="mm-page__notice">{notice}</div>

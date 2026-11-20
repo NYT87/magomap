@@ -89,4 +89,26 @@ describe("AppLayout", () => {
     expect(container.querySelector(".mm-phone-status")).toBeNull();
     expect(screen.queryByTestId("status")).toBeNull();
   });
+
+  it("shows the page title in the header on phones", async () => {
+    await i18n.changeLanguage("en");
+    const pages: [string, string][] = [
+      ["/account", "Account"],
+      ["/lists", "Lists"],
+    ];
+    for (const [path, title] of pages) {
+      const { container, unmount } = renderAt(path, 390);
+      const header = container.querySelector("header") as HTMLElement;
+      expect(within(header).getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole("heading", { level: 1 })).toHaveFocus();
+      unmount();
+    }
+  });
+
+  it("keeps other titles in the page", () => {
+    const { container } = renderAt("/lists/abc", 390);
+    const header = container.querySelector("header") as HTMLElement;
+    expect(within(header).queryByRole("heading")).toBeNull();
+  });
 });
