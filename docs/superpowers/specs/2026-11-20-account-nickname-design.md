@@ -16,6 +16,8 @@ On 2026-11-20 the owner and his wife each signed in with their own Kakao account
 2. The Account page shows the nickname, or the existing "unnamed" text when it's empty.
 3. The "Sign in again" prompt names the account the device's data belongs to, when that account has a nickname ("Sign in again as 지은").
 4. Deploying the Postgres setup can't replace production: its Worker is renamed `magomap-postgres`.
+5. **Another person can sign in on the same device** (added by the owner): the sign-in screen offers "Sign in with a different Kakao account", which makes Kakao ask for the account instead of silently reusing the one the browser is logged in to.
+6. **Sign-out can remove your data from the device** (added by the owner): an option "Also remove my data from this device". Off by default; sign-out keeps the data as today unless it's chosen.
 
 ## Non-goals
 
@@ -53,6 +55,18 @@ On 2026-11-20 the owner and his wife each signed in with their own Kakao account
 - After an import, the app re-reads `/api/me`, so a newly filled nickname shows without a reload.
 - Each device remembers the nickname of the account whose data it holds (saved alongside that account's local database whenever `/api/me` is read). The "Sign in again" prompt uses it: "Sign in again as {{name}} to keep syncing"; without a nickname, today's text.
 - Strings in Korean and English.
+
+**Another person on the same device**
+- Each account already has its own local database (`magomap-<userId>`), and the server refuses requests whose session doesn't match the device data's account, so nothing mixes and no wipe is needed for correctness.
+- The problem is Kakao: after signing out of magomap, the browser is usually still logged in to the previous person's Kakao account, so "Sign in with Kakao" logs them straight back in.
+- `GET /api/auth/kakao/start?account=other` adds Kakao's parameter that forces a fresh Kakao login (`prompt=login`, to be confirmed against Kakao's current Login docs; the docs win on how, the behaviour stays). The plain start is unchanged.
+- The sign-in screen shows a secondary link under the Kakao button: "Sign in with a different Kakao account".
+
+**Removing your data on sign-out**
+- The Account page's sign-out area gets a checkbox "Also remove my data from this device", off by default and not remembered.
+- With it checked, sign-out (this device or everywhere) first tries to sync. Only when nothing is left unsynced does it delete this account's local database (`Dexie.delete(dbName(userId))`, after `closeUserDb`) and its per-account device keys (`mm.visibleLists.<id>`, `mm.showPrevious.<id>`, `mm.name.<id>`). Device-wide keys (`mm.lang`, `mm.config`, `mm.persisted`) stay.
+- If changes are still unsynced, the existing "not reached the server yet" dialog appears; choosing "Sign out anyway" then **keeps** the data on the device (never deletes unsynced changes), and the dialog says so when the box was checked.
+- Signing in again later just downloads the account's data again.
 
 **Deploy**
 - `apps/api/wrangler.toml`: `[env.postgres] name = "magomap-postgres"`. `docs/deploy.md` mentions that the Postgres setup deploys to its own Worker.

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each magomap task follows `docs/superpowers/build-process.md` (builder → gate → reviewers). Task 1 is in the kakao-list repo and follows that repo's own checks.
 
-**Goal:** Every magomap account has a nickname that starts empty, is filled from the account's own Kakao lists (via kakao-list) only while empty, can be edited on the Account page, and names the account in the "Sign in again" prompt. The Postgres setup deploys to its own Worker.
+**Goal:** Every magomap account has a nickname that starts empty, is filled from the account's own Kakao lists (via kakao-list) only while empty, can be edited on the Account page, and names the account in the "Sign in again" prompt. The Postgres setup deploys to its own Worker. On a shared device, another person can sign in with their own Kakao account, and signing out can remove your data from the device.
 
 **Architecture:**
 - kakao-list's `GET /api/integrations/magomap/lists` gains an optional `ownerNickname`, from the account's own lists' `creatorName`.
@@ -32,6 +32,8 @@
 3. **Clearing the name** (empty or spaces) stores `null`, so the next import may fill it again. (Task 2.)
 4. **After a 401 the app forgets `mm.me`**; the "Sign in again as …" prompt must still find the name, so it's stored per account under its own key, not inside `mm.me`. (Task 3.)
 5. **A followed list's creator never becomes your nickname**, even when your own lists have no names. (Task 1.)
+6. **"Remove my data" with unsynced changes:** the data must stay, even after "Sign out anyway". Deleting unsynced notes is the worst failure here. (Task 6.)
+7. **`?account=other` with any other value or extra parameters** must not change the Kakao URL beyond adding the forced-login parameter; the OAuth `state` check is untouched. (Task 5.)
 
 ## Reviewers
 
@@ -41,6 +43,8 @@
 | 2 Server: fill on import, edit, sign-up | code, security |
 | 3 App: edit, refresh, sign-in prompt | code, ui, ux, a11y |
 | 4 Postgres Worker name | code, security |
+| 5 Sign in with a different Kakao account | code, security, ux |
+| 6 Remove my data on sign-out | code, ux, a11y |
 
 ---
 
@@ -137,3 +141,49 @@ New English strings (Korean equivalents in the same tone as nearby keys):
 - [ ] **Step 2: Change** `[env.postgres] name = "magomap"` to `name = "magomap-postgres"`. In `docs/deploy.md`, next to `pnpm deploy:postgres`, say: the Postgres setup deploys to the separate Worker `magomap-postgres`; before its first real deploy, set its own secrets (`--env postgres`), its `KAKAO_REDIRECT_URI` on its own `workers.dev` host, register that URI in the Kakao console, and fill `ALLOWED_KAKAO_USER_IDS` (empty means open sign-up).
 - [ ] **Step 3: Verify** — the dry run for `--env postgres` names `magomap-postgres`; the dry run for `--env d1` still names `magomap`; `./scripts/gate.sh main` → `GATE: PASS`.
 - [ ] **Step 4: Commit** `chore(api): deploy the Postgres setup to its own Worker`
+
+### Task 5 (magomap): sign in with a different Kakao account
+
+**Files:**
+- Modify: `apps/api/src/auth/kakao.ts` (`authorizeUrl`), `apps/api/src/auth/routes.ts` (`/auth/kakao/start`)
+- Modify: `apps/web/src/screens/SignIn.tsx`, `apps/web/src/i18n/en.json`, `ko.json`
+- Test: `apps/api/test/auth.test.ts`, `apps/web/src/screens/SignIn.test.tsx` (create if missing)
+
+**Interfaces:**
+- Produces: `authorizeUrl(env: Env, state: string, opts?: { forceLogin?: boolean }): string` — with `forceLogin`, adds Kakao's forced-login parameter. Before coding, read Kakao Login's REST API docs (`https://developers.kakao.com/docs/latest/en/kakaologin/rest-api`, "Request additional consent / prompt") and confirm the parameter and value (expected `prompt=login`); put the URL in the commit body.
+- `GET /api/auth/kakao/start?account=other` → `forceLogin: true`; any other value or none → today's URL.
+- Sign-in screen: under the Kakao button, a secondary link to `/api/auth/kakao/start?account=other` with text `signin.otherAccount`: "Sign in with a different Kakao account".
+
+- [ ] **Step 1: Write the failing tests**
+  - api: `start asks Kakao for a fresh login only when asked` — `/api/auth/kakao/start?account=other` → 302 whose `Location` has `prompt=login` and the same `client_id`, `redirect_uri`, `state` params as a plain start; `/api/auth/kakao/start` and `?account=me` → no `prompt`.
+  - web: `offers signing in with a different Kakao account` — the link exists with that text and `href="/api/auth/kakao/start?account=other"`.
+- [ ] **Step 2: Run** `pnpm --filter @magomap/api test -- auth` and `pnpm --filter @magomap/web test -- SignIn` — Expected: FAIL.
+- [ ] **Step 3: Implement** as specified (link styled as the screen's existing secondary actions, 44 px target).
+- [ ] **Step 4: Run** the same commands — Expected: PASS. Then `./scripts/gate.sh main` → `GATE: PASS`.
+- [ ] **Step 5: Commit** `feat(auth): sign in with a different Kakao account on a shared device`
+
+### Task 6 (magomap): remove my data from this device on sign-out
+
+**Files:**
+- Modify: `apps/web/src/screens/Account.tsx` (sign-out area and `signOut`), `apps/web/src/i18n/en.json`, `ko.json`
+- Possibly modify: `apps/web/src/map/mapPrefs.tsx` and `apps/web/src/auth/useMe.ts` to export the per-account key names, so removal uses them instead of repeating string literals.
+- Test: `apps/web/src/screens/Account.test.tsx`
+
+**Interfaces:**
+- Consumes: `closeUserDb`, `dbName` (`data/db.ts`); `accountName` key from Task 3.
+- Produces: `forgetAccountOnDevice(userId: string): Promise<void>` in `apps/web/src/data/db.ts` — `closeUserDb(userId)`, `Dexie.delete(dbName(userId))`, and removes `mm.visibleLists.<id>`, `mm.showPrevious.<id>`, `mm.name.<id>`. Leaves `mm.lang`, `mm.config`, `mm.persisted`.
+- Behaviour (spec "Removing your data on sign-out"):
+  - A checkbox above the sign-out buttons, label `account.removeData` "Also remove my data from this device", unchecked by default, not remembered.
+  - Checked, and nothing unsynced after the sign-out's sync → after the server sign-out succeeds, `forgetAccountOnDevice(me.userId)`, then leave.
+  - Checked, and changes unsynced → the existing unsynced dialog shows, with an added line `account.removeDataKept` "Your unsynced changes will stay on this device, so its data won't be removed." "Sign out anyway" signs out and **keeps** the data.
+  - Unchecked → exactly today's behaviour.
+
+- [ ] **Step 1: Write the failing tests**
+  - `removes this account's data from the device when asked` — checkbox on, `unsynced: 0` → after sign-out, `Dexie.exists(dbName("u1"))` is false and `mm.visibleLists.u1` / `mm.name.u1` are gone; `mm.lang` stays.
+  - `keeps the data when changes are unsynced, even after "Sign out anyway"` — checkbox on, `unsynced: 2` → dialog shows `removeDataKept`; "Sign out anyway" → database still exists.
+  - `keeps the data by default` — checkbox off → database still exists after sign-out.
+  - `keeps the data when the server sign-out fails` — checkbox on, logout rejects → database still exists, `account.failed` shown.
+- [ ] **Step 2: Run** `pnpm --filter @magomap/web test -- Account` — Expected: FAIL.
+- [ ] **Step 3: Implement** as specified.
+- [ ] **Step 4: Run** the same command, then `./scripts/gate.sh main` → `GATE: PASS`. Screenshots of the sign-out area (phone and desktop, both themes) and the unsynced dialog with the added line.
+- [ ] **Step 5: Commit** `feat(web): sign out and remove my data from this device`
