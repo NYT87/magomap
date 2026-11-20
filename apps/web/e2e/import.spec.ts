@@ -9,7 +9,8 @@ test("re-imports keep notes, mark removed favourites and show previous locations
   await devLogin(context, "111");
   await importFromKakao(page);
   const importSection = page.getByRole("region", { name: "Import from kakao-list" });
-  await expect(importSection).toContainText(/added|already up to date/);
+  // On the desktop run the phone run has already moved the place, so this import moves it back.
+  await expect(importSection).toContainText(/added|moved|already up to date/);
 
   // The favourite disappears from Kakao: the place stays, marked, with its note.
   await setVariant(page, { name: "withoutFavourite", args: ["9001"] });
@@ -27,8 +28,13 @@ test("re-imports keep notes, mark removed favourites and show previous locations
   if (info.project.name === "desktop") {
     // The place page zooms the map beside it to the place; its old spot, 200 m away, is in view.
     await page.goto(`/places/${BADA}`);
-    await expect(page.getByRole("button", { name: "Moved" })).toBeVisible();
-    await expect(previous.first()).toBeAttached();
+    const moved = page.getByRole("button", { name: "Moved" });
+    await moved.click();
+    await expect(page.locator(".mm-moved__list li").first()).toContainText("제주 애월읍");
+    // After the phone run this place has two earlier spots, one where it is now, and the map
+    // groups pins that sit together, so the faded marker may be inside a cluster. The Moved list
+    // above is the firm check; markers.test.ts covers which previous pins are drawn.
+    await expect(previous.or(page.locator(".marker-cluster")).first()).toBeAttached();
   } else {
     // On the phone, the accessible list of places on the map marks the moved place.
     await page.goto("/");

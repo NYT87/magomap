@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from "@playwright/test";
 
-export const KAKAO_LIST = "http://localhost:8788";
+export const KAKAO_LIST = `http://localhost:${process.env.E2E_FAKE_PORT ?? 8788}`;
 
 export async function devLogin(context: BrowserContext, kakaoUserId: string) {
   const res = await context.request.post("/api/auth/dev", {
@@ -13,10 +13,27 @@ export async function setVariant(page: Page, variant: unknown) {
   await page.request.post(`${KAKAO_LIST}/__variant`, { data: variant });
 }
 
-/** Runs an import from kakao-list (in Account) and waits for its summary. */
+/** Runs an import of a new kakao-list sync (in Account) and waits for its summary. */
 export async function importFromKakao(page: Page) {
+  await page.request.post(`${KAKAO_LIST}/__resync`);
   await page.goto("/account");
+  // The page keeps showing the previous import's "Import finished", so wait for this run's own
+  // start and completion; a refused start (e.g. "up to date") fails here with its status.
+  const started = page.waitForResponse(
+    (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/import/runs",
+  );
+  const completed = page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      /\/api\/import\/runs\/[^/]+\/complete$/.test(new URL(r.url()).pathname),
+    { timeout: 30_000 },
+  );
   await page.getByRole("button", { name: /Import (from kakao-list|again)/ }).click();
+  const start = await started;
+  if (!start.ok())
+    throw new Error(`The import didn't start: ${start.status()} ${await start.text()}`);
+  const done = await completed;
+  if (!done.ok()) throw new Error(`The import didn't complete: ${done.status()}`);
   await page.getByText("Import finished").waitFor({ timeout: 30_000 });
 }
 

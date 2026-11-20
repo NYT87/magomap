@@ -1,6 +1,7 @@
 // A stand-in for kakao-list's magomap endpoint, for local dev and end-to-end tests.
 //   tsx apps/api/scripts/fake-kakao-list.ts            (port 8788, or FAKE_KAKAO_LIST_PORT)
 //   POST /__variant {"name":"withoutFavourite","args":["9002"]}  switches the served data
+//   POST /__resync                                               a new sync of the same data
 // Serves kakao-list's paged magomap endpoints, checking the bearer secret:
 //   GET /api/integrations/magomap/lists?kakaoUserId=…
 //   GET /api/integrations/magomap/lists/:folderId/items?kakaoUserId=…&offset=…&limit=…
@@ -12,8 +13,14 @@ const port = Number(process.env.FAKE_KAKAO_LIST_PORT ?? 8788);
 const secret = process.env.MAGOMAP_IMPORT_SECRET ?? "m".repeat(48);
 const knownUsers = new Set((process.env.FAKE_KAKAO_USERS ?? "111,222,dev").split(","));
 let variant: Variant = { name: "base" };
-// Each variant is a new kakao-list snapshot, as a real re-import would be (the base keeps the fixture's time).
+// Each switch and each resync is a new kakao-list snapshot, as a real sync would be. magomap refuses
+// to import a snapshot it already imported, so tests that import again need a newer one.
 let variantAt: string | null = null;
+let lastAt = 0;
+const newSnapshot = () => {
+  lastAt = Math.max(Date.now() - 1_000, lastAt + 1);
+  variantAt = new Date(lastAt).toISOString();
+};
 
 const send = (res: import("node:http").ServerResponse, status: number, body: unknown) => {
   res.writeHead(status, { "content-type": "application/json" });
@@ -27,8 +34,12 @@ createServer(async (req, res) => {
     let raw = "";
     for await (const chunk of req) raw += chunk;
     variant = JSON.parse(raw) as Variant;
-    variantAt = variant.name === "base" ? null : new Date(Date.now() - 1_000).toISOString();
+    newSnapshot();
     return send(res, 200, { ok: true, variant });
+  }
+  if (req.method === "POST" && url.pathname === "/__resync") {
+    newSnapshot();
+    return send(res, 200, { ok: true, importedAt: variantAt });
   }
   if (req.method === "GET" && url.pathname.startsWith("/api/integrations/magomap/lists")) {
     if (req.headers.authorization !== `Bearer ${secret}`)
