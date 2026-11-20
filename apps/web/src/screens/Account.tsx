@@ -1,6 +1,6 @@
 import type { Me } from "@magomap/domain";
 import Dexie from "dexie";
-import { useEffect, useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
@@ -12,7 +12,7 @@ import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
 import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
-import { setTheme, storedTheme, type ThemeChoice } from "../theme";
+import { onThemeChange, setTheme, storedTheme, type ThemeChoice } from "../theme";
 import { AboutSection } from "./AboutSection";
 
 type Dialog =
@@ -26,15 +26,8 @@ export function Account({ me }: { me: Me }) {
   const mapHintId = useId();
   const sync = useSyncControls();
   const [, navigate] = useLocation();
-  const [theme, setThemeChoice] = useState<ThemeChoice>(storedTheme);
-  // Another tab can change the theme while this one is open (followTheme applies it): follow it here too.
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "mm.theme" || e.key === null) setThemeChoice(storedTheme());
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  // Follows this tab and other tabs (followTheme applies the change itself).
+  const theme = useSyncExternalStore(onThemeChange, storedTheme);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -132,9 +125,7 @@ export function Account({ me }: { me: Me }) {
             className="mm-input"
             value={theme}
             onChange={(e) => {
-              const choice = e.target.value as ThemeChoice;
-              setTheme(choice);
-              setThemeChoice(choice);
+              setTheme(e.target.value as ThemeChoice);
             }}
           >
             <option value="system">{t("account.themeSystem")}</option>

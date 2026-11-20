@@ -7,15 +7,17 @@
     <script>
       // Applies a saved theme before first paint. The dark bar colour repeats DARK_BAR in
       // src/theme.ts, which is --dark-color-bg in src/styles/tokens.css: keep them in step.
-      var t = null;
-      try {
-        t = localStorage.getItem("mm.theme");
-        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches))
-          document.querySelector('meta[name="theme-color"]').setAttribute("content", "#141816");
-      } catch {
-        // storage blocked: the device's setting applies
-      }
+      (() => {
+        let t = null;
+        try {
+          t = localStorage.getItem("mm.theme");
+          if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+          if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches))
+            document.querySelector('meta[name="theme-color"]').setAttribute("content", "#141816");
+        } catch {
+          // storage blocked: the device's setting applies
+        }
+      })();
     </script>
     <meta name="description" content="magomap — your own map of places and visits." />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />

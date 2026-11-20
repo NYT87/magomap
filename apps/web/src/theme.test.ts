@@ -52,6 +52,31 @@ describe("theme", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps a private-mode choice for the session", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const stop = followTheme();
+    setTheme("dark");
+    setColorScheme("light");
+    setColorScheme("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(storedTheme()).toBe("dark");
+    stop();
+    vi.restoreAllMocks();
+    setTheme("system"); // a working write ends the session choice
+    expect(storedTheme()).toBe("system");
+  });
+
+  it("returns to the device theme when another tab clears storage", () => {
+    const stop = followTheme();
+    setTheme("dark");
+    localStorage.clear();
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    stop();
+  });
+
   it("follows the device while on system", () => {
     const stop = followTheme();
     applyTheme("system");
