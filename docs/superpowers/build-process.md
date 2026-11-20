@@ -123,6 +123,11 @@ VERDICT: PASS | CHANGES
 | kakao-direct-sync · 8 Ship | the owner |
 | place-lists-notes · 1 Kakao notes as cards | code, ui, ux, a11y |
 | place-lists-notes · 2 Lists first | code, ui, ux, a11y |
+| versions · 1 Server version | code |
+| versions · 2 App version and About | code, ui, ux, a11y |
+| versions · 3 Update prompt | code, ui, ux, a11y |
+| versions · 4 Release Please and deploy | code, security |
+| versions · 5 First release | the owner |
 
 **Models.**
 - The builder and `reviewer-security` use the most capable model.
