@@ -126,8 +126,11 @@ export function createLeafletAdapter(): MapAdapter {
         if (pending) draw(pending);
         pending = null;
         if (myLoc) drawMe(myLoc);
-        if (pendingFit) fitView(pendingFit);
+        // Cleared before fitting: the fit fires "moveend" at once, and a switch it triggers
+        // must not see this fit as still waiting (it would be done twice).
+        const fit = pendingFit;
         pendingFit = null;
+        if (fit) fitView(fit);
       })();
     },
     setMarkers: draw,
