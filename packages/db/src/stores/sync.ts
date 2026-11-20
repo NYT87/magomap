@@ -128,6 +128,35 @@ export async function latestValidUntil(db: Db, placeIds: Iterable<string>) {
   return out;
 }
 
+/**
+ * Each place's newest `lists.provider_snapshot_at` over the lists holding it at the provider.
+ * An import leaves unchanged places alone, so a list's snapshot is what vouches for its places:
+ * an older observation of a place never wins over a newer list that still holds it.
+ */
+export async function newestListSnapshot(db: Db, placeIds: string[]) {
+  const list = [...new Set(placeIds)];
+  const out = new Map<string, number>();
+  if (list.length === 0) return out;
+  const rows = await db.kysely
+    .selectFrom("list_items")
+    .innerJoin("lists", "lists.id", "list_items.list_id")
+    .select(["list_items.place_id", sql<number | null>`max(lists.provider_snapshot_at)`.as("at")])
+    .where(inJson(db, "list_items.place_id", list))
+    .where("list_items.removed_at_provider", "is", null)
+    .groupBy("list_items.place_id")
+    .execute();
+  for (const r of rows) if (r.at != null) out.set(r.place_id, Number(r.at));
+  return out;
+}
+
+/** A place's snapshot: its own, or a newer one of a list that holds it. */
+export function placeSnapshot(place: Row, listSnapshots: Map<string, number>): number | null {
+  const own = place.provider_snapshot_at == null ? null : Number(place.provider_snapshot_at);
+  const list = listSnapshots.get(String(place.id));
+  if (list === undefined) return own;
+  return own == null ? list : Math.max(own, list);
+}
+
 async function readTombstones(db: Db, userId: string, ids: string[]) {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
@@ -225,6 +254,7 @@ async function decidePush(
   const myLists = await readByIds(db, userId, "user_lists", [...listIds].map(userListRowId));
   const myPlaces = await readByIds(db, userId, "user_places", [...placeIds].map(userPlaceRowId));
   const validUntil = await latestValidUntil(db, idsOf("places"));
+  const listSnapshots = await newestListSnapshot(db, idsOf("places"));
   // Places a user may attach notes, links and own-list items to: theirs, or in a list they have.
   const listedPlaces = new Set(
     placeIds.size === 0
@@ -362,10 +392,8 @@ async function decidePush(
       ensureMyPlace(m.id);
       // Ordered by when the provider was observed (the signed time), never by the client clock:
       // an older result, however recently pushed, can't undo a newer import or search.
-      if (
-        existing.provider_snapshot_at == null ||
-        source.signedAt > Number(existing.provider_snapshot_at)
-      ) {
+      const known = placeSnapshot(existing, listSnapshots);
+      if (known == null || source.signedAt > known) {
         // Only the location follows a search result; Kakao-sourced titles are never renamed here.
         const update = applyLocationUpdate(
           toAnyRow("places", existing) as PlaceRow,

@@ -28,6 +28,8 @@ import {
   applyLocationUpdate,
   assertUserExists,
   latestValidUntil,
+  newestListSnapshot,
+  placeSnapshot,
   readByIds,
   userExists,
 } from "./sync";
@@ -313,15 +315,17 @@ async function decideChunk(
     .filter((i) => i.localNote?.trim())
     .map((i) => importedNoteRowId(placeIdOf(i), listId));
 
-  const [lists, places, members, notes, myLists, myPlaces, validUntil] = await Promise.all([
-    readByIds(db, userId, "lists", [listId]),
-    readByIds(db, userId, "places", placeIds),
-    readByIds(db, userId, "list_items", itemIds),
-    readByIds(db, userId, "visit_notes", noteIds),
-    readByIds(db, userId, "user_lists", [userListRowId(listId)]),
-    readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
-    latestValidUntil(db, placeIds),
-  ]);
+  const [lists, places, members, notes, myLists, myPlaces, validUntil, listSnapshots] =
+    await Promise.all([
+      readByIds(db, userId, "lists", [listId]),
+      readByIds(db, userId, "places", placeIds),
+      readByIds(db, userId, "list_items", itemIds),
+      readByIds(db, userId, "visit_notes", noteIds),
+      readByIds(db, userId, "user_lists", [userListRowId(listId)]),
+      readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
+      latestValidUntil(db, placeIds),
+      newestListSnapshot(db, placeIds),
+    ]);
 
   const writes = new Map<SyncTable, Map<string, Row>>();
   const write = (table: SyncTable, row: Row) => {
@@ -330,8 +334,9 @@ async function decideChunk(
   };
   const grantPlaces: string[] = [];
   const grantLists: string[] = [];
-  // Rows whose content is unchanged only record the newer snapshot time, without a new seq.
-  const touch = { places: [] as string[], lists: [] as string[], list_items: [] as string[] };
+  // An unchanged list only records the newer snapshot time, without a new seq. Unchanged places
+  // and memberships are left alone: the list's snapshot vouches for them (see newestListSnapshot).
+  const touchLists: string[] = [];
 
   // The shared list
   const existingList = lists.get(listId);
@@ -371,7 +376,7 @@ async function decideChunk(
     if (changed) {
       inc("listsUpdated");
       write("lists", listRow);
-    } else if (Number(existingList.provider_snapshot_at) !== snapshotAt) touch.lists.push(listId);
+    } else if (Number(existingList.provider_snapshot_at) !== snapshotAt) touchLists.push(listId);
   }
 
   // This user's access: owner only when the snapshot knows who follows what
@@ -436,7 +441,11 @@ async function decideChunk(
       });
       seenPlaces.set(placeId, placeRow);
       inc("placesAdded");
-    } else if (isNewer(snapshotAt, existing) && !seenPlaces.has(placeId)) {
+    } else if (
+      // A newer list holding the place confirmed it, even if the place itself wasn't rewritten.
+      snapshotAt >= (placeSnapshot(existing, listSnapshots) ?? snapshotAt) &&
+      !seenPlaces.has(placeId)
+    ) {
       const current = toAnyRow("places", existing) as PlaceRow;
       const update = applyLocationUpdate(
         current,
@@ -473,7 +482,7 @@ async function decideChunk(
         })
       ) {
         write("places", { ...refreshed, updated_at: now });
-      } else if (Number(existing.provider_snapshot_at) !== snapshotAt) touch.places.push(placeId);
+      }
       if (update.history) {
         write(
           "place_locations",
@@ -536,8 +545,7 @@ async function decideChunk(
         })
       ) {
         write("list_items", memberRow);
-      } else if (Number(member.provider_snapshot_at) !== snapshotAt)
-        touch.list_items.push(memberId);
+      }
       if (member?.removed_at_provider != null) inc("membershipsRestored");
     }
 
@@ -585,15 +593,15 @@ async function decideChunk(
       },
     }),
     ...grantStatements(db, ctx, { placeIds: grantPlaces, listIds: grantLists }),
-    ...(Object.entries(touch) as [keyof typeof touch, string[]][])
-      .filter(([, ids]) => ids.length > 0)
-      .map(([table, ids]) =>
-        db.kysely
-          .updateTable(table)
-          .set({ provider_snapshot_at: snapshotAt })
-          .where(inJson(db, "id", ids))
-          .where(ctx.guard),
-      ),
+    ...(touchLists.length > 0
+      ? [
+          db.kysely
+            .updateTable("lists")
+            .set({ provider_snapshot_at: snapshotAt })
+            .where(inJson(db, "id", touchLists))
+            .where(ctx.guard),
+        ]
+      : []),
     ...bulkUpsertQuery(db, "import_seen", seen, {
       conflict: ["user_id", "run_id", "list_item_id"],
       update: [],

@@ -47,8 +47,7 @@ forEachDialect("import write budget", (makeDb) => {
     expect(counted.written()).toBeLessThanOrEqual(10 + 6 * 2 + 5 * 3);
   });
 
-  // gate-allow: passes after Task 2/3 of the import-writes plan
-  it.fails("an unchanged re-import changes no places, list items or sources", async () => {
+  it("an unchanged re-import changes no places, list items or sources", async () => {
     const db = await setup(makeDb);
     const lists = [
       list("1", [item("10", { category: "카페", phone: "064-000-0000", lat: 33.5, lng: 126.5 })]),

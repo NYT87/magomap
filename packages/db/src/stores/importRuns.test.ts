@@ -268,6 +268,64 @@ forEachDialect("import (shared)", (makeDb) => {
     expect((await mine(db, "user_lists", ME))[0]?.role).toBe("follower");
   });
 
+  it("keeps a place and membership an older snapshot would change after a newer one confirmed them", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500), providerNote: "new" })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(
+      db,
+      ME,
+      [list("1", [item("10", "A", { lat: NORTH(0), providerNote: "old" })], { followed: true })],
+      { at: T0 + 4000, snapshotMs: 2000 },
+    );
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    const items = await all(db, "list_items");
+    expect(items.find((i) => i.id === "i_kakao_1_10")?.provider_note).toBe("new");
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
+  it("keeps a place an older snapshot of another list would move after a newer one confirmed it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await runImport(db, ME, [list("2", [item("20", "A", { lat: NORTH(0) })])], {
+      at: T0 + 4000,
+      snapshotMs: 2000,
+    });
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+    expect((await all(db, "list_items")).map((i) => i.id).sort()).toEqual([
+      "i_kakao_1_10",
+      "i_kakao_2_20",
+    ]);
+  });
+
+  it("keeps a place from a search older than the import that last confirmed it", async () => {
+    const db = await setup(makeDb);
+    const current = [list("1", [item("10", "A", { lat: NORTH(500) })])];
+    await runImport(db, WIFE, current, { snapshotMs: 100 });
+    await runImport(db, WIFE, current, { at: T0 + 3000, snapshotMs: 3000 });
+    await push(
+      db,
+      ME,
+      [up("places", searchedPlace("A", { lat: NORTH(0), signedAt: T0 + 2000 }), T0 + 4000)],
+      T0 + 4000,
+    );
+    expect((await all(db, "places")).find((p) => p.id === "p_kakao_A")?.lat).toBeCloseTo(
+      NORTH(500),
+      6,
+    );
+    expect(await all(db, "place_locations")).toHaveLength(0);
+  });
+
   it("turns local notes into private diary entries that respect edits and deletes", async () => {
     const db = await setup(makeDb);
     await runImport(db, WIFE, [list("1", [item("10", "A", { localNote: "주차 어려움" })])]);
