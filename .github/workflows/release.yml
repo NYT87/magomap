@@ -10,7 +10,8 @@ name: Release
 #   resolve            checks which release to deploy            contents read
 #   build              runs the checks and builds the web app    contents read, no secrets
 #   deploy             D1 bookmark, migrations, deploy, health   production environment
-# Repository code (tests, the web build) never runs in the job that holds the Cloudflare token.
+# The tests and the web build never run in the job that holds the Cloudflare token; that job
+# runs only Wrangler (and its dependencies) on the guarded release commit.
 
 on:
   push:
@@ -225,8 +226,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Holds the Cloudflare token. Runs no repository tests or build: it installs dependencies for
-  # Wrangler, takes the app built above, and deploys it.
+  # Holds the Cloudflare token. Runs no tests or web build: it installs only what Wrangler needs
+  # (no install scripts), takes the app built above, and deploys it.
   deploy:
     needs: [resolve, build]
     runs-on: ubuntu-latest
@@ -247,8 +248,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # Only the API and its workspace dependencies, and no install scripts, so no package code
+      # runs here before the steps that hold the token (and nothing can rewrite GITHUB_ENV/PATH).
+      - name: Install what Wrangler needs
+        run: pnpm install --frozen-lockfile --filter "@magomap/api..." --ignore-scripts
 
       - name: Take the built app
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

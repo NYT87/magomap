@@ -50,6 +50,11 @@ if [[ "$mode" == deploy ]]; then
   [[ "$APP_BUILT_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
     fail "built-at '$APP_BUILT_AT' is not YYYY-MM-DDTHH:MM:SSZ"
   [[ -f apps/web/dist/index.html ]] || fail "apps/web/dist has no built app; run the build step first"
+  # Cloudflare reads these from the asset folder as config (headers, redirects, ignore rules).
+  # The app ships none, so one appearing means the build was tampered with.
+  for control in _headers _redirects _routes.json .assetsignore; do
+    [[ ! -e "apps/web/dist/$control" ]] || fail "apps/web/dist/$control is not expected in the built app"
+  done
 else
   APP_BUILT_AT=$(date -u +%FT%TZ)
 fi
