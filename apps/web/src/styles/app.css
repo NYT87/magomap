@@ -1576,9 +1576,9 @@ a {
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  /* Text on bg is 15:1 light, 14:1 dark (warning on white was 4.4:1 / 4.0:1, under 4.5:1). */
-  color: var(--color-bg);
-  background: var(--color-text);
+  /* Warning (pending) fill; text on it is 5.1:1 light, 7.9:1 dark. */
+  color: var(--color-on-warning);
+  background: var(--color-warning-fill);
   border: 2px solid var(--color-bg);
   border-radius: var(--radius-pill);
   box-sizing: border-box;

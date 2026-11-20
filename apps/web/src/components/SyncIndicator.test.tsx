@@ -89,7 +89,21 @@ describe("SyncIndicator, compact", () => {
   it("names the waiting count where the sentence has none", () => {
     status.current = { state: "syncing", unsynced: 2, rejected: 0 };
     render(<SyncIndicator compact />);
-    expect(screen.getByRole("button")).toHaveAccessibleName("Syncing…. 2 changes waiting to sync");
+    const name = screen.getByRole("button").getAttribute("aria-label") ?? "";
+    expect(name).toBe("Syncing… 2 changes waiting to sync");
+    expect(name).not.toContain("….");
+  });
+
+  it("keeps the waiting count out of the live region", () => {
+    status.current = { state: "syncing", unsynced: 2, rejected: 0 };
+    const view = render(<SyncIndicator compact />);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Syncing…$/);
+    status.current = { state: "syncing", unsynced: 3, rejected: 0 };
+    view.rerender(<SyncIndicator compact />);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Syncing…$/);
+    status.current = { state: "syncing", unsynced: 3, rejected: 1 };
+    view.rerender(<SyncIndicator compact />);
+    expect(screen.getByRole("status")).toHaveTextContent("Syncing… 1 change couldn't be saved");
   });
 
   it("keeps focus in the sheet while the status changes, and returns it to the icon on close", async () => {

@@ -37,6 +37,9 @@
   --color-on-primary: #ffffff;
   --color-success: #2e7d4f;
   --color-warning: #a86a12;
+  /* Warning as a fill under 11px text (the sync count): #ffffff on it is 5.1:1. */
+  --color-warning-fill: #9a6110;
+  --color-on-warning: #ffffff;
   --color-error: #b3261e;
   --color-info: #2f6fa3;
   --color-danger-bg: #b3261e;
@@ -90,6 +93,9 @@
   --dark-color-text-secondary: #a7afa9;
   --dark-color-border: #2e3532;
   --dark-color-on-primary: #141816;
+  /* The sync count's warning fill in dark: #141816 on it is 7.9:1. */
+  --dark-color-warning-fill: #e0a03a;
+  --dark-color-on-warning: #141816;
   --dark-color-info: #7db3e0;
   /* Not in the guidelines: #b3261e is too dark on Night Background (2.6:1); this is 9.6:1. */
   --dark-color-error: #f2b8b5;
@@ -116,6 +122,8 @@
   --color-text-secondary: var(--dark-color-text-secondary);
   --color-border: var(--dark-color-border);
   --color-on-primary: var(--dark-color-on-primary);
+  --color-warning-fill: var(--dark-color-warning-fill);
+  --color-on-warning: var(--dark-color-on-warning);
   --color-info: var(--dark-color-info);
   --color-error: var(--dark-color-error);
   --color-danger-bg: var(--dark-color-danger-bg);
@@ -137,6 +145,8 @@
     --color-text-secondary: var(--dark-color-text-secondary);
     --color-border: var(--dark-color-border);
     --color-on-primary: var(--dark-color-on-primary);
+    --color-warning-fill: var(--dark-color-warning-fill);
+    --color-on-warning: var(--dark-color-on-warning);
     --color-info: var(--dark-color-info);
     --color-error: var(--dark-color-error);
     --color-danger-bg: var(--dark-color-danger-bg);

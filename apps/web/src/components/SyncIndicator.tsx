@@ -114,10 +114,17 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
   // The icon's name carries what the dot and the count badge show by colour and shape.
   const counted =
     n > 0 && (!online || status.state === "offline" || status.state === "needs_signin");
-  const parts = [text];
-  if (n > 0 && !counted) parts.push(t("sync.waiting", { count: n }));
-  if (status.rejected > 0) parts.push(t("sync.rejected", { count: status.rejected }));
-  const label = parts.join(". ");
+  const refused = status.rejected > 0 ? t("sync.rejected", { count: status.rejected }) : "";
+  const join = (parts: string[]) =>
+    parts.reduce((all, part) => (/[….]$/.test(all) ? `${all} ${part}` : `${all}. ${part}`));
+  // The live region speaks the status and refused changes only: the waiting count would be
+  // re-announced on every change while syncing. The button's name has all of it.
+  const spoken = join([text, ...(refused ? [refused] : [])]);
+  const label = join([
+    text,
+    ...(n > 0 && !counted ? [t("sync.waiting", { count: n })] : []),
+    ...(refused ? [refused] : []),
+  ]);
 
   // States that need her, not ones that mend themselves (offline): a stronger signal on the icon.
   const needsHer = ["needs_signin", "error", "clock_ahead"].includes(status.state) && online;
@@ -127,7 +134,7 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
       <div className="mm-sync mm-sync--compact">
         {/* The same live region as below: it stays mounted, so every change is announced. */}
         <span className="mm-visually-hidden" role="status">
-          {label}
+          {spoken}
         </span>
         <button
           type="button"
