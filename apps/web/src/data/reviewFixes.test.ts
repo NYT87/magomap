@@ -55,6 +55,8 @@ describe("refused changes", () => {
   it("un-saves a place the server refused, and pulls everything again", async () => {
     const db = openUserDb(`rf${n}`);
     await db.meta.put({ key: "cursor", value: "c-old" });
+    // Past the one-time full pull, so only the refusal can be what drops the cursor.
+    await db.meta.put({ key: "pullEpoch", value: 1 });
     await savePlaceFromSearch(result());
     server.result = (m) => ({ mutationId: m.mutationId, status: "rejected", reason: "invalid" });
     const pulls: string[] = [];

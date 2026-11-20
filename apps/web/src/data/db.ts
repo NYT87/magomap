@@ -44,7 +44,7 @@ export interface Draft {
 }
 
 export interface MetaEntry {
-  key: "cursor" | "lastSyncAt";
+  key: "cursor" | "lastSyncAt" | "pullEpoch";
   value: string | number;
 }
 

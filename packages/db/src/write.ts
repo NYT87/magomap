@@ -109,70 +109,36 @@ export function writeStatements(
 }
 
 /**
- * A user just gained access to places or lists that may have been written long ago. Their
- * shared rows are re-stamped with this write's seq, so the user's next pull includes them.
- * (Other users who already have them receive them again: harmless.)
+ * Places written long ago that someone's cursor is already past, but who should have them now:
+ * an existing place newly added to a list other users already have, or an existing place a user
+ * newly saves (from search, or from an import) that no list of theirs shows. Their shared rows are
+ * re-stamped with this write's seq, so the next pull includes them. (Other users who already have
+ * them receive them again: harmless.) A user gaining a list is not re-stamped here: their device
+ * sees the new or restored `user_lists` row and pulls everything again once.
  */
 export function grantStatements(
   db: Db,
   ctx: WriteContext,
-  grant: { placeIds?: readonly string[]; listIds?: readonly string[] },
+  grant: { sharedPlaceIds: readonly string[] },
 ): Statement[] {
-  const out: Statement[] = [];
+  const places = [...new Set(grant.sharedPlaceIds)];
+  if (places.length === 0) return [];
   const stamp = { seq: ctx.seq } as never;
-  const places = [...new Set(grant.placeIds ?? [])];
-  const lists = [...new Set(grant.listIds ?? [])];
-  if (places.length > 0) {
-    out.push(
-      db.kysely
-        .updateTable("places")
-        .set(stamp)
-        .where(inJson(db, "id", places))
-        .where(ctx.guard),
-      db.kysely
-        .updateTable("place_sources")
-        .set(stamp)
-        .where(inJson(db, "place_id", places))
-        .where(ctx.guard),
-      db.kysely
-        .updateTable("place_locations")
-        .set(stamp)
-        .where(inJson(db, "place_id", places))
-        .where(ctx.guard),
-    );
-  }
-  if (lists.length > 0) {
-    out.push(
-      db.kysely
-        .updateTable("lists")
-        .set(stamp)
-        .where(inJson(db, "id", lists))
-        .where(ctx.guard),
-      db.kysely
-        .updateTable("list_items")
-        .set(stamp)
-        .where(inJson(db, "list_id", lists))
-        .where(ctx.guard),
-    );
-    // The list's places come with it.
-    const listed = sql`SELECT place_id FROM list_items WHERE ${inJson(db, "list_id", lists)}`;
-    out.push(
-      db.kysely
-        .updateTable("places")
-        .set(stamp)
-        .where(sql<boolean>`id IN (${listed})`)
-        .where(ctx.guard),
-      db.kysely
-        .updateTable("place_sources")
-        .set(stamp)
-        .where(sql<boolean>`place_id IN (${listed})`)
-        .where(ctx.guard),
-      db.kysely
-        .updateTable("place_locations")
-        .set(stamp)
-        .where(sql<boolean>`place_id IN (${listed})`)
-        .where(ctx.guard),
-    );
-  }
-  return out;
+  return [
+    db.kysely
+      .updateTable("places")
+      .set(stamp)
+      .where(inJson(db, "id", places))
+      .where(ctx.guard),
+    db.kysely
+      .updateTable("place_sources")
+      .set(stamp)
+      .where(inJson(db, "place_id", places))
+      .where(ctx.guard),
+    db.kysely
+      .updateTable("place_locations")
+      .set(stamp)
+      .where(inJson(db, "place_id", places))
+      .where(ctx.guard),
+  ];
 }
