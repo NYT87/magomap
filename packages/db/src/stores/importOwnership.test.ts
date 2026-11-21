@@ -521,3 +521,71 @@ forEachDialect("a bare followed folder only grants access", (makeDb) => {
     expect((await details(db)).name).toBe("Jeju");
   });
 });
+
+forEachDialect("no removal for everyone over another live owner", (makeDb) => {
+  it("his stale owner row on her unrecorded list removes it only for him", async () => {
+    const db = await setup(makeDb);
+    // Both hold owner on the unrecorded list (kakao-list's rule; his from the extension mix-up).
+    await kakaoList(db, A, [list("500", "A의 리스트")], T0 + 1000);
+    await kakaoList(db, B, [list("500", "A의 리스트")], T0 + 1500);
+    expect(await access(db, A)).toMatchObject({ role: "owner" });
+    expect(await access(db, B)).toMatchObject({ role: "owner" });
+    expect((await shared(db)).provider_owner_id).toBeNull();
+    // His complete direct sync doesn't have it.
+    await upload(db, B, [list("600", "B의 리스트", { providerOwnerId: "km-b" })], T0 + 2000);
+    expect((await shared(db)).removed_at_provider).toBeNull();
+    expect((await access(db, B))?.removed_at).toBe(T0 + 2000);
+    expect(await access(db, A)).toMatchObject({ role: "owner", removed_at: null });
+    expect(await members(db)).toEqual([{ external_id: "5001", removed_at_provider: null }]);
+  });
+
+  it("the only owner's direct sync still removes an unrecorded list for everyone", async () => {
+    const db = await setup(makeDb);
+    await kakaoList(db, A, [list("500", "A의 리스트")], T0 + 1000);
+    await upload(db, B, [list("500", "A의 리스트", { followed: true })], T0 + 1500);
+    await upload(db, A, [list("600", "A의 다른 리스트", { providerOwnerId: "km-a" })], T0 + 2000);
+    expect((await shared(db)).removed_at_provider).toBe(T0 + 2000);
+  });
+});
+
+forEachDialect("a personally removed owner row is not a live owner", (makeDb) => {
+  /** B held owner on list 500 and removed it from his magomap. */
+  async function removedByB(db: Db) {
+    await kakaoList(db, B, [list("500", "A의 리스트")], T0 + 500);
+    await db.kysely
+      .updateTable("user_lists")
+      .set({ removed_at: T0 + 600 })
+      .where("user_id", "=", B)
+      .where("list_id", "=", L)
+      .execute();
+  }
+
+  it("doesn't block recording the real owner", async () => {
+    const db = await setup(makeDb);
+    await removedByB(db);
+    await upload(db, A, [owned("A의 리스트")], T0 + 1000);
+    expect((await shared(db)).provider_owner_id).toBe("km-a");
+    expect(await access(db, A)).toMatchObject({ role: "owner", removed_at: null });
+  });
+
+  it("doesn't block binding an id recorded on that list", async () => {
+    const db = await makeDb();
+    await addUser(db, A);
+    await addUser(db, B);
+    await removedByB(db);
+    await db.kysely
+      .updateTable("lists")
+      .set({ provider_owner_id: "km-a" })
+      .where("id", "=", L)
+      .execute();
+    await bindKakaoMapAccount(db, A, { kakaoMapUserId: "km-a", alias: "m-a" }, T0 + 1000);
+    expect(await boundKakaoMapAccount(db, A)).toMatchObject({ kakaoMapUserId: "km-a" });
+    await db.kysely
+      .updateTable("lists")
+      .set({ provider_owner_id: "m-a2" })
+      .where("id", "=", L)
+      .execute();
+    await bindKakaoMapAccount(db, A, { kakaoMapUserId: "km-a", alias: "m-a2" }, T0 + 2000);
+    expect((await boundKakaoMapAccount(db, A))?.alias).toBe("m-a2");
+  });
+});

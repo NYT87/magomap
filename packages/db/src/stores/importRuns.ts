@@ -242,9 +242,19 @@ function decideRole(o: {
  * that owner's binding goes by `ownerId` (its id or alias). A read can't record an owner over
  * someone who already owns the list; with no other owner, any read may record it. (For a
  * self-claim, `ownerId` is the uploader's own account, which no one else's binding goes by.)
+ * With `ownerId` null, no other live user holds the list as `owner` at all. A live owner row is
+ * neither deleted nor personally removed.
  */
-const noOtherOwner = (userId: string, listId: string, ownerId: string) =>
-  sql<boolean>`NOT EXISTS (SELECT 1 FROM user_lists ul WHERE ul.list_id = ${listId} AND ul.role = 'owner' AND ul.user_id <> ${userId} AND ul.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM kakao_map_accounts k WHERE k.user_id = ul.user_id AND (k.kakao_map_user_id = ${ownerId} OR k.kakao_map_alias = ${ownerId})))`;
+const noOtherOwner = (
+  userId: string,
+  listId: string | RawBuilder<unknown>,
+  ownerId: string | null,
+) =>
+  sql<boolean>`NOT EXISTS (SELECT 1 FROM user_lists ul WHERE ul.list_id = ${listId} AND ul.role = 'owner' AND ul.user_id <> ${userId} AND ul.deleted_at IS NULL AND ul.removed_at IS NULL${
+    ownerId === null
+      ? sql``
+      : sql` AND NOT EXISTS (SELECT 1 FROM kakao_map_accounts k WHERE k.user_id = ul.user_id AND (k.kakao_map_user_id = ${ownerId} OR k.kakao_map_alias = ${ownerId}))`
+  })`;
 
 /** Whether `noOtherOwner` would refuse recording `ownerId` on the list (one read). */
 async function ownedByAnother(
@@ -969,9 +979,30 @@ export async function completeImportRun(
         const bound = absent.some((m) => m.role === "owner" && m.provider_owner_id != null)
           ? await boundProviderAccount(db, userId, run.provider)
           : null;
+        // With no recorded owner, a direct sync's owner row is authoritative only while no other
+        // live user holds the list as owner: a stale owner row (from an account mix-up) on
+        // someone else's list must not remove it for everyone. kakao-list keeps its own rule.
+        const unrecorded = absent
+          .filter((m) => m.role === "owner" && m.provider_owner_id == null)
+          .map((m) => m.list_id);
+        const othersOwn =
+          run.source === "kakao_map" && unrecorded.length > 0
+            ? new Set(
+                (
+                  await db.kysely
+                    .selectFrom("lists")
+                    .select("id")
+                    .where(inJson(db, "id", unrecorded))
+                    .where(sql<boolean>`NOT ${noOtherOwner(userId, sql.ref("lists.id"), null)}`)
+                    .execute()
+                ).map((r) => r.id),
+              )
+            : new Set<string>();
         const authoritative = (m: (typeof absent)[number]) =>
           m.role === "owner" &&
-          (m.provider_owner_id == null || isBound(m.provider_owner_id, bound)) &&
+          (m.provider_owner_id == null
+            ? !othersOwn.has(m.list_id)
+            : isBound(m.provider_owner_id, bound)) &&
           run.subscription_known === 1 &&
           (m.provider_snapshot_at == null || snapshotAt >= Number(m.provider_snapshot_at));
         // Already removed at the provider: a newer owner snapshot confirms it (a later, older

@@ -133,11 +133,12 @@ function isAliasTaken(error: unknown): boolean {
  * lists. In doubt it is left out. An account id recorded on a list another user owns is refused.
  */
 /**
- * An id is recorded as the Kakao owner of a list another live user holds as owner. Such an id
+ * An id is recorded as the Kakao owner of a list another live user holds as owner (an owner row
+ * neither deleted nor personally removed). Such an id
  * can't become this user's account or alias: through it they would match (and own) that list.
  */
 const ownsOthersList = (userId: string, id: string) =>
-  sql<boolean>`EXISTS (SELECT 1 FROM lists l INNER JOIN user_lists ul ON ul.list_id = l.id WHERE l.provider_owner_id = ${id} AND ul.role = 'owner' AND ul.user_id <> ${userId} AND ul.deleted_at IS NULL)`;
+  sql<boolean>`EXISTS (SELECT 1 FROM lists l INNER JOIN user_lists ul ON ul.list_id = l.id WHERE l.provider_owner_id = ${id} AND ul.role = 'owner' AND ul.user_id <> ${userId} AND ul.deleted_at IS NULL AND ul.removed_at IS NULL)`;
 
 export async function bindKakaoMapAccount(
   db: Db,
