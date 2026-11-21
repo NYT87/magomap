@@ -10,9 +10,11 @@ test.beforeEach(async ({ page, context }) => {
 const selectedPin = (page: Page) => page.locator(".mm-pin--selected");
 const hostOf = (page: Page) => selectedPin(page).locator("xpath=..");
 const clusters = (page: Page) => page.locator(".marker-cluster");
-/** Saved pins (or clusters of them) are drawn. */
+/** Saved pins (or clusters of them) are drawn. After a reload the app first shows its loading screen. */
 const drawn = (page: Page) =>
-  expect(page.locator(".mm-pin-host--saved, .marker-cluster").first()).toBeAttached();
+  expect(page.locator(".mm-pin-host--saved, .marker-cluster").first()).toBeAttached({
+    timeout: 20_000,
+  });
 
 test("the open place's pin stands out", async ({ page }, info) => {
   await page.goto(`/places/${BADA}`);
