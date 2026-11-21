@@ -21,6 +21,8 @@ export interface MarkerInput {
   saved: Set<string>;
   visibleListIds: Set<string>;
   showPrevious: boolean;
+  /** The place whose details are open; its saved pin is marked selected. */
+  selectedPlaceId?: string;
 }
 
 const rank = (list: ListRow, roles: MarkerInput["roles"]) =>
@@ -75,6 +77,7 @@ export function buildMarkers(input: MarkerInput): MapMarker[] {
         color,
         label: place.title,
         kind: "saved",
+        ...(place.id === input.selectedPlaceId ? { selected: true } : {}),
       });
     }
     if (!input.showPrevious) continue;

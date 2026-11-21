@@ -574,6 +574,12 @@ a {
   filter: drop-shadow(0 1px 1.5px rgba(30, 35, 33, 0.35));
 }
 
+/* The open place's pin: 40 px in a 44 px host. The svg's tip sits 2.5/24 of its height above the
+   bottom edge, so a 1 px pull down keeps the tip where the 32 px pin's is. */
+.mm-pin--selected {
+  margin-bottom: -1px;
+}
+
 .mm-pin--previous {
   opacity: 0.85;
 }

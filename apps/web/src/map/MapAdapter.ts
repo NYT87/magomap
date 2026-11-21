@@ -10,6 +10,8 @@ export interface MapMarker {
   label: string;
   kind: "saved" | "search" | "previous";
   placeId?: string;
+  /** The saved place whose details are open; only ever true on a "saved" marker. */
+  selected?: boolean;
 }
 
 /** What the app needs from a map; Kakao Maps and Leaflet both implement it. */
