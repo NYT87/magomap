@@ -8,8 +8,8 @@
  * - `{ type: "magomap.read" }` → `{ ok: true, start, favorites }`, or
  *   `{ ok: false, error: "kakao_signed_out" | "kakao_unavailable" | "busy" }`
  *
- * Only magomap's own origins are answered (the same list as `externally_connectable` in
- * manifest.json). Nothing read is ever logged.
+ * Only magomap's own origins are answered: the list in origins.ts, which the build also writes
+ * into the built manifest's `externally_connectable`. Nothing read is ever logged.
  */
 import { DEV_ORIGINS, RELEASE_ORIGINS } from "./origins";
 import { type ReadResult, readInPage } from "./readInPage";
