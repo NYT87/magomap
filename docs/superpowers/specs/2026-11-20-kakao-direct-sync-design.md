@@ -140,7 +140,7 @@ Done with the owner, signed in, using throwaway scripts. Nothing from it is kept
 - The existing **newer snapshot wins** rule (`provider_snapshot_at`) settles the order. An old kakao-list snapshot can't roll back a newer direct sync, and the other way round.
 - **Local notes** come only from kakao-list, as today (diary entries with `origin = 'kakao_list'`).
 - **Migration is done** when each user has finished **one complete kakao-list import after this ships**, so their kakao-list local notes are in magomap as diary entries. magomap shows each user whether theirs is done (from `import_runs`). *(Designer's call on the definition; the owner confirms when to retire.)*
-- **Owner, 2026-11-21:** his wife never used kakao-list's local notes (her completed kakao-list import brought 0), so nothing of hers needs migrating; her next sync is a direct Kakao Map sync. The migration status in Account (plan Task 7) is therefore not needed for her.
+- **Owner, 2026-11-21:** his wife never used kakao-list's local notes (her completed kakao-list import brought 0), so nothing of hers needs migrating; her next sync is a direct Kakao Map sync. The owner didn't use them either. **No account needs a kakao-list migration**, so the migration status in Account (plan Task 7) is dropped, and phase 3 (retiring kakao-list from magomap) can follow as soon as direct sync ships.
 
 ## Phase 3 — retire kakao-list (owner-triggered, later)
 

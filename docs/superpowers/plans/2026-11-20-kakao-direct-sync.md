@@ -337,7 +337,7 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
 - Modify:
   - `apps/web/src/import/runImport.ts` and `importJob.ts`: extract the shared run loop (pages, finish, complete, the following sync); the kakao-list behaviour, including resume and the up-to-date refusal, is unchanged;
   - `apps/web/src/screens/Account.tsx`: render the new section above `ImportSection`;
-  - `apps/web/src/import/ImportSection.tsx`: show the migration status;
+  - (dropped 2026-11-21: no account needs a kakao-list migration, so `ImportSection` shows no migration status; spec, "Living with kakao-list")
   - `apps/web/src/i18n/ko.json` and `en.json`;
   - `apps/web/.env.example` and `vite-env.d.ts`: `VITE_MAGOMAP_EXTENSION_ID`;
   - `apps/web/e2e/`: a phone and desktop spec with the extension stubbed;
@@ -377,7 +377,7 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
     - `taken / not_allowed / unclear show their messages`;
     - `progress and summary use the import strings`;
     - `offline disables the button`.
-  - The `ImportSection` test: `shows "kakao-list import done" when migrated, and "Import once from kakao-list to bring its notes" when not`.
+  - (No migration-status test: dropped with the migration status.)
 - [ ] **Step 2: Run** `pnpm --filter @magomap/web test`. Expected: FAIL.
 - [ ] **Step 3: Implement it.**
   - **Wording, my proposal (ko/en):**
