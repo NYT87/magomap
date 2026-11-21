@@ -5,7 +5,8 @@ A small Chrome/Brave desktop extension (Manifest V3) for magomap's **Sync from K
 - Permissions: `scripting`, and host access to `https://map.kakao.com/*` only. No `tabs` permission: the host permission is enough to find, open and close `map.kakao.com` tabs and see their url, status and last use.
 - Only magomap's own pages can talk to it (`externally_connectable`, and the same list checked against `sender.origin`). The **release build** allows only `https://magomap.jmn8718.workers.dev`. The **dev build** also allows `http://localhost:5173` and `http://localhost:8787`. Both lists come from `src/origins.ts`.
 - It uses the most recently used `map.kakao.com` tab, skipping tabs Memory Saver discarded. If there is none, it opens one in the background, reads, and closes it again.
-- Each Kakao request times out after 30 s and the whole read after 5 minutes. A read over 2000 folder records or 50,000 favourites is refused as `kakao_unavailable`.
+- It reads every page of each folder: Kakao sends a folder's favourites at most 500 per page, with a `next_id` for the next one, and the extension follows it (`/favorite/mine/list?folderid=X&next_id=…`) until there is none. A repeating `next_id`, an empty later page that still has one, or more than 50 pages in a folder is refused as `kakao_unavailable`.
+- Each Kakao request (each page too) times out after 30 s and the whole read after 5 minutes. A read over 2000 folder records or 50,000 favourites is refused as `kakao_unavailable`.
 - It never logs what it reads, and it sends no cookies anywhere: the read happens in the Kakao Map page, and the records go only to the magomap page that asked.
 
 ## Extension id
@@ -52,7 +53,7 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 | `{ type: "magomap.read" }` | `{ ok: true, start: { folders, counts }, favorites }`, or `{ ok: false, error }` with `kakao_signed_out`, `kakao_unavailable` or `busy` |
 
 - `start.folders` is the raw `/folder/list` records as received; `start.counts` has one `{ folderid, itemCount, firstDisplay2? }` per non-deleted folder.
-- `favorites` holds every raw favourite of every non-deleted folder, keyed by `String(folderid)`.
+- `favorites` holds every raw favourite of every non-deleted folder, all pages in page order, keyed by `String(folderid)`; `counts[].itemCount` is the folder's full count across pages.
 - `kakao_signed_out`: Kakao Map isn't signed in in this browser (Kakao answers zero folders, an auth status, a redirect or an HTML page). Sign in at `map.kakao.com` and try again.
 - `kakao_unavailable`: Kakao failed (5xx, network, an unexpected answer) or the tab couldn't be read. Nothing partial is returned.
 - `busy`: a read is already running.

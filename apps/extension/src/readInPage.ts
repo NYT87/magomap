@@ -4,6 +4,8 @@
  * Ported from kakao-list (same owner), apps/extension/src/kakaoMapsExtractor.ts,
  * `extractSnapshotInPageEnvelope`, at kakao-list commit 730ee2d. Only the fetch-and-parse
  * read path is kept: `/folder/list`, then `/favorite/mine/list?folderid=` per folder.
+ * Unlike kakao-list, it follows Kakao's paging: a folder's favourites come at most 500 per
+ * page, with a `next_id` for the next page (`&next_id=`), which Kakao Map's own page follows.
  * Note editing, place detection and kakao-list's normalisation are not ported. Records are
  * returned unchanged; the server's Kakao Map adapter interprets them (dedupe, followed
  * folders, coordinates).
@@ -46,6 +48,8 @@ export async function readInPage(): Promise<ReadResult> {
   const MAX_FOLDERS = 2000;
   /** Far above a real account (the owner had about 3,000), but bounded. */
   const MAX_FAVORITES = 50_000;
+  /** Pages per folder (500 favourites each), a guard against a paging loop. */
+  const MAX_PAGES = 50;
 
   class ReadFailure extends Error {
     constructor(readonly reason: ReadError) {
@@ -128,20 +132,50 @@ export async function readInPage(): Promise<ReadResult> {
     let next = 0;
     let failed = false;
     let favoriteTotal = 0;
+
+    /** Every page of one folder, in page order. Pages are read one after another. */
+    const readFolder = async (folderid: number): Promise<unknown[]> => {
+      const all: unknown[] = [];
+      const seen = new Set<string>();
+      let nextId: string | undefined;
+      for (let pageNumber = 1; ; pageNumber += 1) {
+        const path =
+          nextId === undefined
+            ? `/favorite/mine/list?folderid=${folderid}`
+            : `/favorite/mine/list?folderid=${folderid}&next_id=${encodeURIComponent(nextId)}`;
+        const payload = await fetchJson(path);
+        const favorites = arrayIn(payload, "favorites");
+        if (!favorites) throw new ReadFailure(UNAVAILABLE);
+        favoriteTotal += favorites.length;
+        if (favoriteTotal > MAX_FAVORITES) throw new ReadFailure(UNAVAILABLE);
+        for (const favorite of favorites) all.push(favorite);
+
+        const raw =
+          payload && typeof payload === "object" && !Array.isArray(payload)
+            ? (payload as { next_id?: unknown }).next_id
+            : undefined;
+        // Missing, null, 0, "" (or "0") is the last page.
+        const usable =
+          (typeof raw === "number" && Number.isFinite(raw) && raw !== 0) ||
+          (typeof raw === "string" && raw !== "" && raw !== "0");
+        if (!usable) return all;
+        nextId = String(raw);
+        // A next_id seen before, a later page with nothing on it, or too many pages:
+        // Kakao's paging is looping, and the read can't be trusted.
+        if (seen.has(nextId) || (pageNumber > 1 && favorites.length === 0)) {
+          throw new ReadFailure(UNAVAILABLE);
+        }
+        if (pageNumber >= MAX_PAGES) throw new ReadFailure(UNAVAILABLE);
+        seen.add(nextId);
+      }
+    };
     const worker = async (): Promise<void> => {
       // After one failure the read is lost, so the other workers start nothing new.
       while (!failed && next < folderIds.length) {
         const folderid = folderIds[next] as number;
         next += 1;
         try {
-          const favorites = arrayIn(
-            await fetchJson(`/favorite/mine/list?folderid=${folderid}`),
-            "favorites",
-          );
-          if (!favorites) throw new ReadFailure(UNAVAILABLE);
-          favoriteTotal += favorites.length;
-          if (favoriteTotal > MAX_FAVORITES) throw new ReadFailure(UNAVAILABLE);
-          favoritesById.set(folderid, favorites);
+          favoritesById.set(folderid, await readFolder(folderid));
         } catch (error) {
           failed = true;
           throw error;

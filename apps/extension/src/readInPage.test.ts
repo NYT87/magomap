@@ -355,4 +355,156 @@ describe("readInPage", () => {
       25_000, 25_000,
     ]);
   });
+  describe("paging", () => {
+    const many = (from: number, count: number, folderid = 9) =>
+      Array.from({ length: count }, (_, index) => ({
+        seq: from + index,
+        folderid,
+        display2: `addr ${from + index}`,
+      }));
+    const page = (favorites: unknown[], next_id?: unknown) =>
+      json(
+        next_id === undefined
+          ? { status: { code: "SUCCESS" }, favorites }
+          : { status: { code: "SUCCESS" }, favorites, next_id },
+      );
+
+    it("reads every page of a folder", async () => {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 500), 1166021329),
+        "/favorite/mine/list?folderid=9&next_id=1166021329": () => page(many(500, 37)),
+      });
+
+      const result = expectOk(await readInPage());
+
+      expect(requests.map((url) => url.search)).toEqual([
+        "",
+        "?folderid=9",
+        "?folderid=9&next_id=1166021329",
+      ]);
+      expect(result.start.counts).toEqual([
+        { folderid: 9, itemCount: 537, firstDisplay2: "addr 0" },
+      ]);
+      expect(result.favorites["9"]).toEqual(many(0, 537));
+    });
+
+    it("follows several pages and string next_ids, encoded", async () => {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 2), "a b"),
+        "/favorite/mine/list?folderid=9&next_id=a+b": () => page(many(2, 2), "c&d"),
+        "/favorite/mine/list?folderid=9&next_id=c%26d": () => page(many(4, 1), null),
+      });
+
+      const result = expectOk(await readInPage());
+
+      expect(requests[2]?.toString()).toBe(
+        "https://map.kakao.com/favorite/mine/list?folderid=9&next_id=a%20b",
+      );
+      expect(result.favorites["9"]).toEqual(many(0, 5));
+      expect(result.start.counts[0]?.itemCount).toBe(5);
+    });
+
+    for (const [name, nextId] of [
+      ["no next_id", undefined],
+      ["next_id null", null],
+      ["next_id 0", 0],
+      ['next_id ""', ""],
+    ] as const) {
+      it(`stops at the last page: ${name}`, async () => {
+        serve({
+          "/folder/list": () => folderList([{ folderid: 9 }]),
+          "/favorite/mine/list?folderid=9": () => page(many(0, 3), nextId),
+        });
+
+        const result = expectOk(await readInPage());
+
+        expect(requests).toHaveLength(2);
+        expect(result.start.counts).toEqual([
+          { folderid: 9, itemCount: 3, firstDisplay2: "addr 0" },
+        ]);
+      });
+    }
+
+    it("a repeating next_id is kakao_unavailable", async () => {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 500), 77),
+        "/favorite/mine/list?folderid=9&next_id=77": () => page(many(500, 500), 77),
+      });
+
+      expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+      expect(requests).toHaveLength(3);
+    });
+
+    it("an empty later page that still has a next_id is kakao_unavailable", async () => {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 500), 1),
+        "/favorite/mine/list?folderid=9&next_id=1": () => page([], 2),
+      });
+
+      expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+    });
+
+    it("more than 50 pages in one folder is kakao_unavailable", async () => {
+      const routes: Record<string, Route> = {
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 1), 1),
+      };
+      for (let n = 1; n <= 60; n += 1) {
+        routes[`/favorite/mine/list?folderid=9&next_id=${n}`] = () => page(many(n, 1), n + 1);
+      }
+      serve(routes);
+
+      expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+      // The folder list, then 50 pages; no 51st.
+      expect(requests).toHaveLength(51);
+    });
+
+    it("50 pages ending on the 50th is still read", async () => {
+      const routes: Record<string, Route> = {
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 1), 1),
+      };
+      for (let n = 1; n <= 49; n += 1) {
+        routes[`/favorite/mine/list?folderid=9&next_id=${n}`] = () =>
+          page(many(n, 1), n < 49 ? n + 1 : undefined);
+      }
+      serve(routes);
+
+      expect(expectOk(await readInPage()).start.counts[0]?.itemCount).toBe(50);
+    });
+
+    it("a failure on page 2 gives no partial result", async () => {
+      for (const respond of [
+        () => new Response("oops", { status: 500 }),
+        () => new Response("<html>login</html>"),
+      ]) {
+        requests = [];
+        serve({
+          "/folder/list": () => folderList([{ folderid: 0 }, { folderid: 9 }]),
+          "/favorite/mine/list?folderid=0": () => favoriteList([{ seq: 1 }]),
+          "/favorite/mine/list?folderid=9": () => page(many(0, 500), 5),
+          "/favorite/mine/list?folderid=9&next_id=5": respond,
+        });
+
+        const result = await readInPage();
+
+        expect(result.ok).toBe(false);
+        expect(Object.keys(result)).toEqual(["ok", "error"]);
+      }
+    });
+
+    it("pages count toward the 50,000-favourite cap", async () => {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 9 }]),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 25_000), 1),
+        "/favorite/mine/list?folderid=9&next_id=1": () => page(many(25_000, 25_001)),
+      });
+
+      expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+    });
+  });
 });
