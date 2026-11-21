@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "magomap",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reads your Kakao Map lists for magomap's Sync from Kakao Map.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2V77w30k0i9Ls6JHiGg91gpKM+sK6y0Nh5DJE3HCTD8BXRRbV9TVKJ7pdsbwyC8CwdtHNW6qnl0s1gsfv8VGgtctHC9ChdT92BpooUv22gAmS5eTRyHLZxTnv+Un/5TG8p4tLfIm5HI/i137XaawES0BNWSrD2yS/tC5wqgcET3TF4uTHxU0S+b2x0wZ7NmTn8+3+N7sgHF81imrYKME8tXJDgaVyZ98cySqJQb6ykq7z/wMANEECmZqTfdNjAGyhr2q/trfwcryOJmRnZwuwMVWe+sl3JN+tE5q03FnNwVPv87mahaHiikE3h3aJYkxO4DJomFugi/nEV/gVk933QIDAQAB",
   "action": {
@@ -11,6 +11,10 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["scripting"],
-  "host_permissions": ["https://map.kakao.com/*"]
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://map.kakao.com/*"
+  ]
 }
