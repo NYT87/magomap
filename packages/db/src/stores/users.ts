@@ -136,6 +136,7 @@ const USER_TABLES = [
   "import_run_pages",
   "import_run_lists",
   "user_provider_snapshots",
+  "kakao_map_accounts",
 ] as const satisfies readonly (keyof Database)[];
 
 /**

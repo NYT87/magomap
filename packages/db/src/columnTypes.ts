@@ -43,6 +43,12 @@ export const COLUMN_TYPES: {
     error: "text",
     source: "text",
   },
+  kakao_map_accounts: {
+    user_id: "text",
+    kakao_map_user_id: "text",
+    nickname: "text",
+    bound_at: "bigint",
+  },
   user_provider_snapshots: {
     user_id: "text",
     provider: "text",

@@ -47,6 +47,13 @@ export interface ImportRunsTable {
 }
 
 /** A user's newest complete import snapshot per provider; older imports don't change their access. */
+export interface KakaoMapAccountsTable {
+  user_id: string;
+  kakao_map_user_id: string;
+  nickname: string | null;
+  bound_at: number;
+}
+
 export interface UserProviderSnapshotsTable {
   user_id: string;
   provider: string;
@@ -227,6 +234,7 @@ export interface Database {
   import_run_lists: ImportRunListsTable;
   import_run_pages: ImportRunPagesTable;
   user_provider_snapshots: UserProviderSnapshotsTable;
+  kakao_map_accounts: KakaoMapAccountsTable;
   sync_state: SyncStateTable;
   places: PlacesTable;
   place_sources: PlaceSourcesTable;
