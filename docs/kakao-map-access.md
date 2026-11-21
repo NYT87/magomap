@@ -77,7 +77,7 @@ Read in each account's own signed-in tab with a console snippet (no cookie copie
 
 - **`seq` is the same for both readers.** Folder `16499871` (hers; he follows it): 500 favourites in both accounts, and the first 8 `[seq, key]` pairs are identical. Memberships can stay keyed by `seq`.
 - **Owner ids** are filled for every folder of her own account (`kakao_map_user_id` or `map_user_id`), and `subscribe` is `1` only on folders she follows.
-- **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, never invent a name, and must cope if its favourites can't be read.
+- **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, and must cope if its favourites can't be read. While kakao-list runs beside the direct sync, its fallback name (`Folder <id>`) is kept so both sources name the list the same way.
 - **500 favourites in one folder is a full folder.** Both accounts got exactly 500 for `16499871`. Kakao Map limits a list to 500 places (owner, 2026-11-21), which is why she splits places into numbered lists ("Incheon 1"/"Incheon 2", "Seúl 0/1/2"). One `/favorite/mine/list` response holds a whole folder; no paging is needed.
 
 ## Still open
