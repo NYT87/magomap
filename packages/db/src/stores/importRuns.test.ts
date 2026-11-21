@@ -1053,4 +1053,43 @@ forEachDialect("import (an older run for the user)", (makeDb) => {
       .execute();
     expect(runs.map((r) => r.source)).toEqual(["kakao_map", "kakao_list"]);
   });
+
+  it("a direct sync protects her roles and removals from an older kakao-list import", async () => {
+    const db = await setup(makeDb);
+    // Direct Kakao Map syncs: list 1 hers, list 2 followed; then list 2 dropped at T3.
+    await importSnapshot(
+      db,
+      WIFE,
+      [list("1", [item("10", "A")]), list("2", [item("20", "B")], { followed: true })],
+      { source: "kakao_map", snapshot: T0 + 20, at: T0 + 20 },
+    );
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], {
+      source: "kakao_map",
+      snapshot: T0 + 30,
+      at: T0 + 30,
+    });
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 30);
+    // The kakao-list migration import, from before her last direct sync.
+    await importSnapshot(
+      db,
+      WIFE,
+      [
+        list("1", [item("10", "A"), item("11", "C", { localNote: "마이그레이션 메모" })], {
+          followed: true,
+        }),
+        list("2", [item("20", "B")], { followed: true }),
+      ],
+      { source: "kakao_list", snapshot: T0 + 10, at: T0 + 40 },
+    );
+    expect((await accessTo(db, WIFE, "1"))?.role).toBe("owner");
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 30);
+    expect(await mine(db, "visit_notes", WIFE)).toEqual([
+      expect.objectContaining({
+        place_id: "p_kakao_C",
+        body: "마이그레이션 메모",
+        origin: "import",
+        origin_key: "l_kakao_1",
+      }),
+    ]);
+  });
 });
