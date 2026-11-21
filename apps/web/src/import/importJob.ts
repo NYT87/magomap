@@ -5,7 +5,7 @@
 import type { ImportSummary } from "@magomap/domain";
 import { notifyMeChanged } from "../auth/useMe";
 import { dbUserId, openDbOrNull } from "../data/db";
-import { KakaoMapSyncError, runKakaoMapSync } from "./kakaoMap";
+import { forgetKakaoMapRead, KakaoMapSyncError, runKakaoMapSync } from "./kakaoMap";
 import { ImportError, runImport } from "./runImport";
 import { holdScreenOn } from "./wakeLock";
 
@@ -134,10 +134,14 @@ export function startImportJob(resumeRunId?: string): ImportJob {
   );
 }
 
-/** Forgets every job without waiting for them (tests, which never let one finish). */
+/**
+ * Forgets every job without waiting for them, and a Kakao Map read kept for a confirmation
+ * (signing out; tests, which never let one finish).
+ */
 export const forgetImportJob = () => {
   imports.forget();
   syncs.forget();
+  forgetKakaoMapRead();
 };
 
 export const subscribeKakaoMapJob = syncs.subscribe;

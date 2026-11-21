@@ -17,6 +17,7 @@ import { accountDeviceKeys } from "../data/deviceKeys";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
 import { ImportSection } from "../import/ImportSection";
+import { forgetKakaoMapRead } from "../import/kakaoMap";
 import { useOnline } from "../import/useOnline";
 import { useLayout } from "../layout/useLayout";
 import { useMapPrefs } from "../map/mapPrefs";
@@ -86,6 +87,8 @@ export function Account({ me }: { me: Me }) {
 
   const leave = () => {
     forgetMe();
+    // A Kakao Map read kept for a confirmation doesn't outlive the session.
+    forgetKakaoMapRead();
     navigate("/signin");
   };
 

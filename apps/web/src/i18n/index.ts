@@ -48,4 +48,7 @@ i18n.on("languageChanged", (lng) => {
 export const formatDate = (value: Date | number, lang = i18n.language) =>
   new Intl.DateTimeFormat(lang, { dateStyle: "long" }).format(value);
 
+export const formatDateTime = (value: Date | number, lang = i18n.language) =>
+  new Intl.DateTimeFormat(lang, { dateStyle: "long", timeStyle: "short" }).format(value);
+
 export default i18n;

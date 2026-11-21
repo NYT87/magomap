@@ -38,6 +38,8 @@ export class KakaoMapSyncError extends Error {
     readonly code: KakaoMapSyncCode | undefined,
     /** The account a `kakao_account_*` refusal names: nickname and the id's last 4 characters. */
     readonly account?: KakaoMapAccountHint,
+    /** On a mismatch, the account she synced from before, named the same way. */
+    readonly bound?: KakaoMapAccountHint,
   ) {
     super(`Kakao Map sync failed${code ? `: ${code}` : ""}`);
     this.name = "KakaoMapSyncError";
@@ -121,17 +123,34 @@ export function forgetKakaoMapRead() {
   pending = null;
 }
 
+/** The adapter couldn't be loaded (the connection dropped): the confirmation can't go out yet. */
+class AdapterUnavailable extends Error {}
+
 /** The read's Kakao Map account id, as the server decides it; undefined when it can't tell. */
 async function accountIdOf(read: Read): Promise<string | undefined> {
   // Loaded only to confirm an account: the adapter brings the coordinate library along.
-  const { kakaoMapListsToImport } = await import("@magomap/domain/providers/kakaoMap");
+  let adapter: typeof import("@magomap/domain/providers/kakaoMap");
+  try {
+    adapter = await import("@magomap/domain/providers/kakaoMap");
+  } catch {
+    throw new AdapterUnavailable();
+  }
   try {
     // The login id only shapes folder 0's list id, which isn't used here.
-    return kakaoMapListsToImport(read.start, "-").account.kakaoMapUserId;
+    return adapter.kakaoMapListsToImport(read.start, "-").account.kakaoMapUserId;
   } catch {
     return undefined;
   }
 }
+
+/** A refusal's account hint, read leniently. */
+const hintOf = (value: unknown): KakaoMapAccountHint | undefined =>
+  isRecord(value) && typeof value.idTail === "string"
+    ? {
+        ...(typeof value.nickname === "string" ? { nickname: value.nickname } : {}),
+        idTail: value.idTail,
+      }
+    : undefined;
 
 /**
  * Reads her Kakao Map once through the extension and uploads it: the start, each list's pages
@@ -148,7 +167,14 @@ export async function runKakaoMapSync(
   const kept = pending?.account === account ? pending.read : null;
   pending = null;
   // A confirmation applies only to the read she was shown; anything else reads again.
-  const keptId = kept && opts.confirmAccount !== undefined ? await accountIdOf(kept) : undefined;
+  let keptId: string | undefined;
+  try {
+    keptId = kept && opts.confirmAccount !== undefined ? await accountIdOf(kept) : undefined;
+  } catch {
+    // Keep the read, so confirming again once she's back online still uses it.
+    pending = kept ? { account, read: kept } : null;
+    throw new KakaoMapSyncError("offline");
+  }
   const confirmAccount =
     keptId !== undefined && keptId.slice(-4) === opts.confirmAccount ? keptId : undefined;
   const read = confirmAccount && kept ? kept : await readKakaoMap();
@@ -166,11 +192,12 @@ export async function runKakaoMapSync(
       (code === "kakao_account_unconfirmed" || code === "kakao_account_mismatch")
     ) {
       pending = { account, read };
-      const hint = isRecord(error.body) && isRecord(error.body.account) ? error.body.account : {};
-      throw new KakaoMapSyncError(code, {
-        ...(typeof hint.nickname === "string" ? { nickname: hint.nickname } : {}),
-        idTail: typeof hint.idTail === "string" ? hint.idTail : "",
-      });
+      const body = isRecord(error.body) ? error.body : {};
+      throw new KakaoMapSyncError(
+        code,
+        hintOf(body.account) ?? { idTail: "" },
+        code === "kakao_account_mismatch" ? hintOf(body.bound) : undefined,
+      );
     }
     throw new KakaoMapSyncError(code);
   }

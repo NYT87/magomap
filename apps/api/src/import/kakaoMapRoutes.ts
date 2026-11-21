@@ -50,7 +50,11 @@ export const MAX_UPLOAD_BYTES = 1024 * 1024;
 class Refusal extends Error {
   constructor(
     readonly status: ContentfulStatusCode,
-    readonly body: { error: ApiErrorCode; account?: KakaoMapAccountHint },
+    readonly body: {
+      error: ApiErrorCode;
+      account?: KakaoMapAccountHint;
+      bound?: KakaoMapAccountHint;
+    },
   ) {
     super(body.error);
   }
@@ -149,7 +153,8 @@ function checkCounts(counts: { folderid: number }[], lists: ImportListSummary[])
  * - an account already bound to the caller goes ahead;
  * - otherwise the caller must have confirmed exactly this account (first sync: unconfirmed;
  *   a different bound account: mismatch), and it is bound now.
- * A 409 names the read's account by nickname and the id's last 4 characters, never the whole id.
+ * A 409 names the read's account (and, on a mismatch, the bound one) by nickname and the id's
+ * last 4 characters, never the whole id.
  */
 async function checkAccount(
   c: Context<AppEnv>,
@@ -176,6 +181,15 @@ async function checkAccount(
         ...(account.nickname ? { nickname: account.nickname } : {}),
         idTail: account.kakaoMapUserId.slice(-4),
       },
+      // A mismatch also names the account she synced from before, the same way.
+      ...(bound
+        ? {
+            bound: {
+              ...(bound.nickname ? { nickname: bound.nickname } : {}),
+              idTail: bound.kakaoMapUserId.slice(-4),
+            },
+          }
+        : {}),
     });
   }
   try {

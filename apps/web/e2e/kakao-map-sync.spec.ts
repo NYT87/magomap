@@ -24,14 +24,14 @@ interface Stub {
 async function stubExtension(page: Page, stub: Stub) {
   await page.addInitScript(
     ({ stub, MODE }) => {
-      const read = (account: string) => {
+      const read = (account: string, nickname: string) => {
         const folder = (folderid: number) => ({
           folderid,
           title: folderid === 0 ? "즐겨찾기" : "제주 가볼 곳",
           status: "O",
           subscribe: "N",
           kakao_map_user_id: account,
-          nickname: "수지",
+          nickname,
         });
         const favorites = (folderid: number, n: number, from: number) =>
           Array.from({ length: n }, (_, i) => ({
@@ -69,7 +69,7 @@ async function stubExtension(page: Page, stub: Stub) {
         let answer: unknown;
         if (message.type === "magomap.ping") answer = { ok: true, version: "0.1.0" };
         else if (mode === "signed_out") answer = { ok: false, error: "kakao_signed_out" };
-        else answer = read(mode === "other" ? stub.other : stub.mine);
+        else answer = mode === "other" ? read(stub.other, "민수") : read(stub.mine, "수지");
         setTimeout(() => callback(answer), 50);
       };
       Object.defineProperty(window, "chrome", {
@@ -119,7 +119,7 @@ test("syncs from Kakao Map through the extension: confirm, pages, done, mismatch
 
   // No extension: the desktop says how to get it, the phone that it works on a computer.
   await page.goto("/account");
-  if (phone) await expect(sync).toContainText("works on a computer for now");
+  if (phone) await expect(sync).toContainText("Syncing from Kakao Map happens on a computer.");
   else await expect(sync.getByRole("link", { name: /Get the magomap extension/ })).toBeVisible();
   await showSection(page, "Sync from Kakao Map");
   await shoot(page, "en-missing");
@@ -154,7 +154,10 @@ test("syncs from Kakao Map through the extension: confirm, pages, done, mismatch
   await button.click();
   const confirm = page.getByRole("alertdialog");
   const tail = phone ? "1111" : "2222";
-  await expect(confirm).toContainText(`Sync 수지's Kakao Map (••••${tail}) into José's magomap?`);
+  await expect(confirm).toContainText(
+    `Sync 수지's Kakao Map account ending in ${tail} into José's magomap?`,
+  );
+  await expect(confirm).toContainText("If you cancel, nothing changes.");
   await shoot(page, "en-confirm");
 
   const pages: number[] = [];
@@ -171,7 +174,7 @@ test("syncs from Kakao Map through the extension: confirm, pages, done, mismatch
   });
   await confirm.getByRole("button", { name: "Sync", exact: true }).click();
   expect((await completed).ok()).toBe(true);
-  await expect(sync.getByText("Sync finished")).toBeVisible({ timeout: 30_000 });
+  await expect(sync.getByText("Synced with Kakao Map")).toBeVisible({ timeout: 30_000 });
   await expect(sync).toContainText("538 added");
   // Folder 0's one favourite, then 537 in pages of 500 and 37.
   expect(pages).toEqual([1, 500, 37]);
@@ -189,10 +192,10 @@ test("syncs from Kakao Map through the extension: confirm, pages, done, mismatch
   await button.click();
   const mismatch = page.getByRole("alertdialog");
   await expect(mismatch).toContainText(
-    "This browser is signed in to a different Kakao Map account (••••9999). Sign in to yours, or confirm to switch.",
+    `Your magomap syncs from 수지's Kakao Map account ending in ${tail}, but this browser is signed in to 민수's Kakao Map account ending in 9999. Sign in to yours, or switch to this account.`,
   );
   await expect(mismatch.getByRole("link", { name: /Sign in to yours/ })).toBeVisible();
-  await expect(mismatch.getByRole("button", { name: "Confirm to switch" })).toBeVisible();
+  await expect(mismatch.getByRole("button", { name: "Switch to this account" })).toBeVisible();
   await shoot(page, "en-mismatch");
   await mismatch.getByRole("button", { name: "Cancel" }).click();
   await expect(mismatch).toBeHidden();
@@ -202,6 +205,13 @@ test("Korean: the same states read naturally", async ({ page, context }, info) =
   const phone = info.project.name === "phone";
   await signIn(context, phone ? "446" : "447", "호세");
   await page.addInitScript(() => localStorage.setItem("mm.lang", "ko"));
+  // No extension yet: both sections, the kakao-list import as the fallback.
+  await page.goto("/account");
+  await expect(page.getByRole("region", { name: "카카오맵에서 동기화" })).toContainText(
+    phone ? "카카오맵 동기화는 컴퓨터에서 해요." : "magomap 확장 프로그램 받기",
+  );
+  await showSection(page, "카카오맵에서 동기화");
+  await shoot(page, "ko-missing");
   await stubExtension(page, {
     mine: phone ? "km-phone-ko-3333" : "km-desktop-ko-4444",
     other: "km-someone-ko-8888",
@@ -223,7 +233,7 @@ test("Korean: the same states read naturally", async ({ page, context }, info) =
   const confirm = page.getByRole("alertdialog");
   const tail = phone ? "3333" : "4444";
   await expect(confirm).toContainText(
-    `수지님의 카카오맵(••••${tail})을 호세님의 magomap에 동기화할까요?`,
+    `수지님의 카카오맵 계정(끝자리 ${tail})을 호세님의 magomap에 동기화할까요?`,
   );
   await shoot(page, "ko-confirm");
   const completed = page.waitForResponse((r) => isComplete(r.url(), r.request().method()), {
@@ -231,14 +241,17 @@ test("Korean: the same states read naturally", async ({ page, context }, info) =
   });
   await confirm.getByRole("button", { name: "동기화", exact: true }).click();
   expect((await completed).ok()).toBe(true);
-  await expect(sync.getByText("동기화를 마쳤어요")).toBeVisible({ timeout: 30_000 });
+  await expect(sync.getByText("카카오맵과 동기화했어요")).toBeVisible({ timeout: 30_000 });
   await showSection(page, "카카오맵에서 동기화");
   await shoot(page, "ko-done");
 
   await setMode(page, "other");
   await sync.getByRole("button", { name: "다시 동기화" }).click();
   const mismatch = page.getByRole("alertdialog");
-  await expect(mismatch).toContainText("다른 카카오맵 계정(••••8888)");
+  await expect(mismatch).toContainText(
+    `내 magomap은 수지님의 카카오맵 계정(끝자리 ${tail})에서 동기화해요. 지금 이 브라우저는 민수님의 카카오맵 계정(끝자리 8888)으로 로그인되어 있어요.`,
+  );
+  await expect(mismatch).toContainText("지금 있는 리스트와 메모는 그대로 남아요.");
   await shoot(page, "ko-mismatch");
   await mismatch.getByRole("button", { name: "취소" }).click();
 });

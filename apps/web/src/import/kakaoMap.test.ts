@@ -12,6 +12,7 @@ const { detectExtension, forgetKakaoMapRead, KakaoMapSyncError, runKakaoMapSync 
   "./kakaoMap"
 );
 const { openUserDb } = await import("../data/db");
+const { forgetImportJob } = await import("./importJob");
 
 const ACCOUNT = "kakaomap-user-7800";
 const summary = {
@@ -257,5 +258,40 @@ describe("runKakaoMapSync", () => {
     extension((m) => (m.type === "magomap.read" ? READ : undefined));
     server(() => new ApiError(422, { error: "kakao_signed_out" }));
     await expect(runKakaoMapSync(() => {})).rejects.toMatchObject({ code: "kakao_signed_out" });
+  });
+
+  it("signing out (jobs forgotten) drops a read kept for a confirmation", async () => {
+    const send = extension((m) => (m.type === "magomap.read" ? READ : undefined));
+    server((path, body) =>
+      path === "/api/import/kakao-map/runs" &&
+      (body as { confirmAccount?: string }).confirmAccount === undefined
+        ? new ApiError(409, { error: "kakao_account_unconfirmed", account: { idTail: "7800" } })
+        : null,
+    );
+    await runKakaoMapSync(() => {}).catch(() => {});
+    forgetImportJob();
+    await runKakaoMapSync(() => {}, { confirmAccount: "7800" }).catch(() => {});
+    // The confirmation had no read to apply to: it read again and confirmed nothing.
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(api.mock.calls.every(([, init]) => !String(init.body).includes("confirmAccount"))).toBe(
+      true,
+    );
+  });
+
+  it("a mismatch names the bound account too", async () => {
+    extension((m) => (m.type === "magomap.read" ? READ : undefined));
+    server(
+      () =>
+        new ApiError(409, {
+          error: "kakao_account_mismatch",
+          account: { nickname: "수지", idTail: "7800" },
+          bound: { nickname: "호세", idTail: "1234" },
+        }),
+    );
+    await expect(runKakaoMapSync(() => {})).rejects.toMatchObject({
+      code: "kakao_account_mismatch",
+      account: { nickname: "수지", idTail: "7800" },
+      bound: { nickname: "호세", idTail: "1234" },
+    });
   });
 });

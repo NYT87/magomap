@@ -328,4 +328,27 @@ describe("ImportSection", () => {
     expect(screen.getByText(/Up to date with your kakao-list sync/)).toBeInTheDocument();
     expect(screen.queryByText(/stopped at/)).toBeNull();
   });
+
+  it("is the fallback to syncing from Kakao Map: a secondary button, and says when to use it", async () => {
+    status({ latest: null, sourceSnapshotAt: SNAP, upToDate: false, source: "ok" });
+    render(<ImportSection />);
+    const button = await screen.findByRole("button", { name: "Import from kakao-list" });
+    expect(button).toHaveClass("mm-button--secondary");
+    expect(
+      screen.getByText(/Use this only if syncing from Kakao Map doesn't work for you\./),
+    ).toBeInTheDocument();
+  });
+
+  it("ignores a Kakao Map sync's run", async () => {
+    status({
+      latest: run({ source: "kakao_map" }),
+      sourceSnapshotAt: SNAP,
+      upToDate: false,
+      source: "ok",
+    });
+    render(<ImportSection />);
+    await screen.findByRole("button", { name: "Import from kakao-list" });
+    expect(screen.queryByRole("button", { name: "Continue import" })).toBeNull();
+    expect(screen.queryByText(/The last import stopped/)).toBeNull();
+  });
 });

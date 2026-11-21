@@ -219,6 +219,8 @@ describe("the Kakao Map account", () => {
     expect(refused.body).toEqual({
       error: "kakao_account_mismatch",
       account: { nickname: "호세", idTail: "bbbb" },
+      // The account she synced from before, so the prompt can name both.
+      bound: { nickname: "수지", idTail: "aaaa" },
     });
     expect(await runsOf(user)).toBe(runs);
     expect((await bindingOf(user))?.id).toBe("u1-mm-aaaa");
