@@ -27,6 +27,7 @@ interface KakaoMaps {
     content: HTMLElement;
     yAnchor?: number;
     xAnchor?: number;
+    zIndex?: number;
     map?: unknown;
   }) => { setMap(m: unknown): void };
   event: { addListener(target: unknown, type: string, cb: () => void): void };
@@ -43,6 +44,8 @@ export const kakaoMaps = () => (window as unknown as { kakao: { maps: KakaoMaps 
 export const kakaoLevel = (zoom: number) => Math.min(14, Math.max(1, 20 - zoom));
 /** Kakao level back to Leaflet-style zoom. */
 export const zoomFromKakaoLevel = (level: number) => 20 - level;
+
+const SELECTED_Z = 10;
 
 export function createKakaoAdapter(): MapAdapter {
   const k = kakaoMaps();
@@ -66,6 +69,8 @@ export function createKakaoAdapter(): MapAdapter {
       position: new k.LatLng(m.position.lat, m.position.lng),
       content: el,
       yAnchor: m.kind === "search" ? 0.5 : 1,
+      // The open place is drawn above every other pin.
+      ...(m.selected ? { zIndex: SELECTED_Z } : {}),
     });
   };
 
@@ -89,7 +94,7 @@ export function createKakaoAdapter(): MapAdapter {
       const clustered = [];
       for (const m of markers) {
         const o = overlay(m);
-        if (m.kind === "search") {
+        if (m.kind === "search" || m.selected) {
           o.setMap(map);
           loose.push(o);
         } else clustered.push(o);

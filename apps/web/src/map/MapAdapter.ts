@@ -18,7 +18,10 @@ export interface MapMarker {
 export interface MapAdapter {
   readonly provider: "kakao" | "leaflet";
   mount(el: HTMLElement, view: { center: LatLng; zoom: number }): void;
-  /** Saved and previous markers cluster; previous ones are faded and smaller. */
+  /**
+   * Saved and previous markers cluster; previous ones are faded and smaller. A selected marker
+   * never clusters and is drawn above all others.
+   */
   setMarkers(markers: MapMarker[]): void;
   fitTo(points: LatLng[]): void;
   panTo(point: LatLng): void;
