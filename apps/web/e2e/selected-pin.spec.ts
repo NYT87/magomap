@@ -14,9 +14,11 @@ const clusters = (page: Page) => page.locator(".marker-cluster");
 const drawn = (page: Page) =>
   expect(page.locator(".mm-pin-host--saved, .marker-cluster").first()).toBeAttached();
 
-test("the open place's pin stands out", async ({ page }) => {
+test("the open place's pin stands out", async ({ page }, info) => {
   await page.goto(`/places/${BADA}`);
   await expect(selectedPin(page)).toHaveCount(1);
+  // The phone's map is hidden under place pages: there it is only present.
+  if (info.project.name === "desktop") await expect(selectedPin(page)).toBeVisible();
   await expect(page.locator(".marker-cluster .mm-pin--selected")).toHaveCount(0);
 });
 
@@ -69,4 +71,41 @@ test("another place takes over, and closing the place clears it", async ({ page 
   await expect(page).toHaveURL(/\/$/);
   await drawn(page);
   await expect(selectedPin(page)).toHaveCount(0);
+});
+
+test("a keyboard user who opens another pin keeps focus on it", async ({ page }, info) => {
+  if (info.project.name !== "desktop") return;
+  await page.goto(`/places/${BADA}`);
+  await expect(selectedPin(page)).toHaveCount(1);
+  const first = await hostOf(page).getAttribute("title");
+  // The view is close on this place: zoom out until another saved pin is drawn on its own.
+  await page.locator(".leaflet-container").focus();
+  const others = page.locator(
+    ".leaflet-marker-icon.mm-pin-host--saved:not(:has(.mm-pin--selected))",
+  );
+  await expect(async () => {
+    await page.keyboard.press("-");
+    await expect(others.first()).toBeAttached({ timeout: 500 });
+  }).toPass({ timeout: 25_000 });
+  const clicked = await others.first().getAttribute("title");
+  expect(`${clicked}, selected`).not.toBe(first);
+  const pin = page.locator(`.leaflet-marker-icon.mm-pin-host--saved[title="${clicked}"]`);
+  // The pins are redrawn once when the library settles: retry if that took the focus away.
+  await expect(async () => {
+    await pin.focus();
+    await expect(pin).toBeFocused({ timeout: 500 });
+    await page.keyboard.press("Enter");
+    await expect(page).not.toHaveURL(new RegExp(BADA), { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(selectedPin(page)).toHaveCount(1);
+  await expect(hostOf(page)).toHaveAttribute("title", `${clicked}, selected`);
+  await expect(hostOf(page)).toBeFocused();
+});
+
+test("a malformed place link doesn't take the map down", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/places/%E0%A4%A");
+  await drawn(page);
+  expect(errors).toEqual([]);
 });

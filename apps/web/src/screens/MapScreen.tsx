@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useRoute } from "wouter";
 import { SyncIndicator } from "../components/SyncIndicator";
+import { decodeId } from "../decodeId";
 import { NoticeSlot } from "../layout/AppLayout";
 import { useLayout } from "../layout/useLayout";
 import { useMapStage } from "../map/MapStage";
@@ -38,7 +39,7 @@ export function MapScreen() {
   const layout = useLayout();
   const [location, navigate] = useLocation();
   const [, params] = useRoute("/places/:id");
-  const selectedId = params?.id ? decodeURIComponent(params.id) : undefined;
+  const selectedId = decodeId(params?.id);
   const data = useMapData(selectedId);
   const [asList, setAsList] = useState(false);
   const { locate, denied } = useLocate();
@@ -90,11 +91,7 @@ export function MapScreen() {
           </div>
           {asList && data && (
             <div className="mm-list-overlay">
-              <VisiblePlacesList
-                places={data.shownPlaces}
-                moved={data.moved}
-                selectedId={selectedId}
-              />
+              <VisiblePlacesList places={data.shownPlaces} moved={data.moved} />
             </div>
           )}
         </>
