@@ -12,7 +12,6 @@ import {
   importedSnapshot,
   importListChunk,
   latestImportRun,
-  migratedFromKakaoList,
   RunClosedError,
   RunNotFoundError,
   runProgress,
@@ -1007,28 +1006,6 @@ forEachDialect("import (an older run for the user)", (makeDb) => {
     await completeImportRun(db, WIFE, other.runId, T0 + 80);
     expect(await snapshotOf(db, WIFE, "other")).toBe(T0 + 15);
     expect(await snapshotOf(db, WIFE)).toBe(T0 + 30);
-  });
-
-  it("migratedFromKakaoList is true only after a complete kakao-list run", async () => {
-    const db = await setup(makeDb);
-    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
-    const direct = await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], {
-      source: "kakao_map",
-    });
-    expect(direct.summary.listsAdded).toBe(1);
-    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
-    await runImport(db, WIFE, [list("1", [item("10", "A")])], {
-      snapshotMs: 10,
-      at: T0 + 10,
-      complete: false,
-    });
-    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
-    // Started but never completed.
-    await startRun(db, WIFE, 15);
-    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
-    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
-    expect(await migratedFromKakaoList(db, WIFE)).toBe(true);
-    expect(await migratedFromKakaoList(db, ME)).toBe(false);
   });
 
   it("importedSnapshot counts only kakao-list runs", async () => {

@@ -1085,45 +1085,6 @@ describe("pages are checked", () => {
   });
 });
 
-describe("migration from kakao-list", () => {
-  it("migrated is false, then true after a complete kakao-list import", async () => {
-    const login = "km-migrated";
-    const contract = baseContract(login);
-    network.use(
-      http.get(`${KL}/lists`, () => HttpResponse.json(listsBody(contract))),
-      http.get(`${KL}/lists/:folderId/items`, ({ params }) =>
-        HttpResponse.json(itemsBody(contract, Number(params.folderId), 0)),
-      ),
-    );
-    const cookie = await devLogin(login);
-    const migrated = async () =>
-      (await (await call("/api/import/kakao-list/migrated", { headers: { cookie } })).json()) as {
-        done: boolean;
-      };
-    expect(await migrated()).toEqual({ done: false });
-    // An upload run doesn't count.
-    await upload(cookie, smallRead("u1-migrated", 39501), "u1-migrated");
-    expect(await migrated()).toEqual({ done: false });
-    const started = (await (
-      await call("/api/import/runs", post(cookie, { provider: "kakao" }))
-    ).json()) as Started;
-    for (const l of started.lists) {
-      const at = `/api/import/runs/${started.runId}/lists/${l.externalId}`;
-      expect((await call(`${at}/pages/0`, post(cookie, {}))).status).toBe(200);
-      expect((await call(`${at}/finish`, post(cookie, {}))).status).toBe(200);
-    }
-    expect(await migrated()).toEqual({ done: false });
-    expect(
-      (await call(`/api/import/runs/${started.runId}/complete`, post(cookie, {}))).status,
-    ).toBe(200);
-    expect(await migrated()).toEqual({ done: true });
-  });
-
-  it("migrated needs a signed-in user", async () => {
-    expect((await call("/api/import/kakao-list/migrated")).status).toBe(401);
-  });
-});
-
 /** A D1 binding that sums `meta.changes` over `batch()` (what `Db.atomic` runs on D1). */
 function countingD1(d1: D1Database): { db: D1Database; written(): number } {
   let total = 0;

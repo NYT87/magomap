@@ -1159,20 +1159,6 @@ export async function importedSnapshot(
   return row !== undefined;
 }
 
-/** True when the user completed a complete import from kakao-list. */
-export async function migratedFromKakaoList(db: Db, userId: string): Promise<boolean> {
-  const row = await db.kysely
-    .selectFrom("import_runs")
-    .select("id")
-    .where("user_id", "=", userId)
-    .where("source", "=", "kakao_list")
-    .where("status", "=", "completed")
-    .where("complete", "=", 1)
-    .limit(1)
-    .executeTakeFirst();
-  return row !== undefined;
-}
-
 /** The running run's snapshot time and fetched list summaries (for the server-driven import). */
 export async function runSnapshot(
   db: Db,
