@@ -1,7 +1,14 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["apps/**", "packages/**", "!**/dist", "!**/.wrangler"]
+    "includes": [
+      "apps/**",
+      "packages/**",
+      "!**/dist",
+      "!**/.wrangler",
+      "!apps/extension/CHANGELOG.md",
+      "!apps/extension/manifest.json"
+    ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": { "enabled": true, "rules": { "preset": "recommended" } },
