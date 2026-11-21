@@ -50,6 +50,7 @@ export interface ImportRunsTable {
 export interface KakaoMapAccountsTable {
   user_id: string;
   kakao_map_user_id: string;
+  kakao_map_alias: string | null;
   nickname: string | null;
   bound_at: number;
 }

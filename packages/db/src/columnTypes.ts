@@ -46,6 +46,7 @@ export const COLUMN_TYPES: {
   kakao_map_accounts: {
     user_id: "text",
     kakao_map_user_id: "text",
+    kakao_map_alias: "text",
     nickname: "text",
     bound_at: "bigint",
   },

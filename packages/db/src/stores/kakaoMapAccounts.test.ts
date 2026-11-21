@@ -5,6 +5,7 @@ import {
   boundKakaoMapAccount,
   KakaoMapAccountTakenError,
   kakaoMapAccountHolder,
+  kakaoMapAccountsNamed,
 } from "./kakaoMapAccounts";
 import { AccountGoneError } from "./sync";
 import { createSession, deleteAccount, findOrCreateUserByIdentity } from "./users";
@@ -62,6 +63,38 @@ forEachDialect("kakao map accounts", (makeDb) => {
     await bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1", nickname: "지은" }, now);
     await bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1", nickname: "지은" }, now);
     expect(await boundKakaoMapAccount(db, a)).toEqual({ kakaoMapUserId: "km1", nickname: "지은" });
+  });
+
+  it("keeps the map_user_id alias seen beside the account, and finds the account by either", async () => {
+    const db = await makeDb();
+    const a = await user(db, "a");
+    const b = await user(db, "b");
+    await bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1", alias: "101" }, now);
+    expect(await boundKakaoMapAccount(db, a)).toEqual({
+      kakaoMapUserId: "km1",
+      nickname: null,
+      alias: "101",
+    });
+    expect(await kakaoMapAccountHolder(db, "101")).toBe(a);
+    // Each id a read names, by the account it belongs to; unknown ids are left out.
+    await bindKakaoMapAccount(db, b, { kakaoMapUserId: "202" }, now);
+    expect(Object.fromEntries(await kakaoMapAccountsNamed(db, ["101", "km1", "202", "x"]))).toEqual(
+      { "101": "km1", km1: "km1", "202": "202" },
+    );
+  });
+
+  it("an alias another account already uses (as its id or alias) isn't kept", async () => {
+    const db = await makeDb();
+    const a = await user(db, "a");
+    const b = await user(db, "b");
+    const c = await user(db, "c");
+    await bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1", alias: "101" }, now);
+    await bindKakaoMapAccount(db, b, { kakaoMapUserId: "km2", alias: "101" }, now);
+    await bindKakaoMapAccount(db, c, { kakaoMapUserId: "km3", alias: "km1" }, now);
+    expect((await boundKakaoMapAccount(db, b))?.alias).toBeUndefined();
+    expect((await boundKakaoMapAccount(db, c))?.alias).toBeUndefined();
+    expect(await kakaoMapAccountHolder(db, "101")).toBe(a);
+    expect(await kakaoMapAccountHolder(db, "km1")).toBe(a);
   });
 
   it("deleting the account removes the binding", async () => {

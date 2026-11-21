@@ -599,6 +599,9 @@ describe("importing", () => {
   });
 });
 
+/** Tests with several full uploads (each a few seconds on a loaded machine). */
+const SLOW = 90_000;
+
 describe("another person's list", () => {
   it("her folder in his read makes him a follower, and his sync can't remove it", async () => {
     const she = await devLogin("km-own-she");
@@ -656,6 +659,184 @@ describe("another person's list", () => {
     ).toBe(0);
     expect((await role(hisId))?.removed_at).not.toBeNull();
     expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
+  });
+
+  it("a forged read naming his account as the owner of her unrecorded list records nothing", {
+    timeout: SLOW,
+  }, async () => {
+    const she = await devLogin("km-forge-she");
+    const he = await devLogin("km-forge-he");
+    const herId = await userIdOf(she);
+    const hisId = await userIdOf(he);
+    const hers = smallRead("u1-forge-she", 42201, { title: "그녀의 리스트" });
+    await upload(she, hers, "u1-forge-she");
+    // A list from before owner ids were recorded.
+    await env.DB.prepare(
+      "UPDATE lists SET provider_owner_id = NULL WHERE id = 'l_kakao_42201'",
+    ).run();
+    // His read lists her folder as his own, unflagged, under his account.
+    const forged: Read = {
+      folders: [
+        ownFolder(42201, "u2-forge-he", { title: "그녀의 리스트", nickname: "호세" }),
+        ownFolder(42202, "u2-forge-he", { title: "그의 리스트", nickname: "호세" }),
+      ],
+      favorites: {
+        42201: hers.favorites[42201] ?? [],
+        42202: [favorite(4220201, "94220201")],
+      },
+    };
+    await upload(he, forged, "u2-forge-he");
+    const ownerId = async () =>
+      (
+        await env.DB.prepare(
+          "SELECT provider_owner_id AS id FROM lists WHERE id = 'l_kakao_42201'",
+        ).first<{ id: string | null }>()
+      )?.id;
+    const role = (user: string) =>
+      env.DB.prepare(
+        "SELECT role, removed_at FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42201'",
+      )
+        .bind(user)
+        .first<{ role: string; removed_at: number | null }>();
+    expect(await ownerId()).toBeNull();
+    expect(await role(hisId)).toEqual({ role: "follower", removed_at: null });
+    expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
+
+    // His next complete sync without it can't remove it for her.
+    await upload(
+      he,
+      { folders: [forged.folders[1] as Raw], favorites: forged.favorites },
+      "u2-forge-he",
+    );
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM lists WHERE id = 'l_kakao_42201' AND removed_at_provider IS NOT NULL",
+      ),
+    ).toBe(0);
+    expect((await role(hisId))?.removed_at).not.toBeNull();
+    expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
+    // Her next upload records her account.
+    await upload(she, hers, "u1-forge-she");
+    expect(await ownerId()).toBe("u1-forge-she");
+  });
+
+  it("her map_user_id-only account and his map_user_id-only read of her folder match", {
+    timeout: SLOW,
+  }, async () => {
+    const she = await devLogin("km-mapid-she");
+    const he = await devLogin("km-mapid-he");
+    const herId = await userIdOf(she);
+    const mine = (folderid: number): Raw => ({
+      folderid,
+      title: `리스트 ${folderid}`,
+      status: "O",
+      subscribe: "N",
+      map_user_id: 77001,
+      nickname: "수지",
+      favorite_cnt: 1,
+    });
+    const items = (folderid: number) => [favorite(folderid * 10 + 1, `${folderid}01`)];
+    // She binds her account (only map_user_id on her folders) through another folder.
+    await upload(she, { folders: [mine(42303)], favorites: { 42303: items(42303) } }, "77001");
+    // He follows her folder 42301; his read carries only her map_user_id for it.
+    await upload(
+      he,
+      {
+        folders: [
+          ownFolder(42302, "u2-mapid-he", { nickname: "호세" }),
+          {
+            folderid: 42301,
+            title: "그녀의 리스트",
+            status: "O",
+            subscribe: "Y",
+            map_user_id: 77001,
+          },
+        ],
+        favorites: { 42301: items(42301), 42302: items(42302) },
+      },
+      "u2-mapid-he",
+    );
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM lists WHERE id = 'l_kakao_42301' AND provider_owner_id = '77001'",
+      ),
+    ).toBe(1);
+    await upload(
+      she,
+      {
+        folders: [mine(42303), mine(42301)],
+        favorites: { 42301: items(42301), 42303: items(42303) },
+      },
+      "77001",
+    );
+    const role = await env.DB.prepare(
+      "SELECT role FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42301'",
+    )
+      .bind(herId)
+      .first<{ role: string }>();
+    expect(role?.role).toBe("owner");
+  });
+
+  it("a bare map_user_id names her account through its alias; one nobody is bound by records nothing", {
+    timeout: SLOW,
+  }, async () => {
+    const she = await devLogin("km-alias-she");
+    const he = await devLogin("km-alias-he");
+    const herId = await userIdOf(she);
+    const items = (folderid: number) => [favorite(folderid * 10 + 1, `${folderid}01`)];
+    // Her folders carry her kakao_map_user_id beside her map_user_id 88001.
+    const mine = (folderid: number) => ownFolder(folderid, "u1-alias-she", { map_user_id: 88001 });
+    await upload(
+      she,
+      { folders: [mine(42403)], favorites: { 42403: items(42403) } },
+      "u1-alias-she",
+    );
+    await upload(
+      he,
+      {
+        folders: [
+          ownFolder(42404, "u2-alias-he", { nickname: "호세" }),
+          {
+            folderid: 42401,
+            title: "그녀의 리스트",
+            status: "O",
+            subscribe: "Y",
+            map_user_id: 88001,
+          },
+          {
+            folderid: 42402,
+            title: "모르는 리스트",
+            status: "O",
+            subscribe: "Y",
+            map_user_id: 99999,
+          },
+        ],
+        favorites: { 42401: items(42401), 42402: items(42402), 42404: items(42404) },
+      },
+      "u2-alias-he",
+    );
+    const ownerOf = async (id: string) =>
+      (
+        await env.DB.prepare("SELECT provider_owner_id AS id FROM lists WHERE id = ?")
+          .bind(id)
+          .first<{ id: string | null }>()
+      )?.id;
+    expect(await ownerOf("l_kakao_42401")).toBe("u1-alias-she");
+    expect(await ownerOf("l_kakao_42402")).toBeNull();
+    await upload(
+      she,
+      {
+        folders: [mine(42403), mine(42401)],
+        favorites: { 42401: items(42401), 42403: items(42403) },
+      },
+      "u1-alias-she",
+    );
+    const role = await env.DB.prepare(
+      "SELECT role FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42401'",
+    )
+      .bind(herId)
+      .first<{ role: string }>();
+    expect(role?.role).toBe("owner");
   });
 
   it("an own folder with no owner id in the read is followed", async () => {

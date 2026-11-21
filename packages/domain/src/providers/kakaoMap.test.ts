@@ -325,7 +325,7 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
   });
 
   it("names each list's Kakao owner: the folder's account, joined to hers only for her folders", () => {
-    const { providerOwnerIds } = kakaoMapListsToImport(start, LOGIN);
+    const { providerOwnerIds, mapOwnerIds } = kakaoMapListsToImport(start, LOGIN);
     expect(Object.fromEntries(providerOwnerIds)).toEqual({
       [`0~${LOGIN}`]: "u1",
       "101": "u1",
@@ -335,9 +335,10 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
       "106": "u1",
       "201": "u2",
       "202": "u3",
-      // A followed folder with only map_user_id keeps that id (no joining for others' folders).
-      "203": "4",
     });
+    // A followed folder with only map_user_id: that id is kept apart, since it may not be the id
+    // its owner's account is bound by (the server matches it against bindings, or drops it).
+    expect(Object.fromEntries(mapOwnerIds)).toEqual({ "203": "4" });
     // A bare folder names no owner.
     expect(providerOwnerIds.has("301")).toBe(false);
     const bareOwn = [own({ folderid: 0 }), { folderid: 8, title: "No ids" }];
@@ -352,6 +353,28 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
     expect(kakaoMapListsToImport(startOf(longOwner, {}), LOGIN).providerOwnerIds.has("9")).toBe(
       false,
     );
+  });
+
+  it("names the map_user_id seen beside her account on her own folders as its alias", () => {
+    expect(kakaoMapListsToImport(start, LOGIN).accountAlias).toBe("1");
+    // Her map_user_id-only account has no alias: its id is the map_user_id.
+    const numericOnly = [
+      { folderid: 0, map_user_id: 1 },
+      { folderid: 7, map_user_id: 1, title: "Mine" },
+    ];
+    expect(kakaoMapListsToImport(startOf(numericOnly, {}), LOGIN).accountAlias).toBeUndefined();
+    // Two map_user_ids beside her account: unclear, so no alias.
+    const two = [
+      { folderid: 0, kakao_map_user_id: "u1", map_user_id: 1 },
+      { folderid: 7, kakao_map_user_id: "u1", map_user_id: 2 },
+    ];
+    expect(kakaoMapListsToImport(startOf(two, {}), LOGIN).accountAlias).toBeUndefined();
+    // A pairing seen only on a followed folder isn't hers.
+    const followedPair = [
+      { folderid: 0, kakao_map_user_id: "u1" },
+      { folderid: 7, kakao_map_user_id: "u2", map_user_id: 2, subscribe: "Y" },
+    ];
+    expect(kakaoMapListsToImport(startOf(followedPair, {}), LOGIN).accountAlias).toBeUndefined();
   });
 
   it("a bare followed folder is followed, with kakao-list's fallback name", () => {

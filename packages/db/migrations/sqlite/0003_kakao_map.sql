@@ -12,9 +12,12 @@ ALTER TABLE import_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'kakao_list';
 -- statement
 -- A user is bound to at most one Kakao Map account, and an account to at most one user,
 -- so one person's Kakao Map lists cannot be imported into another person's magomap account.
+-- kakao_map_alias: the account's other Kakao id (the map_user_id seen beside kakao_map_user_id on
+-- its own folders), so a folder named by either id matches the account. Never another account's.
 CREATE TABLE kakao_map_accounts (
   user_id TEXT NOT NULL PRIMARY KEY,
   kakao_map_user_id TEXT NOT NULL UNIQUE,
+  kakao_map_alias TEXT UNIQUE,
   nickname TEXT,
   bound_at INTEGER NOT NULL
 );

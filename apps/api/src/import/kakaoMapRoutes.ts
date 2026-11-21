@@ -11,8 +11,10 @@ import {
 import {
   bindKakaoMapAccount,
   boundKakaoMapAccount,
+  fillKakaoMapAlias,
   KakaoMapAccountTakenError,
   kakaoMapAccountHolder,
+  kakaoMapAccountsNamed,
 } from "@magomap/db/stores/kakaoMapAccounts";
 import {
   type ApiErrorCode,
@@ -152,12 +154,19 @@ function checkCounts(counts: { folderid: number }[], lists: ImportListSummary[])
 async function checkAccount(
   c: Context<AppEnv>,
   account: KakaoMapAccount,
+  alias: string | undefined,
   confirmAccount: string | undefined,
   now: number,
 ): Promise<void> {
   const { db, userId } = c.var;
   const holder = await kakaoMapAccountHolder(db, account.kakaoMapUserId);
-  if (holder === userId) return;
+  if (holder === userId) {
+    // A later read can show the alias an earlier one didn't; it's kept once, never replaced.
+    if (alias !== undefined && (await boundKakaoMapAccount(db, userId))?.alias === undefined) {
+      await fillKakaoMapAlias(db, userId, alias);
+    }
+    return;
+  }
   if (holder !== null) throw new Refusal(409, { error: "kakao_account_taken" });
   if (confirmAccount !== account.kakaoMapUserId) {
     const bound = await boundKakaoMapAccount(db, userId);
@@ -170,7 +179,12 @@ async function checkAccount(
     });
   }
   try {
-    await bindKakaoMapAccount(db, userId, account, now);
+    await bindKakaoMapAccount(
+      db,
+      userId,
+      alias === undefined ? account : { ...account, alias },
+      now,
+    );
   } catch (error) {
     // Another user bound it between the check and the write.
     if (error instanceof KakaoMapAccountTakenError) {
@@ -178,6 +192,31 @@ async function checkAccount(
     }
     throw error;
   }
+}
+
+/**
+ * Each list's Kakao owner, as the account it names: an owner id that a bound account goes by
+ * (its id or alias) becomes that account's id. A followed folder's bare map_user_id is kept only
+ * then; one no account goes by is dropped (never recorded bare: it might not match its owner's
+ * binding later), and a later, better read fills it in.
+ */
+async function ownerIdsOf(
+  c: Context<AppEnv>,
+  read: ReturnType<typeof kakaoMapListsToImport>,
+): Promise<Map<string, string>> {
+  const named = await kakaoMapAccountsNamed(c.var.db, [
+    ...read.providerOwnerIds.values(),
+    ...read.mapOwnerIds.values(),
+  ]);
+  const owners = new Map<string, string>();
+  for (const [externalId, ownerId] of read.providerOwnerIds) {
+    owners.set(externalId, named.get(ownerId) ?? ownerId);
+  }
+  for (const [externalId, mapId] of read.mapOwnerIds) {
+    const account = named.get(mapId);
+    if (account !== undefined) owners.set(externalId, account);
+  }
+  return owners;
 }
 
 kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
@@ -212,7 +251,8 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
     checkCounts(start.data.counts, read.lists);
 
     const now = Date.now();
-    await checkAccount(c, read.account, extras.data.confirmAccount, now);
+    await checkAccount(c, read.account, read.accountAlias, extras.data.confirmAccount, now);
+    const providerOwnerIds = await ownerIdsOf(c, read);
     const { runId } = await startImportRun(
       c.var.db,
       c.var.userId,
@@ -225,7 +265,7 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
         importedAt: new Date(now).toISOString(),
         // Each list's Kakao owner decides who owns it in magomap (spec: "Who owns a list").
         lists: read.lists.map((l) => {
-          const providerOwnerId = read.providerOwnerIds.get(l.externalId);
+          const providerOwnerId = providerOwnerIds.get(l.externalId);
           return providerOwnerId === undefined ? l : { ...l, providerOwnerId };
         }),
       },
