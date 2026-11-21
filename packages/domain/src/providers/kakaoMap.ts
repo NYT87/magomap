@@ -134,21 +134,31 @@ const listable = (folderid: number) =>
   Number.isSafeInteger(folderid) && folderid >= 0 && String(folderid).length <= 15;
 
 /**
- * The one account owning the read's unflagged folders. A folder that carries only `map_user_id`
- * counts as the account whose folders carry that `map_user_id` beside a `kakao_map_user_id`.
+ * The one account owning the read's unflagged folders. An unflagged folder that carries only
+ * `map_user_id` counts as the account whose unflagged folders carry that `map_user_id` beside a
+ * `kakao_map_user_id`. Only her own (unflagged) folders vouch for that pairing; a `map_user_id`
+ * paired with two different `kakao_map_user_id`s is unclear.
  */
 function accountOf(folders: Folder[]): string {
+  const own = folders.filter(({ raw }) => !flagged(raw.subscribe)).map(({ raw }) => raw);
   const alias = new Map<string, string>();
-  for (const { raw } of folders) {
+  for (const raw of own) {
     const kakaoId = trimmed(raw.kakao_map_user_id);
     const mapId = ownerOf({ map_user_id: raw.map_user_id });
-    if (kakaoId && mapId) alias.set(mapId, kakaoId);
+    if (!kakaoId || !mapId) continue;
+    const seen = alias.get(mapId);
+    if (seen !== undefined && seen !== kakaoId) throw new KakaoAccountUnclearError();
+    alias.set(mapId, kakaoId);
   }
   const owners = new Set<string>();
-  for (const { raw } of folders) {
-    if (flagged(raw.subscribe)) continue;
-    const owner = ownerOf(raw);
-    if (owner) owners.add(alias.get(owner) ?? owner);
+  for (const raw of own) {
+    const kakaoId = trimmed(raw.kakao_map_user_id);
+    if (kakaoId) {
+      owners.add(kakaoId);
+      continue;
+    }
+    const mapId = ownerOf(raw);
+    if (mapId) owners.add(alias.get(mapId) ?? mapId);
   }
   const [only, ...more] = owners;
   if (!only || more.length > 0) throw new KakaoAccountUnclearError();

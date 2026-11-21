@@ -60,6 +60,13 @@ const folders: unknown[] = [
   { folderid: 101, kakao_map_user_id: "u1" },
   // A followed folder that comes back bare (docs/kakao-map-access.md section 6).
   { folderid: 301, subscribe: 1 },
+  // Followed, without a nickname: ownerName falls back to kakao_map_user_id.
+  { folderid: 202, title: "No nickname", kakao_map_user_id: "u3", subscribe: "Y" },
+  // Followed, with only map_user_id: ownerName falls back to "map:<id>".
+  { folderid: 203, title: "Only map id", map_user_id: 4, subscribe: "Y" },
+  // Two records of one folder with equal metadata scores: the later one wins.
+  { folderid: 106, title: "Tie first", memo: "first memo", kakao_map_user_id: "u1" },
+  { folderid: 106, title: "Tie second", memo: "second memo", kakao_map_user_id: "u1" },
   // Not a usable folder id.
   { folderid: "105", title: "String id", kakao_map_user_id: "u1" },
 ];
@@ -93,13 +100,14 @@ const favorites: Record<string, unknown[]> = {
     {
       seq: 2001,
       type: "POINT",
+      key: "P2001",
       display1: "Meeting point",
       display2: "Gangnam station exit 2",
       x: 512300,
       y: 1110700,
       color: "03",
     },
-    { seq: 2002, type: "ROUTE_BICYCLE", display1: "Han river ride" },
+    { seq: 2002, type: "ROUTE_BICYCLE", key: "R2002", display1: "Han river ride" },
     { seq: 2003, key: "22222", display1: "Untyped place", display2: "", x: 497000, y: 1129000 },
     {
       seq: 2004,
@@ -111,6 +119,9 @@ const favorites: Record<string, unknown[]> = {
       lat: 37.4979675,
       lon: 127.0556386,
     },
+    // kakao-list stores neither type (over 40 characters; a control character): both untyped.
+    { seq: 2005, type: "T".repeat(41), key: "77777", display1: "Long type" },
+    { seq: 2006, type: "PLA\nCE", key: "88888", display1: "Control type" },
   ],
   "102": [{ seq: 3001, type: "PLACE", key: "44444", display1: "Jeju south", x: 480500, y: -20500 }],
   "103": [
@@ -130,6 +141,9 @@ const favorites: Record<string, unknown[]> = {
     },
   ],
   "301": [],
+  "202": [],
+  "203": [],
+  "106": [],
 };
 
 /** The `start` the extension builds from a read (apps/extension/src/readInPage.ts). */
@@ -168,8 +182,15 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
       "103",
       "201",
       "301",
+      "202",
+      "203",
+      "106",
     ]);
     for (const list of lists) importListMetaSchema.parse(list);
+    const byId = new Map(lists.map((l) => [l.externalId, l]));
+    expect(byId.get("202")?.ownerName).toBe("u3");
+    expect(byId.get("203")?.ownerName).toBe("map:4");
+    expect(byId.get("106")).toMatchObject({ name: "Tie second", description: "second memo" });
   });
 
   it("parity: lists take itemCount from counts", () => {
@@ -183,7 +204,17 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
 
   it("parity: items match kakao-list's mapping", () => {
     const expected = kakaoListParity(folders, favorites, LOGIN).items;
-    expect(Object.keys(expected).sort()).toEqual(["0", "101", "102", "103", "201", "301"]);
+    expect(Object.keys(expected).sort()).toEqual([
+      "0",
+      "101",
+      "102",
+      "103",
+      "106",
+      "201",
+      "202",
+      "203",
+      "301",
+    ]);
     for (const [folderid, want] of Object.entries(expected)) {
       const got = kakaoMapItemsToImport(Number(folderid), 0, favorites[folderid] ?? []);
       expect(got).toHaveLength(want.length);
@@ -229,8 +260,14 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
   it("ADDRESS is a place, routes and points are not", () => {
     const [, address] = kakaoMapItemsToImport(0, 0, favorites["0"] ?? []);
     expect(address?.placeExternalId).toBe("N34923295");
-    const [point, route, untyped] = kakaoMapItemsToImport(101, 0, favorites["101"] ?? []);
+    const [point, route, untyped, , longType, controlType] = kakaoMapItemsToImport(
+      101,
+      0,
+      favorites["101"] ?? [],
+    );
     expect(point?.placeExternalId).toBeUndefined();
+    expect(longType?.placeExternalId).toBe("77777");
+    expect(controlType?.placeExternalId).toBe("88888");
     expect(point?.lat).toBeDefined();
     expect(route?.placeExternalId).toBeUndefined();
     expect(route?.lat).toBeUndefined();
@@ -269,7 +306,12 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
     expect(result.subscriptionKnown).toBe(true);
     const byId = new Map(result.lists.map((l) => [l.externalId, l]));
     expect(byId.get("102")?.followed).toBe(false);
-    expect(result.lists.filter((l) => l.followed).map((l) => l.externalId)).toEqual(["201", "301"]);
+    expect(result.lists.filter((l) => l.followed).map((l) => l.externalId)).toEqual([
+      "201",
+      "301",
+      "202",
+      "203",
+    ]);
     expect(byId.get("201")?.ownerName).toBe("Bap");
     for (const l of result.lists) if (!l.followed) expect(l.ownerName).toBeUndefined();
 
@@ -289,6 +331,36 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
     const only = [own({ folderid: 0 }), { folderid: 9, subscribe: 1 }];
     const lists = kakaoMapListsToImport(startOf(only, {}), LOGIN).lists;
     expect(lists.find((l) => l.externalId === "9")?.followed).toBe(true);
+  });
+
+  it("a map_user_id-only folder joins her account only through her own folders", () => {
+    const joined = [
+      { folderid: 0, kakao_map_user_id: "u1", map_user_id: 1 },
+      { folderid: 3, map_user_id: 1 },
+    ];
+    expect(kakaoMapListsToImport(startOf(joined, {}), LOGIN).account.kakaoMapUserId).toBe("u1");
+    // (a) Two people: one whose map_user_id happens to equal the other's kakao_map_user_id.
+    const twoPeople = [
+      { folderid: 0, kakao_map_user_id: "7", map_user_id: 3 },
+      { folderid: 5, kakao_map_user_id: "3" },
+    ];
+    // (b) The pairing seen only on a flagged folder doesn't vouch for her map_user_id folder.
+    const flaggedPair = [
+      { folderid: 0, kakao_map_user_id: "u1" },
+      { folderid: 5, map_user_id: 9 },
+      { folderid: 6, kakao_map_user_id: "u1", map_user_id: 9, subscribe: "Y" },
+    ];
+    // (c) One map_user_id paired with two different kakao ids.
+    const twoPairs = [
+      { folderid: 0, kakao_map_user_id: "u1", map_user_id: 1 },
+      { folderid: 5, kakao_map_user_id: "u2", map_user_id: 1 },
+      { folderid: 6, map_user_id: 1 },
+    ];
+    for (const bad of [twoPeople, flaggedPair, twoPairs]) {
+      expect(() => kakaoMapListsToImport(startOf(bad, {}), LOGIN)).toThrow(
+        KakaoAccountUnclearError,
+      );
+    }
   });
 
   it("unclear account throws", () => {
