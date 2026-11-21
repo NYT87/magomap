@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  KAKAO_FAVORITE_FIELDS,
+  KAKAO_FOLDER_FIELDS,
+} from "../../../packages/domain/src/providers/kakaoMapFields";
 import { type ReadResult, readInPage } from "./readInPage";
 
 type Route = (url: URL) => Response | Promise<Response>;
@@ -355,6 +359,105 @@ describe("readInPage", () => {
       25_000, 25_000,
     ]);
   });
+  it("sends only the favourite fields magomap reads, values unchanged", async () => {
+    const kept = {
+      seq: 21,
+      key: "R21",
+      type: "ROUTE_BICYCLE",
+      display1: " Han river ride ",
+      display2: "Seoul",
+      memo: " windy ",
+      color: "04",
+      lat: 37.5,
+      lon: 127.01,
+      x: 497000,
+      y: 1129000,
+    };
+    const route_form = {
+      points: Array.from({ length: 200 }, (_, i) => ({ x: 497000 + i, y: 1129000 + i })),
+    };
+    serve({
+      "/folder/list": () => folderList([{ folderid: 0 }]),
+      "/favorite/mine/list?folderid=0": () =>
+        favoriteList([
+          { ...kept, route_form, folderid: 0, created_at: "2026-01-01", extra: { a: 1 } },
+          { seq: 22, display1: "Plain", unknown_field: "x".repeat(1000) },
+          null,
+          ["not", "a", "record"],
+          "text",
+        ]),
+    });
+
+    const result = expectOk(await readInPage());
+
+    expect(result.favorites["0"]).toEqual([kept, { seq: 22, display1: "Plain" }, null, null, null]);
+    expect(result.start.counts).toEqual([{ folderid: 0, itemCount: 5, firstDisplay2: "Seoul" }]);
+  });
+
+  it("sends only the folder fields magomap reads, values unchanged", async () => {
+    const kept = {
+      folderid: 0,
+      status: "O",
+      title: " 기본 폴더 ",
+      memo: "",
+      nickname: "Me",
+      kakao_map_user_id: "u1",
+      map_user_id: 1,
+      subscribe: "N",
+      favorite_cnt: 0,
+      folder_updated_at: "2026-11-01T00:00:00Z",
+    };
+    serve({
+      "/folder/list": () =>
+        folderList([
+          { ...kept, icon: "star", created_at: "2026-01-01", share: { url: "https://x" } },
+          { folderid: 5, status: "D", title: "Gone", unknown_field: [1, 2] },
+          null,
+          7,
+        ]),
+      "/favorite/mine/list?folderid=0": () => favoriteList([]),
+    });
+
+    const result = expectOk(await readInPage());
+
+    expect(result.start.folders).toEqual([
+      kept,
+      { folderid: 5, status: "D", title: "Gone" },
+      null,
+      null,
+    ]);
+  });
+
+  it("keeps exactly the fields the server's adapter reads (packages/domain kakaoMapFields)", async () => {
+    // Its own copy of the lists, because it can't import: the same lists, in the same order.
+    const source = readInPage.toString();
+    const listIn = (name: string): string[] => {
+      const match = new RegExp(`const ${name} = (\\[[^\\]]*\\])`).exec(source);
+      if (!match?.[1]) throw new Error(`${name} not found in readInPage`);
+      return JSON.parse(match[1].replace(/,(\s*)\]$/, "$1]")) as string[];
+    };
+    expect(listIn("FAVORITE_FIELDS")).toEqual(KAKAO_FAVORITE_FIELDS);
+    expect(listIn("FOLDER_FIELDS")).toEqual(KAKAO_FOLDER_FIELDS);
+
+    // And it applies them: a record carrying every field of both lists keeps exactly its own.
+    const every = Object.fromEntries(
+      [...KAKAO_FAVORITE_FIELDS, ...KAKAO_FOLDER_FIELDS, "route_form"].map((f) => [f, f]),
+    );
+    serve({
+      "/folder/list": () => folderList([{ ...every, folderid: 0, status: "O" }]),
+      "/favorite/mine/list?folderid=0": () => favoriteList([every]),
+    });
+
+    const result = expectOk(await readInPage());
+
+    expect(Object.keys(result.favorites["0"]?.[0] ?? {}).sort()).toEqual(
+      [...KAKAO_FAVORITE_FIELDS].sort(),
+    );
+    expect(Object.keys(result.start.folders[0] ?? {}).sort()).toEqual(
+      [...KAKAO_FOLDER_FIELDS].sort(),
+    );
+  });
+
   describe("paging", () => {
     const many = (from: number, count: number, folderid = 9) =>
       Array.from({ length: count }, (_, index) => ({
@@ -362,6 +465,9 @@ describe("readInPage", () => {
         folderid,
         display2: `addr ${from + index}`,
       }));
+    /** What the read sends of them: the favourite's own `folderid` isn't read by magomap. */
+    const sent = (favorites: ReturnType<typeof many>) =>
+      favorites.map(({ folderid: _folderid, ...kept }) => kept);
     const page = (favorites: unknown[], next_id?: unknown) =>
       json(
         next_id === undefined
@@ -386,7 +492,7 @@ describe("readInPage", () => {
       expect(result.start.counts).toEqual([
         { folderid: 9, itemCount: 537, firstDisplay2: "addr 0" },
       ]);
-      expect(result.favorites["9"]).toEqual(many(0, 537));
+      expect(result.favorites["9"]).toEqual(sent(many(0, 537)));
     });
 
     it("follows several pages and string next_ids, encoded", async () => {
@@ -402,7 +508,7 @@ describe("readInPage", () => {
       expect(requests[2]?.toString()).toBe(
         "https://map.kakao.com/favorite/mine/list?folderid=9&next_id=a%20b",
       );
-      expect(result.favorites["9"]).toEqual(many(0, 5));
+      expect(result.favorites["9"]).toEqual(sent(many(0, 5)));
       expect(result.start.counts[0]?.itemCount).toBe(5);
     });
 
