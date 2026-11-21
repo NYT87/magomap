@@ -78,10 +78,9 @@ Read in each account's own signed-in tab with a console snippet (no cookie copie
 - **`seq` is the same for both readers.** Folder `16499871` (hers; he follows it): 500 favourites in both accounts, and the first 8 `[seq, key]` pairs are identical. Memberships can stay keyed by `seq`.
 - **Owner ids** are filled for every folder of her own account (`kakao_map_user_id` or `map_user_id`), and `subscribe` is `1` only on folders she follows.
 - **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, never invent a name, and must cope if its favourites can't be read.
-- **500 favourites in one folder.** Both accounts got exactly 500 for `16499871`. She also splits places into numbered lists ("Incheon 1"/"Incheon 2", "Seúl 0/1/2"), which suggests a 500-place folder limit in Kakao Map rather than a 500-item page. Not yet confirmed (see below).
+- **500 favourites in one folder is a full folder.** Both accounts got exactly 500 for `16499871`. Kakao Map limits a list to 500 places (owner, 2026-11-21), which is why she splits places into numbered lists ("Incheon 1"/"Incheon 2", "Seúl 0/1/2"). One `/favorite/mine/list` response holds a whole folder; no paging is needed.
 
 ## Still open
 
-- **Paging:** does `/favorite/mine/list` ever stop at 500 for a folder holding more? Check the response's field names for a total or "more" flag, or compare with the Kakao Map app's count for `16499871`.
 - Phone edits reaching the endpoint (step 4).
 - The read from a Worker and the multi-day lifetime, both needed before phase 2 (phone sync).
