@@ -12,7 +12,8 @@
     "./testing": "./src/testing/dbs.ts",
     "./stores/users": "./src/stores/users.ts",
     "./stores/sync": "./src/stores/sync.ts",
-    "./stores/importRuns": "./src/stores/importRuns.ts"
+    "./stores/importRuns": "./src/stores/importRuns.ts",
+    "./stores/kakaoMapAccounts": "./src/stores/kakaoMapAccounts.ts"
   },
   "scripts": {
     "test": "vitest run",

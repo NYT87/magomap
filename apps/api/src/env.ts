@@ -14,6 +14,8 @@ export interface Env {
   /** Signs search results (≥ 32 characters). */
   SIGNING_SECRET: string;
   ALLOW_DEV_LOGIN: string;
+  /** "true" lets any signed-in user upload a Kakao Map read: local dev and tests only. */
+  ALLOW_DEV_UPLOAD: string;
   SEARCH_LIMITER?: RateLimit;
   /** Set by the release deploy; a Worker without them reports a dev build. */
   APP_VERSION?: string;

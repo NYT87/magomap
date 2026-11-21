@@ -4,6 +4,7 @@ import {
   bindKakaoMapAccount,
   boundKakaoMapAccount,
   KakaoMapAccountTakenError,
+  kakaoMapAccountHolder,
 } from "./kakaoMapAccounts";
 import { AccountGoneError } from "./sync";
 import { createSession, deleteAccount, findOrCreateUserByIdentity } from "./users";
@@ -21,6 +22,15 @@ forEachDialect("kakao map accounts", (makeDb) => {
     expect(await boundKakaoMapAccount(db, a)).toBeNull();
     await bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1", nickname: "지은" }, now);
     expect(await boundKakaoMapAccount(db, a)).toEqual({ kakaoMapUserId: "km1", nickname: "지은" });
+  });
+
+  it("tells which user holds an account", async () => {
+    const db = await makeDb();
+    const a = await user(db, "a");
+    expect(await kakaoMapAccountHolder(db, "km1")).toBeNull();
+    await bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1" }, now);
+    expect(await kakaoMapAccountHolder(db, "km1")).toBe(a);
+    expect(await kakaoMapAccountHolder(db, "km2")).toBeNull();
   });
 
   it("re-binding the same user replaces the account", async () => {

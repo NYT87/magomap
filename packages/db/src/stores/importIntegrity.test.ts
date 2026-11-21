@@ -158,6 +158,7 @@ forEachDialect("import integrity", (makeDb) => {
     const run = await db.kysely.selectFrom("import_runs").selectAll().executeTakeFirstOrThrow();
     expect(new TextEncoder().encode(run.summary_json ?? "").length).toBeLessThan(100_000);
     const snapshot = await runSnapshot(db, WIFE, runId);
+    expect(snapshot.source).toBe("kakao_list");
     expect(snapshot.lists).toHaveLength(300);
     expect(snapshot.lists[299]).toMatchObject({
       externalId: "299",

@@ -971,7 +971,12 @@ export async function runSnapshot(
   db: Db,
   userId: string,
   runId: string,
-): Promise<{ provider: string; snapshotAt: number; lists: ImportListSummary[] }> {
+): Promise<{
+  provider: string;
+  source: ImportSource;
+  snapshotAt: number;
+  lists: ImportListSummary[];
+}> {
   const { run } = await runningRun(db, userId, runId);
   const lists = (await runLists(db, userId, runId)).map((l) => ({
     externalId: l.external_id,
@@ -981,5 +986,10 @@ export async function runSnapshot(
     followed: l.followed === 1,
     itemCount: l.item_count,
   }));
-  return { provider: run.provider, snapshotAt: Number(run.snapshot_at), lists };
+  return {
+    provider: run.provider,
+    source: run.source === "kakao_map" ? "kakao_map" : "kakao_list",
+    snapshotAt: Number(run.snapshot_at),
+    lists,
+  };
 }

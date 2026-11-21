@@ -9,6 +9,7 @@ import {
   importedSnapshot,
   importListChunk,
   latestImportRun,
+  migratedFromKakaoList,
   RunClosedError,
   RunNotFoundError,
   runProgress,
@@ -30,7 +31,7 @@ import type { AppEnv } from "../env";
 export const importRoutes = new Hono<AppEnv>();
 importRoutes.use("/import/*", requireUser);
 
-const PAGE = LIMITS.importChunkItems;
+export const PAGE = LIMITS.importChunkItems;
 
 class SnapshotChangedError extends Error {}
 
@@ -42,15 +43,21 @@ class UpstreamError extends Error {
   }
 }
 
-async function kakaoIdentity(c: Context<AppEnv>): Promise<string> {
+/** The caller's Kakao Login id, or undefined when they have no Kakao identity. */
+export async function kakaoLoginIdOf(c: Context<AppEnv>): Promise<string | undefined> {
   const row = await c.var.db.kysely
     .selectFrom("identities")
     .select("provider_user_id")
     .where("user_id", "=", c.var.userId)
     .where("provider", "=", "kakao")
     .executeTakeFirst();
-  if (!row) throw new UpstreamError("no_snapshot");
-  return row.provider_user_id;
+  return row?.provider_user_id;
+}
+
+async function kakaoIdentity(c: Context<AppEnv>): Promise<string> {
+  const id = await kakaoLoginIdOf(c);
+  if (id === undefined) throw new UpstreamError("no_snapshot");
+  return id;
 }
 
 /** GET from kakao-list for the caller's own Kakao id; never follows redirects (the secret stays put). */
@@ -86,7 +93,8 @@ async function fromKakaoList(
   throw new UpstreamError("kakao_list_unavailable");
 }
 
-async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
+/** Handles the errors every import route shares; route-specific ones are caught first. */
+export async function handled<T>(c: Context<AppEnv>, fn: () => Promise<T>) {
   try {
     return c.json(await fn());
   } catch (error) {
@@ -187,6 +195,8 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/pages/:index", (c) =>
     const externalId = c.req.param("externalId");
     const index = Number(c.req.param("index"));
     const run = await runSnapshot(c.var.db, c.var.userId, runId);
+    // An upload run's pages come from the app (kakaoMapRoutes), never from kakao-list.
+    if (run.source !== "kakao_list") throw new RunNotFoundError();
     const meta = run.lists.find((l) => l.externalId === externalId);
     const pages = Math.max(1, Math.ceil((meta?.itemCount ?? 0) / PAGE));
     if (!meta || !Number.isSafeInteger(index) || index < 0 || index >= pages)
@@ -248,6 +258,11 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/finish", (c) =>
 
 importRoutes.post("/import/runs/:runId/complete", (c) =>
   handled(c, () => completeImportRun(c.var.db, c.var.userId, c.req.param("runId"), Date.now())),
+);
+
+/** Whether the caller finished the complete kakao-list import that moves their local notes over. */
+importRoutes.get("/import/kakao-list/migrated", async (c) =>
+  c.json({ done: await migratedFromKakaoList(c.var.db, c.var.userId) }),
 );
 
 importRoutes.get("/import/runs/latest", async (c) =>

@@ -20,6 +20,19 @@ export async function boundKakaoMapAccount(
   return row ? { kakaoMapUserId: row.kakao_map_user_id, nickname: row.nickname } : null;
 }
 
+/** The user an account is bound to, or null when no one holds it. */
+export async function kakaoMapAccountHolder(
+  db: Db,
+  kakaoMapUserId: string,
+): Promise<string | null> {
+  const row = await db.kysely
+    .selectFrom("kakao_map_accounts")
+    .select("user_id")
+    .where("kakao_map_user_id", "=", kakaoMapUserId)
+    .executeTakeFirst();
+  return row?.user_id ?? null;
+}
+
 /**
  * A unique violation on kakao_map_user_id, from any driver:
  * - Postgres (pg): code 23505, naming the table;
