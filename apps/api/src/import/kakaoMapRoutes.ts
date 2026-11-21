@@ -18,6 +18,7 @@ import {
   type ApiErrorCode,
   type ImportListSummary,
   importItemsChunkSchema,
+  isStorableText,
   type KakaoMapAccountHint,
   LIMITS,
 } from "@magomap/domain";
@@ -198,6 +199,15 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
         throw new Refusal(422, { error: "kakao_account_unclear" });
       }
       throw error;
+    }
+    // Folders, but none magomap can list: treated like no folders, so a complete run with no
+    // lists can't remove all of hers.
+    if (read.lists.length === 0) throw new Refusal(422, { error: "kakao_signed_out" });
+    // An account id magomap can't store whole (over 200 characters, like confirmAccount, or
+    // unstorable text) names no account it can bind. The nickname is already cut to its limit.
+    const accountId = read.account.kakaoMapUserId;
+    if (accountId.length > 200 || !isStorableText(accountId)) {
+      throw new Refusal(422, { error: "kakao_account_unclear" });
     }
     checkCounts(start.data.counts, read.lists);
 

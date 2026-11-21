@@ -175,6 +175,25 @@ async function olderForUser(db: Db, userId: string, provider: string, snapshotAt
   return row !== undefined && snapshotAt < Number(row.snapshot_at);
 }
 
+/**
+ * Of these provider lists, those another user holds as owner. A list's external id is global (a
+ * Kakao folder id), so a read can name someone else's list: only its first owner owns it, and
+ * anyone else claiming it as their own is a follower. An owner row removed only from that
+ * owner's own lists still counts; a deleted account leaves no row, so its lists can be claimed.
+ */
+async function ownedByOthers(db: Db, userId: string, listIds: string[]): Promise<Set<string>> {
+  if (listIds.length === 0) return new Set();
+  const rows = await db.kysely
+    .selectFrom("user_lists")
+    .select("list_id")
+    .where("role", "=", "owner")
+    .where("user_id", "<>", userId)
+    .where("deleted_at", "is", null)
+    .where(inJson(db, "list_id", listIds))
+    .execute();
+  return new Set(rows.map((r) => r.list_id));
+}
+
 const same = (a: Row, b: Row) => Object.keys(b).every((k) => k === "seq" || a[k] === b[k]);
 
 export async function startImportRun(
@@ -347,18 +366,29 @@ async function decideChunk(
     .filter((i) => i.localNote?.trim())
     .map((i) => importedNoteRowId(placeIdOf(i), listId));
 
-  const [lists, places, members, notes, myLists, myPlaces, validUntil, listSnapshots, older] =
-    await Promise.all([
-      readByIds(db, userId, "lists", [listId]),
-      readByIds(db, userId, "places", placeIds),
-      readByIds(db, userId, "list_items", itemIds),
-      readByIds(db, userId, "visit_notes", noteIds),
-      readByIds(db, userId, "user_lists", [userListRowId(listId)]),
-      readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
-      latestValidUntil(db, placeIds),
-      newestListSnapshot(db, placeIds),
-      olderForUser(db, userId, provider, snapshotAt),
-    ]);
+  const [
+    lists,
+    places,
+    members,
+    notes,
+    myLists,
+    myPlaces,
+    validUntil,
+    listSnapshots,
+    older,
+    othersOwn,
+  ] = await Promise.all([
+    readByIds(db, userId, "lists", [listId]),
+    readByIds(db, userId, "places", placeIds),
+    readByIds(db, userId, "list_items", itemIds),
+    readByIds(db, userId, "visit_notes", noteIds),
+    readByIds(db, userId, "user_lists", [userListRowId(listId)]),
+    readByIds(db, userId, "user_places", placeIds.map(userPlaceRowId)),
+    latestValidUntil(db, placeIds),
+    newestListSnapshot(db, placeIds),
+    olderForUser(db, userId, provider, snapshotAt),
+    ownedByOthers(db, userId, [listId]),
+  ]);
 
   const writes = new Map<SyncTable, Map<string, Row>>();
   const write = (table: SyncTable, row: Row) => {
@@ -415,14 +445,16 @@ async function decideChunk(
     } else if (Number(existingList.provider_snapshot_at) !== snapshotAt) touchLists.push(listId);
   }
 
-  // This user's access: owner only when the snapshot knows who follows what
+  // This user's access: owner only when the snapshot knows who follows what, and no one else
+  // owns the list already.
   const accessId = userListRowId(listId);
   const access = myLists.get(accessId);
-  const role = meta.followed
-    ? "follower"
-    : run.subscription_known === 1
-      ? "owner"
-      : (access?.role ?? "follower");
+  const role =
+    meta.followed || othersOwn.has(listId)
+      ? "follower"
+      : run.subscription_known === 1
+        ? "owner"
+        : (access?.role ?? "follower");
   // Gaining the list only writes this row: the user's device then pulls everything again once.
   const gainsList = !access || access.removed_at != null || access.deleted_at != null;
   // A snapshot older than the user's newest one only grants a list they never had: it can't
@@ -795,8 +827,15 @@ export async function completeImportRun(
           .where("lists.provider", "=", run.provider)
           .execute();
         const absent = mine.filter((m) => !keep.has(m.list_id));
+        // A list someone else owns is never removed for everyone by this user's snapshot.
+        const othersOwn = await ownedByOthers(
+          db,
+          userId,
+          absent.filter((m) => m.role === "owner").map((m) => m.list_id),
+        );
         const authoritative = (m: (typeof absent)[number]) =>
           m.role === "owner" &&
+          !othersOwn.has(m.list_id) &&
           run.subscription_known === 1 &&
           (m.provider_snapshot_at == null || snapshotAt >= Number(m.provider_snapshot_at));
         // Already removed at the provider: a newer owner snapshot confirms it (a later, older

@@ -93,10 +93,11 @@ async function upload(cookie: string, read: Read, account: string, overrides = D
     const finish = await call(
       `/api/import/runs/${runId}/lists/${encodeURIComponent(l.externalId)}/finish`,
       post(cookie, {}),
+      overrides,
     );
     expect(finish.status).toBe(200);
   }
-  const done = await call(`/api/import/runs/${runId}/complete`, post(cookie, {}));
+  const done = await call(`/api/import/runs/${runId}/complete`, post(cookie, {}), overrides);
   expect(done.status).toBe(200);
   return { runId, lists };
 }
@@ -335,6 +336,53 @@ describe("signed out", () => {
     expect(latest.status).toBe("completed");
   });
 
+  it("a read with no folder magomap can list is refused like a signed-out one", async () => {
+    const cookie = await devLogin("km-unlistable");
+    const user = await userIdOf(cookie);
+    await upload(cookie, smallRead("u1-unl", 36101), "u1-unl");
+    const runs = await runsOf(user);
+    const live = () =>
+      count("SELECT COUNT(*) AS n FROM user_lists WHERE user_id = ? AND removed_at IS NULL", user);
+    const before = await live();
+    expect(before).toBe(1);
+    // A 16-digit folder id: a folder, but not one kakao-list's ids (≤ 15 digits) can name.
+    const folderid = 1234567890123456;
+    const { res, body } = await startRun(cookie, {
+      folders: [ownFolder(folderid, "u2-unl")],
+      counts: [{ folderid, itemCount: 0 }],
+      confirmAccount: "u2-unl",
+    });
+    expect(res.status).toBe(422);
+    expect(body).toEqual({ error: "kakao_signed_out" });
+    expect(await runsOf(user)).toBe(runs);
+    expect((await bindingOf(user))?.id).toBe("u1-unl");
+    expect(await live()).toBe(before);
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM lists WHERE id = 'l_kakao_36101' AND removed_at_provider IS NOT NULL",
+      ),
+    ).toBe(0);
+  });
+
+  it("an account id over 200 characters is refused as unclear, with nothing written", async () => {
+    const cookie = await devLogin("km-long-id");
+    const user = await userIdOf(cookie);
+    const long = "a".repeat(201);
+    const { res, body } = await startRun(
+      cookie,
+      startBody(smallRead(long, 36201), { confirmAccount: long.slice(0, 200) }),
+    );
+    expect(res.status).toBe(422);
+    expect(body).toEqual({ error: "kakao_account_unclear" });
+    expect(await runsOf(user)).toBe(0);
+    expect(await bindingOf(user)).toBeNull();
+    // 200 characters is fine.
+    const ok = "b".repeat(200);
+    expect(
+      (await startRun(cookie, startBody(smallRead(ok, 36202), { confirmAccount: ok }))).res.status,
+    ).toBe(200);
+  });
+
   it("a first-time signed-out read binds nothing", async () => {
     const cookie = await devLogin("km-signed-out-first");
     const user = await userIdOf(cookie);
@@ -548,6 +596,51 @@ describe("importing", () => {
     expect(
       await count("SELECT COUNT(*) AS n FROM list_items WHERE removed_at_provider IS NOT NULL"),
     ).toBe(0);
+  });
+});
+
+describe("another person's list", () => {
+  it("an upload claiming her list as his own makes him a follower, and can't remove it", async () => {
+    const she = await devLogin("km-own-she");
+    const he = await devLogin("km-own-he");
+    const hisId = await userIdOf(he);
+    const herId = await userIdOf(she);
+    await upload(she, smallRead("u1-own-she", 42001, { title: "그녀의 리스트" }), "u1-own-she");
+
+    // His read names her folder 42001 as one of his own.
+    const claim: Read = {
+      folders: [
+        ownFolder(42001, "u2-own-he", { title: "그녀의 리스트" }),
+        ownFolder(42002, "u2-own-he", { title: "그의 리스트" }),
+      ],
+      favorites: {
+        42001: smallRead("x", 42001).favorites[42001] ?? [],
+        42002: [favorite(4200201, "94200201")],
+      },
+    };
+    await upload(he, claim, "u2-own-he");
+    const role = (user: string) =>
+      env.DB.prepare(
+        "SELECT role, removed_at FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42001'",
+      )
+        .bind(user)
+        .first<{ role: string; removed_at: number | null }>();
+    expect(await role(hisId)).toEqual({ role: "follower", removed_at: null });
+    expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
+
+    // His next complete sync without it removes it for him only.
+    await upload(
+      he,
+      { folders: [claim.folders[1] as Raw], favorites: claim.favorites },
+      "u2-own-he",
+    );
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM lists WHERE id = 'l_kakao_42001' AND removed_at_provider IS NOT NULL",
+      ),
+    ).toBe(0);
+    expect((await role(hisId))?.removed_at).not.toBeNull();
+    expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
   });
 });
 
