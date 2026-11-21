@@ -115,6 +115,13 @@ Done with the owner, signed in, using throwaway scripts. Nothing from it is kept
   - **One Kakao Map account is bound to at most one magomap user.**
 
   *(Designer's call; it replaces kakao-list's per-import confirmation.)*
+- **Account mix-ups (owner, 2026-11-21).** The owner saw kakao-list's extension keep showing his data after his Kakao Map session expired and his wife signed in to Kakao Map, because that extension keeps its own login. kakao-list is out of scope; magomap's extension must not have the problem:
+  - **No login or data of its own.** The extension stores no session and no read. Every sync reads whoever is signed in to Kakao Map at that moment.
+  - **Kakao Map signed out or expired:** zero folders → "Sign in to Kakao Map in this browser", nothing uploaded.
+  - **First sync, the other person signed in to Kakao Map:** the confirmation names **both** accounts, e.g. "Sync 수지's Kakao Map (••••7800) into José's magomap?", so a mix-up is visible before anything is written.
+  - **Later syncs:** a Kakao Map account other than the bound one is refused: "This browser is signed in to a different Kakao Map account (••••7800). Sign in to yours, or confirm to switch."
+  - **An account bound to another magomap user** is refused outright (`kakao_account_taken`).
+  - Signing out of Kakao doesn't sign anyone out of magomap: Kakao is only used to sign in, and magomap can't see the Kakao web session. That's expected and unchanged.
 - The Worker never logs raw Kakao payloads, cookies or tokens.
 
 ## Phase 2 — phone sync (only if phase 0 passes)

@@ -255,6 +255,7 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
   - `first sync asks to confirm the account`: 409 `kakao_account_unconfirmed` with `idTail`, and **no run row created**. The same body with `confirmAccount: "u1"` gives 200 and binds.
   - `a different Kakao Map account is refused until confirmed`: 409 `kakao_account_mismatch`; then, with `confirmAccount`, 200 and a re-bind.
   - `an account bound to another user is refused` (409 `kakao_account_taken`).
+  - `the other person's Kakao Map, after she bound it, is refused for him`: she binds `u1`; he (a second user) starts a sync whose read is `u1` → 409 `kakao_account_taken`, no run; then his own read (`u2`) on first sync → 409 `kakao_account_unconfirmed` naming `u2`'s nickname and id tail.
   - `unclear account` gives 422, with nothing written.
   - `a signed-out read (zero folders) gives 422 kakao_signed_out`, with no run, no binding and nothing marked removed — even after an earlier complete sync of the same user.
   - `folder 0 imports as the caller's own list`: its list is `l_kakao_0%7E<login id>` (`providerListRowId`), and two users' folder 0s stay separate lists.
@@ -370,7 +371,8 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
   - `KakaoMapSyncSection.test.tsx`:
     - `missing on desktop shows the install link`;
     - `missing on phone says it works on a computer for now`;
-    - `confirm dialog names the nickname and ••••idTail`; Cancel writes nothing, and Sync retries;
+    - `confirm dialog names both accounts`: the Kakao Map nickname and ••••idTail, and the signed-in magomap user's name ("Sync <nickname>'s Kakao Map (••••1234) into <magomap name>'s magomap?"); Cancel writes nothing, and Sync retries;
+    - `a different Kakao Map account says so`: `kakao_account_mismatch` shows "This browser is signed in to a different Kakao Map account (••••1234)" with Sign in to yours / Confirm to switch;
     - `signed out of Kakao Map shows the sign-in hint with a link to map.kakao.com`;
     - `taken / not_allowed / unclear show their messages`;
     - `progress and summary use the import strings`;
@@ -381,7 +383,7 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
   - **Wording, my proposal (ko/en):**
     - title "카카오맵에서 동기화" / "Sync from Kakao Map";
     - the lead says it reads her lists from Kakao Map in this browser;
-    - the confirm: "<nickname>님의 카카오맵 계정(••••1234)을 동기화할까요?" / "Sync <nickname>'s Kakao Map account (••••1234)?".
+    - the confirm names both accounts: "<nickname>님의 카카오맵(••••1234)을 <magomap name>님의 magomap에 동기화할까요?" / "Sync <nickname>'s Kakao Map (••••1234) into <magomap name>'s magomap?" (spec, "Account mix-ups").
   - The install link goes to the repo's GitHub releases page, `extension-v*`.
   - The phone check reuses the layout breakpoint helper already in `layout/`.
 - [ ] **Step 4: Run** the web tests, the e2e spec (ports overridable with `E2E_PORT`/`E2E_FAKE_PORT`) and the gate. Expected: PASS. Save screenshots to `tmp/review-shots/kakao-direct-sync-7/` at 390×844 and 1440×900, light and dark. Run one **real sync** on a desktop Chrome with the extension and a signed-in Kakao Map, against `wrangler dev --env postgres`.
