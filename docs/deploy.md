@@ -29,16 +29,14 @@ Production changes **only when a release is made**. Pushing to `main` deploys no
 
 **The extension component:** the `magomap` component covers the whole repo (path `.`) except `apps/extension`, which `release-please-config.json` excludes (`exclude-paths`) and releases as its own `extension` component (`release-type: node`). Extension commits get their own version, `apps/extension/CHANGELOG.md` and `extension-v…` tags, and never bump magomap's version. Release Please also bumps `version` in `apps/extension/manifest.json` (`extra-files: ["manifest.json"]`; a plain `.json` entry, relative to the package path, has its `$.version` updated: [release-please `src/strategies/base.ts`](https://github.com/googleapis/release-please/blob/main/src/strategies/base.ts), `extraFileUpdates` and `addPath`). Both components share the one release PR. The `deploy` job only runs for `magomap-v…` tags, so an extension release never deploys the Worker.
 
-**Releasing the extension (owner, by hand):** the release workflow doesn't build the extension. After merging a release PR that created an `extension-v…` release, build the zip from that tag and attach it to the release as `magomap-extension.zip`:
+**Releasing the extension:** automatic. When merging a release PR creates an `extension-v…` release, the Release workflow's `extension-bundle` job (no secrets) runs the extension's tests and builds the release zip from that release's commit, and `extension-upload` attaches it to the release as `magomap-extension.zip` (replacing one already there). If it ever fails, re-run those jobs, or do it by hand:
 
 ```bash
 git checkout extension-vX.Y.Z
 pnpm install --frozen-lockfile
 pnpm --filter @magomap/extension bundle        # writes apps/extension/magomap-extension.zip
-gh release upload extension-vX.Y.Z apps/extension/magomap-extension.zip
+gh release upload extension-vX.Y.Z apps/extension/magomap-extension.zip --clobber
 ```
-
-Check that the unzipped `manifest.json` has the release's version.
 
 **One-time setup (owner):**
 - GitHub → Settings → Actions → General: allow GitHub Actions to create pull requests.
@@ -158,7 +156,7 @@ To roll back, run `npx wrangler rollback --env d1`, or use the Worker's Deployme
 Account → "Sync from Kakao Map" reads her Kakao Map lists through the magomap browser extension (`apps/extension`) and uploads them to `/api/import/kakao-map/*`.
 
 - **Who may upload:** only users whose Kakao id is in a **non-empty** `ALLOWED_KAKAO_USER_IDS`. An empty list refuses every upload (`not_allowed`), even though it opens sign-up. `ALLOW_DEV_UPLOAD = "true"` lifts that check for local development and tests only; it is `"false"` in `[env.d1.vars]` and must be `"false"` in any deployed Worker.
-- **The extension:** released under its own Release Please component (tags `extension-v…`, see "The extension component" above), as `magomap-extension.zip` on the GitHub release, attached by hand (see "Releasing the extension" above). To install it on her computer: unzip it, open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, **Load unpacked** the folder, and check the id is `eccgkehfioodkgllihgbgkgfcifmghif`. The release build only answers `https://magomap.jmn8718.workers.dev`; a different domain needs its origin in `apps/extension/src/origins.ts`. Details in [apps/extension/README.md](../apps/extension/README.md).
+- **The extension:** released under its own Release Please component (tags `extension-v…`, see "The extension component" above), as `magomap-extension.zip` on the GitHub release, attached automatically (see "Releasing the extension" above). To install it on her computer: unzip it, open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, **Load unpacked** the folder, and check the id is `eccgkehfioodkgllihgbgkgfcifmghif`. The release build only answers `https://magomap.jmn8718.workers.dev`; a different domain needs its origin in `apps/extension/src/origins.ts`. Details in [apps/extension/README.md](../apps/extension/README.md).
 - **The extension id** is fixed by the key in `apps/extension/manifest.json`, and the web app uses it by default. `VITE_MAGOMAP_EXTENSION_ID` (build time, `apps/web/.env.example`) overrides it, only for a build with another key.
 
 ## Workers plan
