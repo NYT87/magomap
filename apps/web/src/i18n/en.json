@@ -217,7 +217,7 @@
     "mismatchTitle": "A different Kakao Map account",
     "mismatchBody": "Your magomap syncs from {{expected}}, but this browser is signed in to {{current}}. Sign in to yours, or switch to this account.",
     "mismatchBodyNoBound": "This browser is signed in to {{current}}, not the one your magomap syncs from. Sign in to yours, or switch to this account.",
-    "mismatchKeeps": "Your lists and notes here stay as they are.",
+    "mismatchKeeps": "Your notes and saved places stay. Lists that aren't in this Kakao Map account will show as “Removed from Kakao” after the sync.",
     "signInToYours": "Sign in to yours",
     "switch": "Switch to this account",
     "openKakaoMap": "Open Kakao Map",

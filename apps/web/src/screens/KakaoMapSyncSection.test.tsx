@@ -180,7 +180,9 @@ describe("KakaoMapSyncSection", () => {
     expect(dialog).toHaveTextContent(
       "Your magomap syncs from 호세's Kakao Map account ending in 7800, but this browser is signed in to 수지's Kakao Map account ending in 1234. Sign in to yours, or switch to this account.",
     );
-    expect(dialog).toHaveTextContent("Your lists and notes here stay as they are.");
+    expect(dialog).toHaveTextContent(
+      "Your notes and saved places stay. Lists that aren't in this Kakao Map account will show as “Removed from Kakao” after the sync.",
+    );
     const signIn = within(dialog).getByRole("link", { name: /Sign in to yours/ });
     expect(signIn).toHaveAttribute("href", "https://map.kakao.com");
     runKakaoMapSync.mockResolvedValueOnce(summary);

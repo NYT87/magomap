@@ -194,6 +194,9 @@ test("syncs from Kakao Map through the extension: confirm, pages, done, mismatch
   await expect(mismatch).toContainText(
     `Your magomap syncs from 수지's Kakao Map account ending in ${tail}, but this browser is signed in to 민수's Kakao Map account ending in 9999. Sign in to yours, or switch to this account.`,
   );
+  await expect(mismatch).toContainText(
+    "Your notes and saved places stay. Lists that aren't in this Kakao Map account will show as “Removed from Kakao” after the sync.",
+  );
   await expect(mismatch.getByRole("link", { name: /Sign in to yours/ })).toBeVisible();
   await expect(mismatch.getByRole("button", { name: "Switch to this account" })).toBeVisible();
   await shoot(page, "en-mismatch");
@@ -251,7 +254,9 @@ test("Korean: the same states read naturally", async ({ page, context }, info) =
   await expect(mismatch).toContainText(
     `내 magomap은 수지님의 카카오맵 계정(끝자리 ${tail})에서 동기화해요. 지금 이 브라우저는 민수님의 카카오맵 계정(끝자리 8888)으로 로그인되어 있어요.`,
   );
-  await expect(mismatch).toContainText("지금 있는 리스트와 메모는 그대로 남아요.");
+  await expect(mismatch).toContainText(
+    "메모와 저장한 장소는 그대로 남아요. 이 카카오맵 계정에 없는 리스트는 동기화 후 '카카오에서 삭제됨'으로 표시돼요.",
+  );
   await shoot(page, "ko-mismatch");
   await mismatch.getByRole("button", { name: "취소" }).click();
 });
