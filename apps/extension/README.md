@@ -1,6 +1,6 @@
 # magomap extension
 
-A small Chrome/Brave desktop extension (Manifest V3) for magomap's **Sync from Kakao Map**. When magomap's Account page asks, it reads her Kakao Map lists inside a signed-in `map.kakao.com` tab and hands the raw records to the page. It has no popup or screen of its own; all UI is in magomap.
+A small Chrome/Brave desktop extension (Manifest V3) for magomap's **Sync from Kakao Map**. When magomap's Account page asks, it reads her Kakao Map lists inside a signed-in `map.kakao.com` tab and hands the records, trimmed to the fields magomap reads, to the page. It has no popup or screen of its own; all UI is in magomap.
 
 - Permissions: `scripting`, and host access to `https://map.kakao.com/*` only. No `tabs` permission: the host permission is enough to find, open and close `map.kakao.com` tabs and see their url, status and last use.
 - Only magomap's own pages can talk to it (`externally_connectable`, and the same list checked against `sender.origin`). The **release build** allows only `https://magomap.jmn8718.workers.dev`. The **dev build** also allows `http://localhost:5173` and `http://localhost:8787`. Both lists come from `src/origins.ts`.
@@ -52,8 +52,8 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 | `{ type: "magomap.ping" }` | `{ ok: true, version }`                                                                                                                 |
 | `{ type: "magomap.read" }` | `{ ok: true, start: { folders, counts }, favorites }`, or `{ ok: false, error }` with `kakao_signed_out`, `kakao_unavailable` or `busy` |
 
-- `start.folders` is the raw `/folder/list` records as received; `start.counts` has one `{ folderid, itemCount, firstDisplay2? }` per non-deleted folder.
-- `favorites` holds every raw favourite of every non-deleted folder, all pages in page order, keyed by `String(folderid)`; `counts[].itemCount` is the folder's full count across pages.
+- `start.folders` is the `/folder/list` records as received, each keeping only the fields magomap reads (`packages/domain/src/providers/kakaoMapFields.ts`; values unchanged, anything that isn't a record sent as `null`); `start.counts` has one `{ folderid, itemCount, firstDisplay2? }` per non-deleted folder.
+- `favorites` holds every favourite of every non-deleted folder, likewise trimmed (a route's waypoints never leave the page), all pages in page order, keyed by `String(folderid)`; `counts[].itemCount` is the folder's full count across pages.
 - `kakao_signed_out`: Kakao Map isn't signed in in this browser (Kakao answers zero folders, an auth status, a redirect or an HTML page). Sign in at `map.kakao.com` and try again.
 - `kakao_unavailable`: Kakao failed (5xx, network, an unexpected answer) or the tab couldn't be read. Nothing partial is returned.
 - `busy`: a read is already running.
@@ -64,4 +64,4 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 pnpm --filter @magomap/extension test
 ```
 
-The reader is ported from kakao-list's `apps/extension/src/kakaoMapsExtractor.ts` (kakao-list commit `730ee2d`): only the read path, with records returned unchanged.
+The reader is ported from kakao-list's `apps/extension/src/kakaoMapsExtractor.ts` (kakao-list commit `730ee2d`): only the read path, with records returned unchanged but for the fields magomap doesn't read.

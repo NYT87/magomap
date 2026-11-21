@@ -6,9 +6,10 @@
  * read path is kept: `/folder/list`, then `/favorite/mine/list?folderid=` per folder.
  * Unlike kakao-list, it follows Kakao's paging: a folder's favourites come at most 500 per
  * page, with a `next_id` for the next page (`&next_id=`), which Kakao Map's own page follows.
- * Note editing, place detection and kakao-list's normalisation are not ported. Records are
- * returned unchanged; the server's Kakao Map adapter interprets them (dedupe, followed
- * folders, coordinates).
+ * Note editing, place detection and kakao-list's normalisation are not ported. Each record
+ * keeps only the fields magomap reads, their values unchanged (a route's waypoints, say, never
+ * leave the page); the server's Kakao Map adapter interprets them (dedupe, followed folders,
+ * coordinates).
  *
  * This runs in the page through `chrome.scripting.executeScript({ world: "MAIN", func })`,
  * which serialises the function and drops its closure. So `readInPage` must not use
@@ -22,7 +23,7 @@
 
 /** What the extension sends at the start of an upload run (plan Task 2's `KakaoMapStart`). */
 export interface KakaoMapStart {
-  /** Raw `/folder/list` records, as received. */
+  /** `/folder/list` records, as received but for the fields magomap doesn't read. */
   folders: unknown[];
   counts: { folderid: number; itemCount: number; firstDisplay2?: string }[];
 }
@@ -33,7 +34,10 @@ export type ReadResult =
   | {
       ok: true;
       start: KakaoMapStart;
-      /** Every raw favourite of every non-deleted folder, keyed by `String(folderid)`. */
+      /**
+       * Every favourite of every non-deleted folder, keyed by `String(folderid)`, with only
+       * the fields magomap reads.
+       */
       favorites: Record<string, unknown[]>;
     }
   | { ok: false; error: ReadError };
@@ -50,6 +54,46 @@ export async function readInPage(): Promise<ReadResult> {
   const MAX_FAVORITES = 50_000;
   /** Pages per folder (500 favourites each), a guard against a paging loop. */
   const MAX_PAGES = 50;
+  // The raw fields magomap reads. A copy of packages/domain/src/providers/kakaoMapFields.ts
+  // (this function can't import it); readInPage.test.ts checks the two agree.
+  const FAVORITE_FIELDS = [
+    "seq",
+    "key",
+    "type",
+    "display1",
+    "display2",
+    "memo",
+    "color",
+    "lat",
+    "lon",
+    "x",
+    "y",
+  ];
+  const FOLDER_FIELDS = [
+    "folderid",
+    "status",
+    "title",
+    "memo",
+    "nickname",
+    "kakao_map_user_id",
+    "map_user_id",
+    "subscribe",
+    "favorite_cnt",
+    "folder_updated_at",
+  ];
+
+  /**
+   * A record with only `fields`, values unchanged. Anything that isn't a record becomes null:
+   * the server reads nothing from it either way.
+   */
+  const keepOnly = (value: unknown, fields: string[]): Record<string, unknown> | null => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const kept: Record<string, unknown> = {};
+    for (const field of fields) {
+      if (Object.hasOwn(value, field)) kept[field] = (value as Record<string, unknown>)[field];
+    }
+    return kept;
+  };
 
   class ReadFailure extends Error {
     constructor(readonly reason: ReadError) {
@@ -112,11 +156,12 @@ export async function readInPage(): Promise<ReadResult> {
   };
 
   try {
-    const folders = arrayIn(await fetchJson("/folder/list"), "folders");
-    if (!folders || folders.length > MAX_FOLDERS) throw new ReadFailure(UNAVAILABLE);
+    const rawFolders = arrayIn(await fetchJson("/folder/list"), "folders");
+    if (!rawFolders || rawFolders.length > MAX_FOLDERS) throw new ReadFailure(UNAVAILABLE);
+    const folders = rawFolders.map((folder) => keepOnly(folder, FOLDER_FIELDS));
 
-    // Each non-deleted folder id once. The raw records stay as received, duplicates and
-    // deleted ones included; choosing between duplicates is the server's job.
+    // Each non-deleted folder id once. Every record is sent, duplicates and deleted ones
+    // included; choosing between duplicates is the server's job.
     const folderIds: number[] = [];
     for (const folder of folders) {
       if (!folder || typeof folder !== "object") continue;
@@ -161,7 +206,7 @@ export async function readInPage(): Promise<ReadResult> {
             if (seqs.has(String(seq))) throw new ReadFailure(UNAVAILABLE);
             seqs.add(String(seq));
           }
-          all.push(favorite);
+          all.push(keepOnly(favorite, FAVORITE_FIELDS));
         }
 
         const raw =

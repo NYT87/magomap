@@ -10,6 +10,7 @@ import {
   kakaoMapListsToImport,
   kakaoMapStartSchema,
 } from "./kakaoMap";
+import { KAKAO_FAVORITE_FIELDS, KAKAO_FOLDER_FIELDS } from "./kakaoMapFields";
 
 const LOGIN = "9001";
 
@@ -537,5 +538,139 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
       kakaoMapStartSchema.safeParse({ folders: [], counts: [{ folderid: -1, itemCount: 0 }] })
         .success,
     ).toBe(false);
+  });
+});
+
+// The extension sends only KAKAO_FAVORITE_FIELDS / KAKAO_FOLDER_FIELDS of each record
+// (apps/extension/src/readInPage.ts, whose test checks its copy of the lists against these).
+describe("the fields the extension sends", () => {
+  /** What readInPage sends of a record: only `fields`, values unchanged; null for a non-record. */
+  const keepOnly = (value: unknown, fields: readonly string[]): unknown => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const kept: Record<string, unknown> = {};
+    for (const field of fields) {
+      if (Object.hasOwn(value, field)) kept[field] = (value as Record<string, unknown>)[field];
+    }
+    return kept;
+  };
+  const sentFolders = (records: unknown[]) => records.map((r) => keepOnly(r, KAKAO_FOLDER_FIELDS));
+  const sentFavorites = (byFolder: Record<string, unknown[]>) =>
+    Object.fromEntries(
+      Object.entries(byFolder).map(([folderid, list]) => [
+        folderid,
+        list.map((f) => keepOnly(f, KAKAO_FAVORITE_FIELDS)),
+      ]),
+    );
+
+  // The fixtures above with fields magomap never reads, and records that aren't records.
+  const route_form = { points: [{ x: 497000, y: 1129000 }] };
+  const noisyFolders: unknown[] = folders.map((f) =>
+    f && typeof f === "object" ? { ...f, icon: "star", created_at: "2026-01-01", share: {} } : f,
+  );
+  const noisyFavorites: Record<string, unknown[]> = Object.fromEntries(
+    Object.entries(favorites).map(([folderid, list]) => [
+      folderid,
+      list.map((f) =>
+        f && typeof f === "object"
+          ? { ...f, route_form, folderid: Number(folderid), item_updated_at: "2026-01-01" }
+          : f,
+      ),
+    ]),
+  );
+  const oddFolders: unknown[] = [
+    ...noisyFolders,
+    null,
+    "folder",
+    [{ folderid: 7 }],
+    { folderid: 6, subscribe: "Y", kakao_map_user_id: 3, nickname: [], title: 42, memo: {} },
+  ];
+  const oddFavorites: Record<string, unknown[]> = {
+    ...noisyFavorites,
+    "6": [
+      null,
+      "x",
+      42,
+      [],
+      { seq: {}, key: 5, display1: 9, type: 3, x: "1", lat: "37", route_form },
+      { seq: "", key: "" },
+      { seq: "s".repeat(300) },
+    ],
+  };
+  // kakao-list's mapping throws on records that aren't records, so parity skips the odd ones.
+  const fixtures: [string, unknown[], Record<string, unknown[]>, boolean][] = [
+    ["the adapter's fixtures", folders, favorites, true],
+    ["with fields magomap doesn't read", noisyFolders, noisyFavorites, true],
+    ["with records that aren't records", oddFolders, oddFavorites, false],
+  ];
+
+  for (const [name, rawFolders, rawFavorites, parity] of fixtures) {
+    it(`gives the same lists and items as the raw records: ${name}`, () => {
+      const projectedFolders = sentFolders(rawFolders);
+      const projectedFavorites = sentFavorites(rawFavorites);
+      const raw = kakaoMapListsToImport(startOf(rawFolders, rawFavorites), LOGIN);
+      const sent = kakaoMapListsToImport(startOf(projectedFolders, projectedFavorites), LOGIN);
+      expect(sent).toEqual(raw);
+      expect(raw.lists.length).toBeGreaterThan(0);
+      for (const [folderid, list] of Object.entries(rawFavorites)) {
+        const sentList = projectedFavorites[folderid] ?? [];
+        expect(kakaoMapItemsToImport(Number(folderid), 0, sentList)).toEqual(
+          kakaoMapItemsToImport(Number(folderid), 0, list),
+        );
+        // A later page too: positions and fallback ids count from its offset.
+        expect(kakaoMapItemsToImport(Number(folderid), 500, sentList)).toEqual(
+          kakaoMapItemsToImport(Number(folderid), 500, list),
+        );
+      }
+    });
+
+    if (parity) {
+      it(`gives kakao-list's mapping the same result too: ${name}`, () => {
+        const sent = kakaoListParity(sentFolders(rawFolders), sentFavorites(rawFavorites), LOGIN);
+        expect(sent).toEqual(kakaoListParity(rawFolders, rawFavorites, LOGIN));
+        expect(Object.keys(sent.items).length).toBeGreaterThan(0);
+      });
+    }
+  }
+
+  it("the adapter reads no other field of a record", () => {
+    // Every property the adapter looks at, on records that carry fields it must not need.
+    const read = { folder: new Set<string>(), favorite: new Set<string>() };
+    const watched = (kind: keyof typeof read) => (value: unknown) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      const note = (key: string | symbol) => {
+        if (typeof key === "string") read[kind].add(key);
+      };
+      return new Proxy(value, {
+        get(target, key, receiver) {
+          note(key);
+          return Reflect.get(target, key, receiver);
+        },
+        has(target, key) {
+          note(key);
+          return Reflect.has(target, key);
+        },
+        getOwnPropertyDescriptor(target, key) {
+          note(key);
+          return Reflect.getOwnPropertyDescriptor(target, key);
+        },
+        ownKeys(target) {
+          note("(every key)");
+          return Reflect.ownKeys(target);
+        },
+      });
+    };
+    for (const [, rawFolders, rawFavorites] of fixtures) {
+      const watchedFolders = rawFolders.map(watched("folder"));
+      kakaoMapListsToImport(startOf(watchedFolders, {}), LOGIN);
+      for (const [folderid, list] of Object.entries(rawFavorites)) {
+        kakaoMapItemsToImport(Number(folderid), 0, list.map(watched("favorite")));
+      }
+    }
+    // startOf (the extension's own code) reads folderid and status; both are kept.
+    expect([...read.folder].filter((key) => !KAKAO_FOLDER_FIELDS.includes(key))).toEqual([]);
+    expect([...read.favorite].filter((key) => !KAKAO_FAVORITE_FIELDS.includes(key))).toEqual([]);
+    // It does read them: the lists aren't longer than needed either.
+    expect([...read.folder].sort()).toEqual([...KAKAO_FOLDER_FIELDS].sort());
+    expect([...read.favorite].sort()).toEqual([...KAKAO_FAVORITE_FIELDS].sort());
   });
 });
