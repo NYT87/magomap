@@ -1,8 +1,9 @@
 import { Layers, List as ListIcon, LocateFixed, Map as MapIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { SyncIndicator } from "../components/SyncIndicator";
+import { decodeId } from "../decodeId";
 import { NoticeSlot } from "../layout/AppLayout";
 import { useLayout } from "../layout/useLayout";
 import { useMapStage } from "../map/MapStage";
@@ -37,7 +38,9 @@ export function MapScreen() {
   const { t } = useTranslation();
   const layout = useLayout();
   const [location, navigate] = useLocation();
-  const data = useMapData();
+  const [, params] = useRoute("/places/:id");
+  const selectedId = decodeId(params?.id);
+  const data = useMapData(selectedId);
   const [asList, setAsList] = useState(false);
   const { locate, denied } = useLocate();
   const phoneRoot = layout === "phone" && location === "/";

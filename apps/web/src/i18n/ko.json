@@ -96,6 +96,7 @@
     "placesTitle": "지도에 있는 장소",
     "empty": "아직 지도에 장소가 없어요. 장소를 검색하거나 계정에서 kakao-list 리스트를 가져와 보세요.",
     "previousLabel": "{{title}}, {{date}}까지 있던 이전 위치",
+    "selectedLabel": "{{title}}, 선택한 장소",
     "hasPrevious": "옮겨 간 장소예요. 열어서 이전 위치를 볼 수 있어요."
   },
   "picker": {
@@ -109,6 +110,7 @@
     "count_one": "{{count}}곳",
     "count_other": "{{count}}곳",
     "downloading": "받아오는 중…",
+    "downloadWaiting": "다음 동기화 때 받아와요",
     "by": "{{name}} 님의 리스트",
     "hint": "카카오 리스트는 계정에서 kakao-list 가져오기를 하면 여기에 나타나요.",
     "toggle": "지도에 {{name}} 표시"
@@ -283,6 +285,7 @@
     "readOnly": "카카오에서 가져온 리스트라 여기서는 바꿀 수 없어요. 카카오맵에서 바꾼 뒤 다시 가져와 주세요.",
     "empty": "아직 이 리스트에 장소가 없어요.",
     "downloading": "이 리스트의 장소를 아직 받아오고 있어요…",
+    "downloadWaiting": "이 리스트의 장소는 다음 동기화 때 받아와요.",
     "removed": "카카오에서 삭제됨",
     "notFound": "이 리스트가 이 기기에 없어요.",
     "colors": {

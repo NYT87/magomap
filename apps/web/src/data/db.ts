@@ -46,7 +46,9 @@ export interface Draft {
 
 export interface MetaEntry {
   /** "removal": changes each time the account's data is removed from this device. */
-  key: "cursor" | "lastSyncAt" | "pullEpoch" | "removal";
+  /** "fullPull": a download of everything has started and hasn't reached its last page. */
+  /** "cursorGen": counts the cursor's deletions, so a cursor deleted and reached again differs. */
+  key: "cursor" | "lastSyncAt" | "pullEpoch" | "removal" | "fullPull" | "cursorGen";
   value: string | number;
 }
 

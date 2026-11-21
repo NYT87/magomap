@@ -5,7 +5,7 @@ import { Link, useLocation } from "wouter";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { currentDb } from "../data/db";
 import { loadLibrary, SAVED_GROUP, sectionOf, useListPlaces } from "../data/queries";
-import { useSyncing } from "../data/useSyncStatus";
+import { useListArrival } from "../data/useSyncStatus";
 import { deleteList, editList } from "../data/writes";
 import { ListForm } from "../lists/ListForm";
 
@@ -21,7 +21,7 @@ export function ListScreen({ id }: { id: string }) {
   }, [id]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const syncing = useSyncing();
+  const arrival = useListArrival();
   if (rows === undefined || meta === undefined) return null;
   const saved = id === SAVED_GROUP;
   if (!saved && !meta) return <p className="mm-muted">{t("lists.notFound")}</p>;
@@ -57,7 +57,11 @@ export function ListScreen({ id }: { id: string }) {
       </header>
       {rows.length === 0 ? (
         <p className="mm-muted">
-          {list?.provider != null && syncing ? t("lists.downloading") : t("lists.empty")}
+          {list?.provider != null && arrival
+            ? arrival === "unknown"
+              ? ""
+              : t(arrival === "downloading" ? "lists.downloading" : "lists.downloadWaiting")
+            : t("lists.empty")}
         </p>
       ) : (
         <ul className="mm-places__list">
