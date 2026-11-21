@@ -8,10 +8,11 @@ When she opens a place's details, every pin on the map still looks the same, so 
 
 ## What changes
 
-- **Selected** means the saved place whose details are open (`/places/<id>`), on phone and desktop. It stops being selected when the details close.
+- **Selected** means the saved place whose details are open (`/places/<id>`). It stops being selected when the details close.
+- **Computer only, for now (owner, 2026-11-21):** on a phone the map is hidden while a place's details are open, so there's no pin to highlight there. Showing a strip of map above phone details would be its own layout change, planned separately if wanted.
 - **Look (option a):** the selected place's pin is **bigger** and has a **ring** around it, and keeps its **list colour**, so it is still recognisably that list's pin. No animation.
 - **Never hidden:** the selected pin is **never clustered** and is drawn **above** every other pin, on both maps (Kakao Map and OpenStreetMap).
-- **Accessible:** its label says it is the selected place (e.g. "바다정원 카페, selected" / Korean equivalent), so screen readers and the phone's place list can tell.
+- **Accessible:** its label says it is the selected place (e.g. "바다정원 카페, selected" / Korean equivalent), so screen readers announce it.
 - Its previous-location pins, search pins and other saved pins are unchanged.
 
 ## Approaches considered
