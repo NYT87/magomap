@@ -195,8 +195,9 @@ async function boundProviderAccount(
 
 /**
  * Who owns a list in magomap: the user bound to the provider account that owns it there.
- * - A read that names the list's owner (an upload): owner only when that is the user's bound
- *   account; a list the read names no owner for (a bare folder) is followed.
+ * - A read that names the list's owner (an upload): owner only when the list's owner (the recorded
+ *   one, else the read's) is the user's bound account; a list with neither (a bare folder) is
+ *   followed.
  * - A read that can't name it (kakao-list): when the list has a recorded owner and the user is
  *   bound to a different account, a follower; otherwise kakao-list's own rule.
  * Never owner for a list the read marks followed.
@@ -457,16 +458,19 @@ async function decideChunk(
     owner_name: meta.ownerName ?? null,
     removed_at_provider: null,
     provider_snapshot_at: snapshotAt,
-    // The read's owner when it names one (newest snapshot wins, like the other fields).
-    provider_owner_id: meta.providerOwnerId ?? recordedOwner ?? null,
     created_at: existingList?.created_at ?? now,
     updated_at: now,
     deleted_at: null,
     client_updated_at: 0,
     seq: 0,
   };
+  // The list's owner at the provider is recorded once, from the first read that names it, and
+  // never changes (a provider never changes a list's owner): it isn't part of `listRow`, so
+  // newer snapshots leave it alone, and it's filled in only while still empty.
+  const recordsOwner =
+    existingList !== undefined && recordedOwner === undefined && meta.providerOwnerId !== undefined;
   if (!existingList) {
-    write("lists", listRow);
+    write("lists", { ...listRow, provider_owner_id: meta.providerOwnerId ?? null });
     inc("listsAdded");
   } else if (isNewer(snapshotAt, existingList)) {
     const changed = !same(existingList, {
@@ -486,7 +490,8 @@ async function decideChunk(
   const role = decideRole({
     followed: meta.followed,
     namesOwners: run.source === "kakao_map",
-    readOwner: meta.providerOwnerId,
+    // The recorded owner, once there is one; a read can't change it.
+    readOwner: recordedOwner ?? meta.providerOwnerId,
     recordedOwner: recordedOwner ?? null,
     bound,
     subscriptionKnown: run.subscription_known === 1,
@@ -728,6 +733,16 @@ async function decideChunk(
       },
     }),
     ...grantStatements(db, ctx, { sharedPlaceIds }),
+    ...(recordsOwner
+      ? [
+          db.kysely
+            .updateTable("lists")
+            .set({ provider_owner_id: meta.providerOwnerId ?? null })
+            .where("id", "=", listId)
+            .where("provider_owner_id", "is", null)
+            .where(ctx.guard),
+        ]
+      : []),
     ...(touchLists.length > 0
       ? [
           db.kysely

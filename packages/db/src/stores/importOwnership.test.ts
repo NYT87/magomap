@@ -128,6 +128,67 @@ forEachDialect("a list's owner is the Kakao Map account that owns it", (makeDb) 
     expect(await access(db, B)).toMatchObject({ role: "follower", removed_at: null });
   });
 
+  it("the recorded owner id never changes", async () => {
+    const db = await setup(makeDb);
+    await upload(db, A, [owned("A의 리스트")], T0 + 1000);
+    expect((await shared(db)).provider_owner_id).toBe("km-a");
+    // B's newer read claims B's own account owns folder 500 (Kakao never sends that).
+    const claimed = list("500", "B가 바꾼 이름", { providerOwnerId: "km-b" });
+    await upload(
+      db,
+      B,
+      [claimed, list("600", "B의 리스트", { providerOwnerId: "km-b" })],
+      T0 + 2000,
+    );
+    // The rest of the list follows the newest snapshot; the owner id doesn't.
+    expect(await shared(db)).toMatchObject({ name: "B가 바꾼 이름", provider_owner_id: "km-a" });
+    expect(await access(db, B)).toMatchObject({ role: "follower" });
+    // B can't remove it for everyone.
+    await upload(db, B, [list("600", "B의 리스트", { providerOwnerId: "km-b" })], T0 + 3000);
+    expect((await shared(db)).removed_at_provider).toBeNull();
+    expect((await access(db, B))?.removed_at).toBe(T0 + 3000);
+    expect(await access(db, A)).toMatchObject({ role: "owner", removed_at: null });
+    // A's upload still owns it.
+    await upload(db, A, [owned("A의 리스트")], T0 + 4000);
+    expect(await access(db, A)).toMatchObject({ role: "owner" });
+    expect((await shared(db)).provider_owner_id).toBe("km-a");
+  });
+
+  it("the owner id is recorded from a follower's read", async () => {
+    const db = await setup(makeDb);
+    // B follows A's folder: B's read marks it followed and names A's account as its owner.
+    await upload(
+      db,
+      B,
+      [list("500", "A의 리스트", { followed: true, providerOwnerId: "km-a" })],
+      T0 + 1000,
+    );
+    expect((await shared(db)).provider_owner_id).toBe("km-a");
+    expect(await access(db, B)).toMatchObject({ role: "follower" });
+    await upload(db, A, [owned("A의 리스트")], T0 + 2000);
+    expect(await access(db, A)).toMatchObject({ role: "owner" });
+  });
+
+  it("an existing list without an owner id gets one from the first read naming it, once", async () => {
+    const db = await setup(makeDb);
+    await kakaoList(db, A, [list("500", "A의 리스트")], T0 + 1000);
+    expect((await shared(db)).provider_owner_id).toBeNull();
+    // Even a read older than the list's snapshot records it (it changes nothing else).
+    await importSnapshot(
+      db,
+      B,
+      [list("500", "옛 이름", { followed: true, providerOwnerId: "km-a" })],
+      {
+        source: "kakao_map",
+        at: T0 + 2000,
+        snapshot: T0 + 500,
+      },
+    );
+    expect(await shared(db)).toMatchObject({ name: "A의 리스트", provider_owner_id: "km-a" });
+    await upload(db, B, [list("500", "A의 리스트", { providerOwnerId: "km-b" })], T0 + 3000);
+    expect((await shared(db)).provider_owner_id).toBe("km-a");
+  });
+
   it("a bare folder (no owner in the read) is followed", async () => {
     const db = await setup(makeDb);
     await upload(db, B, [list("700", "주인 모름")], T0 + 1000);
