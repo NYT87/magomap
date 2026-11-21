@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3](https://github.com/NYT87/magomap/compare/magomap-v0.1.2...magomap-v0.1.3) (2026-11-21)
+
+
+### Features
+
+* **web:** a selected place's pin — bigger, ringed, in its list colour ([0900a08](https://github.com/NYT87/magomap/commit/0900a084381ec2a3187b1098a32c5fb5a4f3ecbd))
+* **web:** the selected pin is never clustered and sits on top ([f672d2b](https://github.com/NYT87/magomap/commit/f672d2b05cfdf1c12197f079bd7858d525c04191))
+
+
+### Bug Fixes
+
+* **web:** keep keyboard focus on the selected pin; survive a malformed place URL ([6e1bdae](https://github.com/NYT87/magomap/commit/6e1bdae0059a707b3248755275d5fcec977a5bc9))
+
 ## [0.1.2](https://github.com/NYT87/magomap/compare/magomap-v0.1.1...magomap-v0.1.2) (2026-11-20)
 
 
