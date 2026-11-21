@@ -856,6 +856,38 @@ describe("another person's list", () => {
       .first<{ role: string }>();
     expect(role?.role).toBe("follower");
   });
+
+  it("his bare read of her folder leaves her list alone and makes him a follower", async () => {
+    const she = await devLogin("km-bare-she");
+    const he = await devLogin("km-bare-he");
+    const hisId = await userIdOf(he);
+    await upload(
+      she,
+      smallRead("u1-bare-she", 42201, { title: "Jeju", memo: "제주 맛집" }),
+      "u1-bare-she",
+    );
+    // His newer read has her folder back bare: no title, no owner id, and no favourites.
+    const bare: Read = {
+      folders: [ownFolder(42202, "u2-bare-he"), { folderid: 42201, subscribe: 1 }],
+      favorites: { 42202: [favorite(4220201, "94220201")], 42201: [] },
+    };
+    await upload(he, bare, "u2-bare-he");
+    const list = await env.DB.prepare(
+      "SELECT name, description FROM lists WHERE id = 'l_kakao_42201'",
+    ).first<{ name: string; description: string | null }>();
+    expect(list).toEqual({ name: "Jeju", description: "제주 맛집" });
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM list_items WHERE list_id = 'l_kakao_42201' AND removed_at_provider IS NULL",
+      ),
+    ).toBe(2);
+    const role = await env.DB.prepare(
+      "SELECT role, removed_at FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42201'",
+    )
+      .bind(hisId)
+      .first<{ role: string; removed_at: number | null }>();
+    expect(role).toEqual({ role: "follower", removed_at: null });
+  });
 });
 
 describe("pages are checked", () => {

@@ -29,3 +29,7 @@ ALTER TABLE lists ADD COLUMN provider_owner_id TEXT;
 -- statement
 -- The same, for each list of a running import.
 ALTER TABLE import_run_lists ADD COLUMN provider_owner_id TEXT;
+-- statement
+-- A list of a running import whose read showed only that the user follows it (a bare followed
+-- folder): the import grants access and leaves the shared list and its items alone.
+ALTER TABLE import_run_lists ADD COLUMN access_only INTEGER NOT NULL DEFAULT 0;

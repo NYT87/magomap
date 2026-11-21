@@ -450,3 +450,74 @@ forEachDialect("a list's owner is the Kakao Map account that owns it", (makeDb) 
     expect(counted.written()).toBeLessThanOrEqual(10 + 6 * 2 + 5 * 3);
   });
 });
+
+const members = (db: Db, listId = L) =>
+  db.kysely
+    .selectFrom("list_items")
+    .select(["external_id", "removed_at_provider"])
+    .where("list_id", "=", listId)
+    .orderBy("external_id")
+    .execute();
+const details = (db: Db, listId = L) =>
+  db.kysely
+    .selectFrom("lists")
+    .select(["name", "description", "removed_at_provider", "provider_owner_id"])
+    .where("id", "=", listId)
+    .executeTakeFirstOrThrow();
+
+// A followed folder can come back bare: no title and no owner id (docs/kakao-map-access.md
+// section 6). The read then shows only that the follower follows it, never its contents.
+forEachDialect("a bare followed folder only grants access", (makeDb) => {
+  /** Folder 500 as her own read shows it: two places, a description. */
+  const hers = (): ImportList => ({
+    ...owned("Jeju"),
+    description: "제주 맛집",
+    items: [item("5001"), item("5002")],
+  });
+  /** The same folder as his read shows it once it came back bare. */
+  const bare = (items: ImportItem[]): ImportList =>
+    list("500", "Folder 500", { followed: true, accessOnly: true, items });
+
+  it("leaves the list's name, description and memberships alone", async () => {
+    const db = await setup(makeDb);
+    await upload(db, A, [hers()], T0 + 1000);
+    // His newer read is bare, and Kakao happened to return one favourite for it.
+    await upload(db, B, [bare([item("5009")])], T0 + 2000);
+    expect(await details(db)).toMatchObject({
+      name: "Jeju",
+      description: "제주 맛집",
+      removed_at_provider: null,
+      provider_owner_id: "km-a",
+    });
+    expect(await members(db)).toEqual([
+      { external_id: "5001", removed_at_provider: null },
+      { external_id: "5002", removed_at_provider: null },
+    ]);
+    expect(await access(db, B)).toMatchObject({ role: "follower", removed_at: null });
+    expect(await access(db, A)).toMatchObject({ role: "owner", removed_at: null });
+  });
+
+  it("an empty bare folder removes nothing", async () => {
+    const db = await setup(makeDb);
+    await upload(db, A, [hers()], T0 + 1000);
+    await upload(db, B, [bare([])], T0 + 2000);
+    expect(await members(db)).toEqual([
+      { external_id: "5001", removed_at_provider: null },
+      { external_id: "5002", removed_at_provider: null },
+    ]);
+    expect(await details(db)).toMatchObject({ name: "Jeju", description: "제주 맛집" });
+    expect(await access(db, B)).toMatchObject({ role: "follower", removed_at: null });
+    // Her next sync still owns and updates it.
+    await upload(db, A, [{ ...hers(), name: "Jeju 2" }], T0 + 3000);
+    expect((await details(db)).name).toBe("Jeju 2");
+  });
+
+  it("the follower keeps follower access on later bare reads", async () => {
+    const db = await setup(makeDb);
+    await upload(db, A, [hers()], T0 + 1000);
+    await upload(db, B, [bare([])], T0 + 2000);
+    await upload(db, B, [bare([])], T0 + 3000);
+    expect(await access(db, B)).toMatchObject({ role: "follower", removed_at: null });
+    expect((await details(db)).name).toBe("Jeju");
+  });
+});

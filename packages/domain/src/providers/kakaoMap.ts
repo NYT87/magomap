@@ -176,6 +176,9 @@ function accountOf(folders: Folder[]): { account: string; alias: Map<string, str
  *   (by its id or alias), and never records it bare.
  * - `accountAlias`: the one `map_user_id` her own folders carry beside her `kakao_map_user_id`,
  *   so folders named by either id match her account.
+ * - `bareFolders`: followed folders that came back with no owner id and no title (probably made
+ *   private by their owner; docs/kakao-map-access.md section 6). Such a read shows only that she
+ *   follows the list, not its name or contents, so the server imports it as access only.
  */
 export function kakaoMapListsToImport(
   start: KakaoMapStart,
@@ -187,6 +190,7 @@ export function kakaoMapListsToImport(
   subscriptionKnown: boolean;
   providerOwnerIds: Map<string, string>;
   mapOwnerIds: Map<string, string>;
+  bareFolders: Set<string>;
 } {
   const folders = dedupeFolders(start.folders);
   if (folders.length === 0) throw new KakaoSignedOutError();
@@ -210,6 +214,7 @@ export function kakaoMapListsToImport(
   const lists: ImportListSummary[] = [];
   const providerOwnerIds = new Map<string, string>();
   const mapOwnerIds = new Map<string, string>();
+  const bareFolders = new Set<string>();
   let nickname: string | undefined;
   for (const { folderid, raw } of folders) {
     const followed = flagged(raw.subscribe) && !ownOwners.has(ownerOf(raw) ?? "");
@@ -224,6 +229,8 @@ export function kakaoMapListsToImport(
     const storedOwner = ownerId === undefined ? undefined : id(ownerId);
     if (storedOwner)
       (followed && bareMapId ? mapOwnerIds : providerOwnerIds).set(externalId, storedOwner);
+    const title = clip(raw.title, LIMITS.importTitle);
+    if (followed && owner === undefined && title === undefined) bareFolders.add(externalId);
     const count = counts.get(folderid);
     const mapUserId = raw.map_user_id;
     const creatorName =
@@ -235,7 +242,7 @@ export function kakaoMapListsToImport(
     lists.push(
       defined({
         externalId,
-        name: clip(raw.title, LIMITS.importTitle) ?? `Folder ${folderid}`,
+        name: title ?? `Folder ${folderid}`,
         description: clip(trimmed(raw.memo) || count?.firstDisplay2, LIMITS.importText),
         followed,
         ownerName: followed ? clip(creatorName, LIMITS.importTitle) : undefined,
@@ -251,6 +258,7 @@ export function kakaoMapListsToImport(
     subscriptionKnown: true,
     providerOwnerIds,
     mapOwnerIds,
+    bareFolders,
   };
 }
 

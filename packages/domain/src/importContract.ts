@@ -29,6 +29,12 @@ export interface ImportList {
    * magomap is the user bound to that account. Server-side only; never synced to clients.
    */
   providerOwnerId?: string;
+  /**
+   * The read shows only that the user follows the list, not its name or contents (a bare followed
+   * folder). The import grants the user follower access and leaves the shared list and its items
+   * alone. Set only by the server from a direct read; never part of a contract a client sends.
+   */
+  accessOnly?: boolean;
   items: ImportItem[];
 }
 

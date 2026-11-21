@@ -68,6 +68,7 @@ export const COLUMN_TYPES: {
     pages_done: "integer",
     finished: "integer",
     provider_owner_id: "text",
+    access_only: "integer",
   },
   import_run_pages: {
     user_id: "text",

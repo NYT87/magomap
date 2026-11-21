@@ -303,6 +303,7 @@ export async function startImportRun(
     pages_done: 0,
     finished: 0,
     provider_owner_id: l.providerOwnerId ?? null,
+    access_only: l.accessOnly ? 1 : 0,
   }));
   return withWrite(
     db,
@@ -390,6 +391,7 @@ export async function importListChunk(
         ...(progress.provider_owner_id == null
           ? {}
           : { providerOwnerId: progress.provider_owner_id }),
+        ...(progress.access_only === 1 ? { accessOnly: true } : {}),
       };
       const decided = await decideChunk(db, userId, runId, meta, pageIndex, items, now, ctx);
       decided.statements.push(
@@ -484,6 +486,12 @@ async function decideChunk(
   ) {
     throw new ImportConflictError();
   }
+  // A read that shows only that the user follows the list (a bare followed folder) grants or keeps
+  // their access, and never writes the shared list, its owner id or its items: its fallback name
+  // and missing contents would overwrite what the owner's read says, for everyone. A list nobody
+  // has yet is imported as read (there's nothing to overwrite).
+  const accessOnly =
+    run.source === "kakao_map" && meta.accessOnly === true && existingList !== undefined;
   const recordedOwner =
     typeof existingList?.provider_owner_id === "string"
       ? existingList.provider_owner_id
@@ -493,7 +501,7 @@ async function decideChunk(
   // owner, a read records only an id that owner's binding goes by: a self-claim (which a forged
   // read could make) or an id no binding matches records nothing. A list nobody owns yet records
   // the id from any read.
-  const readOwner = run.source === "kakao_map" ? meta.providerOwnerId : undefined;
+  const readOwner = run.source === "kakao_map" && !accessOnly ? meta.providerOwnerId : undefined;
   const selfClaim = recordedOwner === undefined && isBound(readOwner, bound);
   const anotherOwns =
     recordedOwner === undefined &&
@@ -524,7 +532,7 @@ async function decideChunk(
   if (!existingList) {
     write("lists", listRow);
     inc("listsAdded");
-  } else if (isNewer(snapshotAt, existingList)) {
+  } else if (!accessOnly && isNewer(snapshotAt, existingList)) {
     const changed = !same(existingList, {
       ...listRow,
       updated_at: existingList.updated_at,
@@ -573,7 +581,12 @@ async function decideChunk(
   // Places, sources, memberships and imported notes. From a list older than the shared one,
   // only this user's own notes (and the places they're about) are imported, never memberships.
   const seenPlaces = new Map<string, Row>();
-  for (const item of listIsCurrent ? items : items.filter((i) => i.localNote?.trim())) {
+  const imported = accessOnly
+    ? []
+    : listIsCurrent
+      ? items
+      : items.filter((i) => i.localNote?.trim());
+  for (const item of imported) {
     const placeId = placeIdOf(item);
     const existing = seenPlaces.get(placeId) ?? places.get(placeId);
     if (!existing) {
@@ -773,7 +786,8 @@ async function decideChunk(
     run_id: runId,
     external_id: meta.externalId,
     page: pageIndex,
-    item_ids: JSON.stringify(itemIds),
+    // An access-only list imported no items, so its page vouches for none.
+    item_ids: JSON.stringify(accessOnly ? [] : itemIds),
   };
   const statements: Statement[] = [
     ...writeStatements(db, ctx, writes, {
@@ -852,6 +866,8 @@ export async function finishImportList(
       const listId = providerListRowId(run.provider, externalId);
       const list = (await readByIds(db, userId, "lists", [listId])).get(listId);
       const snapshotAt = Number(run.snapshot_at);
+      // An access-only list (a bare followed folder) wasn't read in full: it never marks removals.
+      const removes = run.complete === 1 && progress.access_only !== 1 && isNewer(snapshotAt, list);
       // Unseen items not already protected by a newer snapshot; the removal records this snapshot.
       // The ids every page of this list held in this run.
       const thisList = sql`p.user_id = ${userId} AND p.run_id = ${runId} AND p.external_id = ${externalId}`;
@@ -861,19 +877,18 @@ export async function finishImportList(
           : sql`SELECT jsonb_array_elements_text(p.item_ids::jsonb) FROM import_run_pages p WHERE ${thisList}`;
       const notSeen = sql<boolean>`list_id = ${listId} AND (provider_snapshot_at IS NULL OR provider_snapshot_at < ${snapshotAt}) AND id NOT IN (${seenIds})`;
       // An incomplete or older snapshot may hold a partial or outdated list: it never marks removals.
-      const removing =
-        run.complete === 1 && isNewer(Number(run.snapshot_at), list)
-          ? Number(
-              (
-                await db.kysely
-                  .selectFrom("list_items")
-                  .select(sql<number>`count(*)`.as("n"))
-                  .where(notSeen)
-                  .where("removed_at_provider", "is", null)
-                  .executeTakeFirst()
-              )?.n ?? 0,
-            )
-          : 0;
+      const removing = removes
+        ? Number(
+            (
+              await db.kysely
+                .selectFrom("list_items")
+                .select(sql<number>`count(*)`.as("n"))
+                .where(notSeen)
+                .where("removed_at_provider", "is", null)
+                .executeTakeFirst()
+            )?.n ?? 0,
+          )
+        : 0;
       const counts = { membershipsRemoved: removing };
       const statements: Statement[] = [
         saveState(db, userId, runId, { ...state, summary: add(state.summary, counts) }, ctx),
@@ -885,7 +900,7 @@ export async function finishImportList(
           .where("external_id", "=", externalId)
           .where(ctx.guard),
       ];
-      if (run.complete === 1 && isNewer(snapshotAt, list)) {
+      if (removes) {
         statements.unshift(
           db.kysely
             .updateTable("list_items")

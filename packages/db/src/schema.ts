@@ -75,6 +75,8 @@ export interface ImportRunListsTable {
   pages_done: number;
   finished: number;
   provider_owner_id: string | null;
+  /** 1 when the read showed only that the user follows the list (see migration 0003). */
+  access_only: Generated<number>;
 }
 
 /** The list items one page of a running import held (`item_ids`: a JSON array of `list_items.id`). */

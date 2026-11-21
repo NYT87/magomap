@@ -278,9 +278,15 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
         // The Worker's clock, never the client's: every direct sync is a new snapshot.
         importedAt: new Date(now).toISOString(),
         // Each list's Kakao owner decides who owns it in magomap (spec: "Who owns a list").
+        // A bare followed folder only grants access (its fallback name and missing contents
+        // never overwrite the shared list; docs/kakao-map-access.md section 6).
         lists: read.lists.map((l) => {
           const providerOwnerId = providerOwnerIds.get(l.externalId);
-          return providerOwnerId === undefined ? l : { ...l, providerOwnerId };
+          return {
+            ...l,
+            ...(providerOwnerId === undefined ? {} : { providerOwnerId }),
+            ...(read.bareFolders.has(l.externalId) ? { accessOnly: true } : {}),
+          };
         }),
       },
       now,

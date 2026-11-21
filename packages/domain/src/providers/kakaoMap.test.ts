@@ -386,6 +386,22 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
     expect(lists.find((l) => l.externalId === "9")?.followed).toBe(true);
   });
 
+  it("marks a bare followed folder (no owner id, no title) as bare, and nothing else", () => {
+    // Folder 301 is followed with neither an owner id nor a title: the read can't vouch for the
+    // shared list's name or contents, only that she follows it.
+    expect([...kakaoMapListsToImport(start, LOGIN).bareFolders]).toEqual(["301"]);
+    const mixed = [
+      own({ folderid: 0 }),
+      // Followed with a title but no owner id, or an owner id but no title: not bare.
+      { folderid: 5, title: "Named", subscribe: 1 },
+      { folderid: 6, kakao_map_user_id: "u9", subscribe: 1 },
+      // Her own folder with no ids and no title: not followed, so not bare.
+      { folderid: 7 },
+      { folderid: 8, subscribe: 1, title: "  " },
+    ];
+    expect([...kakaoMapListsToImport(startOf(mixed, {}), LOGIN).bareFolders]).toEqual(["8"]);
+  });
+
   it("a map_user_id-only folder joins her account only through her own folders", () => {
     const joined = [
       { folderid: 0, kakao_map_user_id: "u1", map_user_id: 1 },
