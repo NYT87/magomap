@@ -9,7 +9,13 @@
     ".": {
       "release-type": "node",
       "component": "magomap",
-      "package-name": "magomap"
+      "package-name": "magomap",
+      "exclude-paths": ["apps/extension"]
+    },
+    "apps/extension": {
+      "release-type": "node",
+      "component": "extension",
+      "extra-files": ["manifest.json"]
     }
   }
 }

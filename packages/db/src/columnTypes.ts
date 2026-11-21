@@ -41,6 +41,19 @@ export const COLUMN_TYPES: {
     snapshot_at: "bigint",
     summary_json: "text",
     error: "text",
+    source: "text",
+  },
+  kakao_map_accounts: {
+    user_id: "text",
+    kakao_map_user_id: "text",
+    kakao_map_alias: "text",
+    nickname: "text",
+    bound_at: "bigint",
+  },
+  user_provider_snapshots: {
+    user_id: "text",
+    provider: "text",
+    snapshot_at: "bigint",
   },
   import_run_lists: {
     user_id: "text",
@@ -54,6 +67,8 @@ export const COLUMN_TYPES: {
     item_count: "integer",
     pages_done: "integer",
     finished: "integer",
+    provider_owner_id: "text",
+    access_only: "integer",
   },
   import_run_pages: {
     user_id: "text",
@@ -121,6 +136,7 @@ export const COLUMN_TYPES: {
     owner_name: "text",
     removed_at_provider: "bigint",
     provider_snapshot_at: "bigint",
+    provider_owner_id: "text",
     created_at: "bigint",
     updated_at: "bigint",
     deleted_at: "bigint",

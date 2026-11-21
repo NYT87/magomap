@@ -15,7 +15,8 @@ const E2E_VARS = [
   "ALLOW_DEV_LOGIN:true",
   `KAKAO_LIST_URL:http://localhost:${FAKE_PORT}`,
   `MAGOMAP_IMPORT_SECRET:${IMPORT_SECRET}`,
-  "ALLOWED_KAKAO_USER_IDS:111,222,333",
+  // 444–447: the Kakao Map sync tests, which upload (uploads need a non-empty allowlist).
+  "ALLOWED_KAKAO_USER_IDS:111,222,333,444,445,446,447",
   `KAKAO_REDIRECT_URI:http://localhost:${PORT}/api/auth/kakao/callback`,
   "KAKAO_JAVASCRIPT_KEY:",
 ]

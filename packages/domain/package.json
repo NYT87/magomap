@@ -8,13 +8,15 @@
     "./ids": "./src/ids.ts",
     "./location": "./src/location.ts",
     "./limits": "./src/limits.ts",
-    "./providers/kakao": "./src/providers/kakao.ts"
+    "./providers/kakao": "./src/providers/kakao.ts",
+    "./providers/kakaoMap": "./src/providers/kakaoMap.ts"
   },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "proj4": "^2.22.0",
     "uuid": "^14.0.3",
     "zod": "^4.6.7"
   },

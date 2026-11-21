@@ -38,8 +38,10 @@ export interface ImportRunInfo {
   startedAt: number;
   finishedAt: number | null;
   summary: ImportSummary | null;
-  /** The kakao-list sync (epoch ms) the run was read from. */
+  /** The kakao-list sync (epoch ms) the run was read from; for a Kakao Map sync, when it started. */
   snapshotAt: number;
+  /** Where the run read from: kakao-list, or Kakao Map through the extension (a direct sync). */
+  source?: "kakao_list" | "kakao_map";
   /** Only on a running run. */
   progress?: { listsDone: number; listCount: number };
 }
@@ -80,4 +82,18 @@ export type ApiErrorCode =
   | "not_found"
   | "invalid"
   | "account_mismatch"
-  | "up_to_date";
+  | "up_to_date"
+  | "too_large"
+  | "not_allowed"
+  | "kakao_signed_out"
+  | "kakao_account_unconfirmed"
+  | "kakao_account_mismatch"
+  | "kakao_account_taken"
+  | "kakao_account_unclear";
+
+/** The Kakao Map account a read came from, as a 409 names it: never the full account id. */
+export interface KakaoMapAccountHint {
+  nickname?: string;
+  /** The last 4 characters of the Kakao Map user id. */
+  idTail: string;
+}

@@ -1,6 +1,8 @@
 // Kysely schema, generated once from the table list in plan 01b. snake_case like the SQL.
 // Shared tables have no user_id. Timestamps are epoch ms; booleans are 0/1 integers.
 
+import type { Generated } from "kysely";
+
 export interface UsersTable {
   id: string;
   display_name: string | null;
@@ -40,6 +42,24 @@ export interface ImportRunsTable {
   snapshot_at: number;
   summary_json: string | null;
   error: string | null;
+  /** `kakao_list` (server-fetched) or `kakao_map` (a direct Kakao Map upload); defaults to `kakao_list`. */
+  source: Generated<string>;
+}
+
+/** The one Kakao Map account a user is bound to; an account belongs to at most one user. */
+export interface KakaoMapAccountsTable {
+  user_id: string;
+  kakao_map_user_id: string;
+  kakao_map_alias: string | null;
+  nickname: string | null;
+  bound_at: number;
+}
+
+/** A user's newest complete import snapshot per provider; older imports don't change their access. */
+export interface UserProviderSnapshotsTable {
+  user_id: string;
+  provider: string;
+  snapshot_at: number;
 }
 
 export interface ImportRunListsTable {
@@ -54,6 +74,9 @@ export interface ImportRunListsTable {
   item_count: number;
   pages_done: number;
   finished: number;
+  provider_owner_id: string | null;
+  /** 1 when the read showed only that the user follows the list (see migration 0003). */
+  access_only: Generated<number>;
 }
 
 /** The list items one page of a running import held (`item_ids`: a JSON array of `list_items.id`). */
@@ -128,6 +151,8 @@ export interface ListsTable {
   owner_name: string | null;
   removed_at_provider: number | null;
   provider_snapshot_at: number | null;
+  /** Server-side only (see migration 0003): the provider account that owns the list. */
+  provider_owner_id: string | null;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
@@ -215,6 +240,8 @@ export interface Database {
   import_runs: ImportRunsTable;
   import_run_lists: ImportRunListsTable;
   import_run_pages: ImportRunPagesTable;
+  user_provider_snapshots: UserProviderSnapshotsTable;
+  kakao_map_accounts: KakaoMapAccountsTable;
   sync_state: SyncStateTable;
   places: PlacesTable;
   place_sources: PlaceSourcesTable;

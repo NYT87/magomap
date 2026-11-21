@@ -9,11 +9,21 @@ interface Props {
   onCancel: () => void;
   /** "dialog" for a form; "alertdialog" (default) for a confirmation. */
   role?: "dialog" | "alertdialog";
+  /** On phones, stack the actions full width (for three actions, or long labels). */
+  stackActions?: boolean;
 }
 
 /** A small modal confirmation: focus moves in, Esc cancels, focus returns on close. */
-export function ConfirmDialog({ title, children, actions, onCancel, role = "alertdialog" }: Props) {
+export function ConfirmDialog({
+  title,
+  children,
+  actions,
+  onCancel,
+  role = "alertdialog",
+  stackActions = false,
+}: Props) {
   const titleId = useId();
+  const bodyId = useId();
   const ref = useRef<HTMLDivElement>(null);
   useInertBackground();
   // The latest onCancel, without re-running the focus effect when a parent re-renders.
@@ -36,8 +46,14 @@ export function ConfirmDialog({ title, children, actions, onCancel, role = "aler
       <h2 id={titleId} className="mm-dialog__title">
         {title}
       </h2>
-      <div className="mm-dialog__body">{children}</div>
-      {actions && <div className="mm-dialog__actions">{actions}</div>}
+      <div className="mm-dialog__body" id={bodyId}>
+        {children}
+      </div>
+      {actions && (
+        <div className={`mm-dialog__actions${stackActions ? " mm-dialog__actions--stack" : ""}`}>
+          {actions}
+        </div>
+      )}
     </>
   );
   return createPortal(
@@ -49,6 +65,7 @@ export function ConfirmDialog({ title, children, actions, onCancel, role = "aler
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
+          aria-describedby={bodyId}
         >
           {content}
         </div>
@@ -59,6 +76,7 @@ export function ConfirmDialog({ title, children, actions, onCancel, role = "aler
           role="alertdialog"
           aria-modal="true"
           aria-labelledby={titleId}
+          aria-describedby={bodyId}
         >
           {content}
         </div>

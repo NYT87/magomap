@@ -484,6 +484,14 @@ a {
   gap: var(--space-sm);
 }
 
+/* Three actions, or long ones, stack full width on phones; the primary stays last (bottom). */
+@media (max-width: 767px) {
+  .mm-dialog__actions--stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* ---------- Welcome (sign-in) ---------- */
 
 .mm-welcome {

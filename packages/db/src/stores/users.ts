@@ -135,6 +135,8 @@ const USER_TABLES = [
   "import_runs",
   "import_run_pages",
   "import_run_lists",
+  "user_provider_snapshots",
+  "kakao_map_accounts",
 ] as const satisfies readonly (keyof Database)[];
 
 /**
@@ -156,6 +158,15 @@ export async function deleteAccount(db: Db, userId: string): Promise<void> {
       ),
     db.kysely.deleteFrom("lists").where(sql<boolean>`provider IS NULL AND id IN (${ownLists})`),
     db.kysely.deleteFrom("user_lists").where("user_id", "=", userId),
+    // Lists her Kakao Map account owns no longer name it (read from her binding before it goes),
+    // so the account's next holder, or the list's next honest read, decides their owner afresh.
+    db.kysely
+      .updateTable("lists")
+      .set({ provider_owner_id: null })
+      .where("provider", "=", "kakao")
+      .where(
+        sql<boolean>`provider_owner_id IN (SELECT kakao_map_user_id FROM kakao_map_accounts WHERE user_id = ${userId} UNION SELECT kakao_map_alias FROM kakao_map_accounts WHERE user_id = ${userId} AND kakao_map_alias IS NOT NULL)`,
+      ),
     ...USER_TABLES.map((t) => db.kysely.deleteFrom(t).where("user_id", "=", userId)),
     db.kysely.deleteFrom("users").where("id", "=", userId),
   ]);

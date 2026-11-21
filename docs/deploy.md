@@ -27,7 +27,18 @@ Production changes **only when a release is made**. Pushing to `main` deploys no
 
 **Rolling back:** `npx wrangler rollback --env d1`, or the Worker's Deployments page. For the data, restore the bookmark in the job summary: `npx wrangler d1 time-travel restore magomap --env d1 --bookmark=<bookmark>`.
 
-**Adding another component (e.g. a browser extension in `apps/extension`):** the `magomap` component covers the whole repo (path `.`), so without a change every extension commit would also bump magomap's version and redeploy the Worker. In `release-please-config.json`, add `"exclude-paths": ["apps/extension"]` to the `.` package, and add `"apps/extension": { "release-type": "node", "component": "extension" }` with `"apps/extension": "0.1.0"` in `.release-please-manifest.json`. It then gets its own version, `apps/extension/CHANGELOG.md` and `extension-v…` tags. The `deploy` job only runs for `magomap-v…` tags, so an extension release never deploys the Worker.
+**The extension component:** the `magomap` component covers the whole repo (path `.`) except `apps/extension`, which `release-please-config.json` excludes (`exclude-paths`) and releases as its own `extension` component (`release-type: node`). Extension commits get their own version, `apps/extension/CHANGELOG.md` and `extension-v…` tags, and never bump magomap's version. Release Please also bumps `version` in `apps/extension/manifest.json` (`extra-files: ["manifest.json"]`; a plain `.json` entry, relative to the package path, has its `$.version` updated: [release-please `src/strategies/base.ts`](https://github.com/googleapis/release-please/blob/main/src/strategies/base.ts), `extraFileUpdates` and `addPath`). Both components share the one release PR. The `deploy` job only runs for `magomap-v…` tags, so an extension release never deploys the Worker.
+
+**Releasing the extension (owner, by hand):** the release workflow doesn't build the extension. After merging a release PR that created an `extension-v…` release, build the zip from that tag and attach it to the release as `magomap-extension.zip`:
+
+```bash
+git checkout extension-vX.Y.Z
+pnpm install --frozen-lockfile
+pnpm --filter @magomap/extension bundle        # writes apps/extension/magomap-extension.zip
+gh release upload extension-vX.Y.Z apps/extension/magomap-extension.zip
+```
+
+Check that the unzipped `manifest.json` has the release's version.
 
 **One-time setup (owner):**
 - GitHub → Settings → Actions → General: allow GitHub Actions to create pull requests.
@@ -110,6 +121,7 @@ In `apps/api/wrangler.toml`, under `[env.<env>.vars]`:
 | `ALLOWED_KAKAO_USER_IDS` | comma-separated Kakao user ids allowed to sign up; empty means open |
 | `KAKAO_LIST_URL` | the deployed kakao-list server, e.g. `https://kakao-list-api.vercel.app` |
 | `ALLOW_DEV_LOGIN` | `"false"`, always, when deployed |
+| `ALLOW_DEV_UPLOAD` | `"false"`, always, when deployed: `"true"` lets **any** signed-in user upload a Kakao Map read (see "Sync from Kakao Map") |
 
 Secrets, which are never stored in the file:
 
@@ -134,11 +146,20 @@ curl https://<your-domain>/api/health   # → {"ok":true,"db":"d1","version":"de
 **The Postgres setup deploys to its own Worker, `magomap-postgres`**, never over the live `magomap` one. Before its first real deploy:
 - set its own secrets with `--env postgres`;
 - set its `KAKAO_REDIRECT_URI` to its own `workers.dev` host (`https://magomap-postgres.<subdomain>.workers.dev/api/auth/kakao/callback`), and register that URI in the Kakao console;
-- fill `ALLOWED_KAKAO_USER_IDS` under `[env.postgres.vars]`. Empty means open sign-up.
+- fill `ALLOWED_KAKAO_USER_IDS` under `[env.postgres.vars]`. Empty means open sign-up;
+- set `ALLOW_DEV_UPLOAD = "false"` under `[env.postgres.vars]` (it is `"true"` there for local development).
 
 A hand deploy reports version `dev` and commit `unknown` from the server, so it is easy to tell apart from a release.
 
 To roll back, run `npx wrangler rollback --env d1`, or use the Worker's Deployments page.
+
+## Sync from Kakao Map
+
+Account → "Sync from Kakao Map" reads her Kakao Map lists through the magomap browser extension (`apps/extension`) and uploads them to `/api/import/kakao-map/*`.
+
+- **Who may upload:** only users whose Kakao id is in a **non-empty** `ALLOWED_KAKAO_USER_IDS`. An empty list refuses every upload (`not_allowed`), even though it opens sign-up. `ALLOW_DEV_UPLOAD = "true"` lifts that check for local development and tests only; it is `"false"` in `[env.d1.vars]` and must be `"false"` in any deployed Worker.
+- **The extension:** released under its own Release Please component (tags `extension-v…`, see "The extension component" above), as `magomap-extension.zip` on the GitHub release, attached by hand (see "Releasing the extension" above). To install it on her computer: unzip it, open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, **Load unpacked** the folder, and check the id is `eccgkehfioodkgllihgbgkgfcifmghif`. The release build only answers `https://magomap.jmn8718.workers.dev`; a different domain needs its origin in `apps/extension/src/origins.ts`. Details in [apps/extension/README.md](../apps/extension/README.md).
+- **The extension id** is fixed by the key in `apps/extension/manifest.json`, and the web app uses it by default. `VITE_MAGOMAP_EXTENSION_ID` (build time, `apps/web/.env.example`) overrides it, only for a build with another key.
 
 ## Workers plan
 
@@ -158,3 +179,5 @@ pnpm --filter @magomap/api dev                  # wrangler dev --env d1 on :8787
 pnpm --filter @magomap/api dev:fake-kakao-list  # a stand-in kakao-list on :8788
 pnpm --filter @magomap/api dev:seed             # dev login + a full import
 ```
+
+To try "Sync from Kakao Map" locally, load the extension's dev build (`pnpm --filter @magomap/extension build:dev`, then **Load unpacked** `apps/extension/dist`), sign in to Kakao Map in that browser, and allow uploads for the dev login: `pnpm --filter @magomap/api exec wrangler dev --env d1 --var ALLOW_DEV_UPLOAD:true`, or run `--env postgres`, where `ALLOW_DEV_UPLOAD` is already `"true"`.

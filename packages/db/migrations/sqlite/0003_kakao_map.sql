@@ -1,0 +1,35 @@
+-- Direct Kakao Map sync. Each user's newest complete snapshot per provider: an older import still
+-- adds places and notes, but never changes that user's list roles or personal removals.
+CREATE TABLE user_provider_snapshots (
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  snapshot_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, provider)
+);
+-- statement
+-- Where a run's snapshot came from: kakao-list (server-fetched) or a direct Kakao Map upload.
+ALTER TABLE import_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'kakao_list';
+-- statement
+-- A user is bound to at most one Kakao Map account, and an account to at most one user,
+-- so one person's Kakao Map lists cannot be imported into another person's magomap account.
+-- kakao_map_alias: the account's other Kakao id (the map_user_id seen beside kakao_map_user_id on
+-- its own folders), so a folder named by either id matches the account. Never another account's.
+CREATE TABLE kakao_map_accounts (
+  user_id TEXT NOT NULL PRIMARY KEY,
+  kakao_map_user_id TEXT NOT NULL UNIQUE,
+  kakao_map_alias TEXT UNIQUE,
+  nickname TEXT,
+  bound_at INTEGER NOT NULL
+);
+-- statement
+-- The provider account that owns a shared list at the provider (for Kakao, the Kakao Map account
+-- that owns the folder). The list's owner in magomap is the user bound to that account.
+-- Server-side only: never sent to clients.
+ALTER TABLE lists ADD COLUMN provider_owner_id TEXT;
+-- statement
+-- The same, for each list of a running import.
+ALTER TABLE import_run_lists ADD COLUMN provider_owner_id TEXT;
+-- statement
+-- A list of a running import whose read showed only that the user follows it (a bare followed
+-- folder): the import grants access and leaves the shared list and its items alone.
+ALTER TABLE import_run_lists ADD COLUMN access_only INTEGER NOT NULL DEFAULT 0;

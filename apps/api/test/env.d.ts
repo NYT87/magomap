@@ -12,6 +12,7 @@ declare namespace Cloudflare {
     MAGOMAP_IMPORT_SECRET: string;
     SIGNING_SECRET: string;
     ALLOW_DEV_LOGIN: string;
+    ALLOW_DEV_UPLOAD: string;
     APP_VERSION?: string;
     APP_COMMIT?: string;
     APP_BUILT_AT?: string;

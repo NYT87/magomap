@@ -25,6 +25,7 @@ KAKAO_JAVASCRIPT_KEY = "8b9138ecff36eeb1966216f7b8b1bd1a"
 ALLOWED_KAKAO_USER_IDS = "4897793509,4891281929"
 KAKAO_LIST_URL = "https://kakao-list-api.vercel.app"
 ALLOW_DEV_LOGIN = "false"
+ALLOW_DEV_UPLOAD = "false"
 [[env.d1.d1_databases]]
 binding = "DB"
 database_name = "magomap"
@@ -49,6 +50,8 @@ KAKAO_JAVASCRIPT_KEY = ""
 ALLOWED_KAKAO_USER_IDS = ""
 KAKAO_LIST_URL = "http://localhost:8788"
 ALLOW_DEV_LOGIN = "false"
+# Local dev only: uploads from Kakao Map are allowed with an empty allowlist. Never in d1.
+ALLOW_DEV_UPLOAD = "true"
 [[env.postgres.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "00000000000000000000000000000000"

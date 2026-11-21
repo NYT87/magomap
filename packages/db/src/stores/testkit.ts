@@ -164,6 +164,8 @@ export interface ImportOpts {
   subscriptionKnown?: boolean;
   /** Items per page (default 500). */
   chunk?: number;
+  /** Where the snapshot came from (default kakao-list). */
+  source?: "kakao_list" | "kakao_map";
 }
 
 /** A whole import as the server runs it: start with the summaries, every page, finish each list, complete. */
@@ -179,6 +181,7 @@ export async function importSnapshot(
     user,
     {
       provider: "kakao",
+      source: o.source ?? "kakao_list",
       complete: o.complete ?? true,
       subscriptionKnown: o.subscriptionKnown ?? true,
       importedAt: new Date(o.snapshot ?? now).toISOString(),

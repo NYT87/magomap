@@ -12,11 +12,13 @@ import {
   importedSnapshot,
   importListChunk,
   latestImportRun,
+  migratedFromKakaoList,
   RunClosedError,
   RunNotFoundError,
   runProgress,
   startImportRun,
 } from "./importRuns";
+import { bindKakaoMapAccount } from "./kakaoMapAccounts";
 import { pull } from "./sync";
 import {
   addUser,
@@ -72,6 +74,7 @@ const startRun = (db: Db, user: string, ms: number, lists: Record<string, number
     user,
     {
       provider: "kakao",
+      source: "kakao_list",
       complete: true,
       subscriptionKnown: true,
       importedAt: SNAP(ms),
@@ -757,7 +760,9 @@ forEachDialect("import seen pages migration", (makeDb) => {
       db.kysely,
     );
 
-    expect(await migrate(db, migrationsDir(db.dialect))).toEqual(["0002_import_run_pages.sql"]);
+    expect(
+      await migrate(db, migrationsDir(db.dialect), { through: "0002_import_run_pages.sql" }),
+    ).toEqual(["0002_import_run_pages.sql"]);
 
     const run = await db.kysely
       .selectFrom("import_runs")
@@ -774,7 +779,9 @@ forEachDialect("import seen pages migration", (makeDb) => {
       ["i_kakao_1_11", null],
     ]);
     expect(await db.kysely.selectFrom("import_run_lists").selectAll().execute()).toEqual([]);
-    expect(await migrate(db, migrationsDir(db.dialect))).toEqual([]);
+    expect(
+      await migrate(db, migrationsDir(db.dialect), { through: "0002_import_run_pages.sql" }),
+    ).toEqual([]);
   });
 });
 
@@ -853,5 +860,248 @@ forEachDialect("import run progress", (makeDb) => {
     await startRun(db, WIFE, 30);
     expect(await importedSnapshot(db, WIFE, T0 + 20)).toBe(false);
     expect(await importedSnapshot(db, WIFE, T0 + 30)).toBe(false);
+  });
+});
+
+const snapshotOf = (db: Db, user: string, provider = "kakao") =>
+  db.kysely
+    .selectFrom("user_provider_snapshots")
+    .select("snapshot_at")
+    .where("user_id", "=", user)
+    .where("provider", "=", provider)
+    .executeTakeFirst()
+    .then((r) => (r ? Number(r.snapshot_at) : undefined));
+const accessTo = async (db: Db, user: string, listExt: string) =>
+  (await mine(db, "user_lists", user)).find((u) => u.list_id === `l_kakao_${listExt}`);
+
+forEachDialect("import (an older run for the user)", (makeDb) => {
+  it("an older run keeps the user's owner role", async () => {
+    const db = await setup(makeDb);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
+    expect((await accessTo(db, WIFE, "1"))?.role).toBe("owner");
+    await runImport(db, WIFE, [list("1", [item("10", "A")], { followed: true })], {
+      snapshotMs: 10,
+      at: T0 + 30,
+    });
+    expect((await accessTo(db, WIFE, "1"))?.role).toBe("owner");
+  });
+
+  it("an older run doesn't remove lists personally", async () => {
+    const db = await setup(makeDb);
+    await runImport(
+      db,
+      WIFE,
+      [list("1", [item("10", "A")]), list("2", [item("20", "B")], { followed: true })],
+      { snapshotMs: 20, at: T0 + 20 },
+    );
+    const older = await runImport(db, WIFE, [list("1", [item("10", "A")])], {
+      snapshotMs: 10,
+      at: T0 + 30,
+    });
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBeNull();
+    expect(older.summary.listsRemoved).toBe(0);
+  });
+
+  it("an older run doesn't bring back a personal removal", async () => {
+    const db = await setup(makeDb);
+    const lists = [list("1", [item("10", "A")]), list("2", [item("20", "B")], { followed: true })];
+    await runImport(db, WIFE, lists, { snapshotMs: 5, at: T0 + 5 });
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 20);
+    await runImport(db, WIFE, lists, { snapshotMs: 10, at: T0 + 30 });
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 20);
+  });
+
+  it("an older run still adds places and kakao-list notes", async () => {
+    const db = await setup(makeDb);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
+    await runImport(
+      db,
+      WIFE,
+      [list("1", [item("10", "A"), item("11", "B", { localNote: "예전 메모" })])],
+      { snapshotMs: 10, at: T0 + 30 },
+    );
+    expect((await mine(db, "user_places", WIFE)).map((p) => p.place_id).sort()).toEqual([
+      "p_kakao_A",
+      "p_kakao_B",
+    ]);
+    const notes = await mine(db, "visit_notes", WIFE);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({
+      id: importedNoteRowId("p_kakao_B", "l_kakao_1"),
+      place_id: "p_kakao_B",
+      body: "예전 메모",
+      origin: "import",
+      origin_key: "l_kakao_1",
+    });
+  });
+
+  it("an older run grants a list the user never had", async () => {
+    const db = await setup(makeDb);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
+    await runImport(
+      db,
+      WIFE,
+      [list("1", [item("10", "A")]), list("3", [item("30", "C")], { followed: true })],
+      { snapshotMs: 10, at: T0 + 30 },
+    );
+    const access = await accessTo(db, WIFE, "3");
+    expect(access).toMatchObject({ role: "follower", removed_at: null, deleted_at: null });
+    expect((await mine(db, "user_places", WIFE)).map((p) => p.place_id)).toContain("p_kakao_C");
+  });
+
+  it("a newer run still changes roles and removes", async () => {
+    const db = await setup(makeDb);
+    await runImport(
+      db,
+      WIFE,
+      [list("1", [item("10", "A")]), list("2", [item("20", "B")], { followed: true })],
+      { snapshotMs: 20, at: T0 + 20 },
+    );
+    await runImport(db, WIFE, [list("1", [item("10", "A")], { followed: true })], {
+      snapshotMs: 30,
+      at: T0 + 30,
+    });
+    expect((await accessTo(db, WIFE, "1"))?.role).toBe("follower");
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 30);
+  });
+
+  it("snapshot time is per provider and only set by complete runs", async () => {
+    const db = await setup(makeDb);
+    expect(await snapshotOf(db, WIFE)).toBeUndefined();
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
+    expect(await snapshotOf(db, WIFE)).toBe(T0 + 20);
+    expect(await snapshotOf(db, ME)).toBeUndefined();
+    expect(await snapshotOf(db, WIFE, "other")).toBeUndefined();
+    // An incomplete run at T5 (> T2) doesn't advance it.
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], {
+      snapshotMs: 50,
+      at: T0 + 50,
+      complete: false,
+    });
+    expect(await snapshotOf(db, WIFE)).toBe(T0 + 20);
+    // A complete older run doesn't lower it.
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 10, at: T0 + 60 });
+    expect(await snapshotOf(db, WIFE)).toBe(T0 + 20);
+    // So a run between T2 and T5 is still newer for the user and changes the role.
+    await runImport(db, WIFE, [list("1", [item("10", "A")], { followed: true })], {
+      snapshotMs: 30,
+      at: T0 + 70,
+    });
+    expect((await accessTo(db, WIFE, "1"))?.role).toBe("follower");
+    expect(await snapshotOf(db, WIFE)).toBe(T0 + 30);
+    // Another provider keeps its own time.
+    const other = await startImportRun(
+      db,
+      WIFE,
+      {
+        provider: "other",
+        source: "kakao_list",
+        complete: true,
+        subscriptionKnown: true,
+        importedAt: SNAP(15),
+        lists: [],
+      },
+      T0 + 80,
+    );
+    await completeImportRun(db, WIFE, other.runId, T0 + 80);
+    expect(await snapshotOf(db, WIFE, "other")).toBe(T0 + 15);
+    expect(await snapshotOf(db, WIFE)).toBe(T0 + 30);
+  });
+
+  it("migratedFromKakaoList is true only after a complete kakao-list run", async () => {
+    const db = await setup(makeDb);
+    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
+    const direct = await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], {
+      source: "kakao_map",
+    });
+    expect(direct.summary.listsAdded).toBe(1);
+    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], {
+      snapshotMs: 10,
+      at: T0 + 10,
+      complete: false,
+    });
+    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
+    // Started but never completed.
+    await startRun(db, WIFE, 15);
+    expect(await migratedFromKakaoList(db, WIFE)).toBe(false);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 20, at: T0 + 20 });
+    expect(await migratedFromKakaoList(db, WIFE)).toBe(true);
+    expect(await migratedFromKakaoList(db, ME)).toBe(false);
+  });
+
+  it("importedSnapshot counts only kakao-list runs", async () => {
+    const db = await setup(makeDb);
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], {
+      source: "kakao_map",
+      at: T0 + 5,
+    });
+    expect(await importedSnapshot(db, WIFE, T0 + 5)).toBe(false);
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { snapshotMs: 5, at: T0 + 6 });
+    expect(await importedSnapshot(db, WIFE, T0 + 5)).toBe(true);
+  });
+
+  it("stores the run's source", async () => {
+    const db = await setup(makeDb);
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], { source: "kakao_map" });
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { at: T0 + 10 });
+    const runs = await db.kysely
+      .selectFrom("import_runs")
+      .select(["source", "snapshot_at"])
+      .where("user_id", "=", WIFE)
+      .orderBy("started_at")
+      .execute();
+    expect(runs.map((r) => r.source)).toEqual(["kakao_map", "kakao_list"]);
+  });
+
+  it("latestImportRun says which source the run read", async () => {
+    const db = await setup(makeDb);
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], { source: "kakao_map" });
+    expect(await latestImportRun(db, WIFE)).toMatchObject({ source: "kakao_map" });
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { at: T0 + 10 });
+    expect(await latestImportRun(db, WIFE)).toMatchObject({ source: "kakao_list" });
+  });
+
+  it("a direct sync protects her roles and removals from an older kakao-list import", async () => {
+    const db = await setup(makeDb);
+    // Direct Kakao Map syncs, from her bound account: list 1 hers (its Kakao owner is her
+    // account), list 2 followed; then list 2 dropped at T3.
+    await bindKakaoMapAccount(db, WIFE, { kakaoMapUserId: "km-wife" }, T0);
+    const hers = { providerOwnerId: "km-wife" };
+    await importSnapshot(
+      db,
+      WIFE,
+      [list("1", [item("10", "A")], hers), list("2", [item("20", "B")], { followed: true })],
+      { source: "kakao_map", snapshot: T0 + 20, at: T0 + 20 },
+    );
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")], hers)], {
+      source: "kakao_map",
+      snapshot: T0 + 30,
+      at: T0 + 30,
+    });
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 30);
+    // The kakao-list migration import, from before her last direct sync.
+    await importSnapshot(
+      db,
+      WIFE,
+      [
+        list("1", [item("10", "A"), item("11", "C", { localNote: "마이그레이션 메모" })], {
+          followed: true,
+        }),
+        list("2", [item("20", "B")], { followed: true }),
+      ],
+      { source: "kakao_list", snapshot: T0 + 10, at: T0 + 40 },
+    );
+    expect((await accessTo(db, WIFE, "1"))?.role).toBe("owner");
+    expect((await accessTo(db, WIFE, "2"))?.removed_at).toBe(T0 + 30);
+    expect(await mine(db, "visit_notes", WIFE)).toEqual([
+      expect.objectContaining({
+        place_id: "p_kakao_C",
+        body: "마이그레이션 메모",
+        origin: "import",
+        origin_key: "l_kakao_1",
+      }),
+    ]);
   });
 });
