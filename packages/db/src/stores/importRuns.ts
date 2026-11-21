@@ -1073,6 +1073,7 @@ export async function latestImportRun(db: Db, userId: string): Promise<ImportRun
     finishedAt: run.finished_at,
     summary: state?.summary ?? null,
     snapshotAt: Number(run.snapshot_at),
+    source: run.source === "kakao_map" ? "kakao_map" : "kakao_list",
     ...(progress ? { progress } : {}),
   };
 }

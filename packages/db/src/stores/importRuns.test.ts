@@ -1055,6 +1055,14 @@ forEachDialect("import (an older run for the user)", (makeDb) => {
     expect(runs.map((r) => r.source)).toEqual(["kakao_map", "kakao_list"]);
   });
 
+  it("latestImportRun says which source the run read", async () => {
+    const db = await setup(makeDb);
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], { source: "kakao_map" });
+    expect(await latestImportRun(db, WIFE)).toMatchObject({ source: "kakao_map" });
+    await runImport(db, WIFE, [list("1", [item("10", "A")])], { at: T0 + 10 });
+    expect(await latestImportRun(db, WIFE)).toMatchObject({ source: "kakao_list" });
+  });
+
   it("a direct sync protects her roles and removals from an older kakao-list import", async () => {
     const db = await setup(makeDb);
     // Direct Kakao Map syncs, from her bound account: list 1 hers (its Kakao owner is her

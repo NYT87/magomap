@@ -38,8 +38,10 @@ export interface ImportRunInfo {
   startedAt: number;
   finishedAt: number | null;
   summary: ImportSummary | null;
-  /** The kakao-list sync (epoch ms) the run was read from. */
+  /** The kakao-list sync (epoch ms) the run was read from; for a Kakao Map sync, when it started. */
   snapshotAt: number;
+  /** Where the run read from: kakao-list, or Kakao Map through the extension (a direct sync). */
+  source?: "kakao_list" | "kakao_map";
   /** Only on a running run. */
   progress?: { listsDone: number; listCount: number };
 }

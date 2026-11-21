@@ -4,7 +4,14 @@ import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore }
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { formatDate } from "../i18n";
-import { currentImportJob, type ImportJob, startImportJob, subscribeImportJob } from "./importJob";
+import {
+  currentImportJob,
+  currentKakaoMapJob,
+  type ImportJob,
+  startImportJob,
+  subscribeImportJob,
+  subscribeKakaoMapJob,
+} from "./importJob";
 import { ImportError } from "./runImport";
 import { useOnline } from "./useOnline";
 
@@ -13,7 +20,8 @@ type Outcome =
   | { kind: "done"; summary: ImportSummary; freshStart: boolean }
   | { kind: "failed"; error: ImportError | null };
 
-function summaryText(t: TFunction, s: ImportSummary) {
+/** An import's summary in a line: what changed, or that nothing did. */
+export function summaryText(t: TFunction, s: ImportSummary) {
   const parts = [
     s.placesAdded && t("import.summaryAdded", { count: s.placesAdded }),
     s.membershipsRemoved && t("import.summaryRemoved", { count: s.membershipsRemoved }),
@@ -50,6 +58,8 @@ export function ImportSection() {
   const noteId = useId();
   // The import itself lives outside this screen, so leaving Account and coming back finds it running.
   const job = useSyncExternalStore(subscribeImportJob, currentImportJob);
+  // A Kakao Map sync running meanwhile: starting an import would stop it.
+  const syncing = useSyncExternalStore(subscribeKakaoMapJob, currentKakaoMapJob) !== null;
   const [followed, setFollowed] = useState<ImportJob | null>(null);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [status, setStatus] = useState<ImportStatus | null>(null);
@@ -131,7 +141,8 @@ export function ImportSection() {
     void follow(started);
   };
 
-  const last = status?.latest ?? null;
+  // A Kakao Map sync's run is that section's to show.
+  const last = status?.latest?.source === "kakao_map" ? null : (status?.latest ?? null);
   const stopped = last?.status === "running" ? last : null;
   const syncedAt = status?.sourceSnapshotAt ?? null;
   const newer = stopped !== null && syncedAt !== null && syncedAt !== stopped.snapshotAt;
@@ -203,7 +214,7 @@ export function ImportSection() {
         key="primary"
         type="button"
         className="mm-button mm-button--primary"
-        disabled={!online || running || upToDate || noSnapshot}
+        disabled={!online || running || syncing || upToDate || noSnapshot}
         aria-describedby={showUpToDate && !running ? noteId : undefined}
         onClick={() => start(resumable ? stopped.runId : undefined)}
       >
@@ -217,7 +228,7 @@ export function ImportSection() {
         <button
           type="button"
           className="mm-button mm-button--secondary"
-          disabled={!online || running}
+          disabled={!online || running || syncing}
           onClick={() => start()}
         >
           {t("import.startOver")}

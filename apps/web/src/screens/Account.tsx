@@ -23,6 +23,7 @@ import { useMapPrefs } from "../map/mapPrefs";
 import type { MapChoice } from "../map/providerChoice";
 import { onThemeChange, setTheme, storedTheme, type ThemeChoice } from "../theme";
 import { AboutSection } from "./AboutSection";
+import { KakaoMapSyncSection } from "./KakaoMapSyncSection";
 
 type Dialog =
   | null
@@ -237,6 +238,8 @@ export function Account({ me }: { me: Me }) {
           </div>
         )}
       </section>
+
+      <KakaoMapSyncSection me={me} />
 
       <ImportSection />
 

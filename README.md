@@ -22,6 +22,7 @@ The logo shows two hand-shaped peaks, the land Mago sculpted, whose outline form
 - **Links.** Save articles, menus or posts to a place.
 - **Lists.** Like Google Maps lists, and a place can be in many lists. Its diary and links belong to the place, so they're the same in every list.
 - **Kakao Map import.** Bring in your Kakao Map lists through [kakao-list](https://github.com/NYT87/kakao-list), and keep them following Kakao. Your own notes are never touched by an import.
+- **Sync from Kakao Map.** On a computer, the magomap extension for Chrome or Brave reads your lists straight from Kakao Map in that browser, and Account → "Sync from Kakao Map" brings them in (see "Sync from Kakao Map" below).
 - **Location history.** When a place moves, magomap keeps its earlier locations, and shows them on the map and beside older diary entries.
 - **Offline first.** Browse, search and write without a connection. Changes sync when you're back online.
 - **Korean and English**, with layouts for phone and desktop.
@@ -46,6 +47,18 @@ TEST_DATABASE_URL=postgres://magomap:magomap@localhost:5432/magomap_test scripts
 `scripts/gate.sh` runs every check: Biome, typecheck, the tests on SQLite, Postgres and the Workers runtime, and the build. It also refuses changes that lower the quality bar. [docs/superpowers/build-process.md](docs/superpowers/build-process.md) describes how changes are built and reviewed.
 
 To run the API locally with sample data, see "Local development" in [docs/deploy.md](docs/deploy.md).
+
+## Sync from Kakao Map
+
+"Sync from Kakao Map" in Account needs the magomap extension in Chrome or Brave on a computer (phones can't sync this way yet):
+
+1. Download `magomap-extension.zip` from the latest [`extension-v…` release](https://github.com/NYT87/magomap/releases?q=extension-v&expanded=true) and unzip it (or build it: `pnpm --filter @magomap/extension build`).
+2. Open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, click **Load unpacked** and choose the unzipped folder. The id shown must be `eccgkehfioodkgllihgbgkgfcifmghif`.
+3. Sign in to [Kakao Map](https://map.kakao.com) in the same browser, then open magomap → Account → **Sync from Kakao Map**.
+
+The first sync asks you to confirm which Kakao Map account it is. Only allowlisted accounts may sync (`ALLOWED_KAKAO_USER_IDS`); see [apps/extension/README.md](apps/extension/README.md) for the extension itself and "Sync from Kakao Map" in [docs/deploy.md](docs/deploy.md) for the settings.
+
+For local development, load the extension's **dev build** (`pnpm --filter @magomap/extension build:dev`), which also answers `http://localhost:5173` and `:8787`, and allow uploads with `ALLOW_DEV_UPLOAD` (below). The web app finds the extension by its id; set `VITE_MAGOMAP_EXTENSION_ID` (see `apps/web/.env.example`) only for a build with a different key.
 
 ## Deployment
 
