@@ -324,6 +324,36 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
     });
   });
 
+  it("names each list's Kakao owner: the folder's account, joined to hers only for her folders", () => {
+    const { providerOwnerIds } = kakaoMapListsToImport(start, LOGIN);
+    expect(Object.fromEntries(providerOwnerIds)).toEqual({
+      [`0~${LOGIN}`]: "u1",
+      "101": "u1",
+      "102": "u1",
+      // Her own folder with only map_user_id: her account, through her other folders.
+      "103": "u1",
+      "106": "u1",
+      "201": "u2",
+      "202": "u3",
+      // A followed folder with only map_user_id keeps that id (no joining for others' folders).
+      "203": "4",
+    });
+    // A bare folder names no owner.
+    expect(providerOwnerIds.has("301")).toBe(false);
+    const bareOwn = [own({ folderid: 0 }), { folderid: 8, title: "No ids" }];
+    expect(kakaoMapListsToImport(startOf(bareOwn, {}), LOGIN).providerOwnerIds.has("8")).toBe(
+      false,
+    );
+    // An id too long to keep whole names no owner.
+    const longOwner = [
+      own({ folderid: 0 }),
+      { folderid: 9, kakao_map_user_id: "x".repeat(201), subscribe: "Y" },
+    ];
+    expect(kakaoMapListsToImport(startOf(longOwner, {}), LOGIN).providerOwnerIds.has("9")).toBe(
+      false,
+    );
+  });
+
   it("a bare followed folder is followed, with kakao-list's fallback name", () => {
     const bare = kakaoMapListsToImport(start, LOGIN).lists.find((l) => l.externalId === "301");
     expect(bare).toEqual({ externalId: "301", name: "Folder 301", followed: true, itemCount: 0 });

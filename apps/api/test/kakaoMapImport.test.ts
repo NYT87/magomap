@@ -600,18 +600,34 @@ describe("importing", () => {
 });
 
 describe("another person's list", () => {
-  it("an upload claiming her list as his own makes him a follower, and can't remove it", async () => {
+  it("her folder in his read makes him a follower, and his sync can't remove it", async () => {
     const she = await devLogin("km-own-she");
     const he = await devLogin("km-own-he");
     const hisId = await userIdOf(he);
     const herId = await userIdOf(she);
     await upload(she, smallRead("u1-own-she", 42001, { title: "그녀의 리스트" }), "u1-own-she");
+    // Her folder records its Kakao owner, server-side only.
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM lists WHERE id = 'l_kakao_42001' AND provider_owner_id = 'u1-own-she'",
+      ),
+    ).toBe(1);
+    const herPull = JSON.stringify(
+      await (await call("/api/sync/pull", { headers: { cookie: she } })).json(),
+    );
+    expect(herPull).toContain("l_kakao_42001");
+    expect(herPull).not.toContain("u1-own-she");
+    expect(herPull).not.toContain("providerOwnerId");
 
-    // His read names her folder 42001 as one of his own.
+    // His read has her folder 42001 (her Kakao Map account owns it) beside his own.
     const claim: Read = {
       folders: [
-        ownFolder(42001, "u2-own-he", { title: "그녀의 리스트" }),
-        ownFolder(42002, "u2-own-he", { title: "그의 리스트" }),
+        ownFolder(42001, "u1-own-she", {
+          title: "그녀의 리스트",
+          subscribe: "Y",
+          nickname: "수지",
+        }),
+        ownFolder(42002, "u2-own-he", { title: "그의 리스트", nickname: "호세" }),
       ],
       favorites: {
         42001: smallRead("x", 42001).favorites[42001] ?? [],
@@ -619,13 +635,12 @@ describe("another person's list", () => {
       },
     };
     await upload(he, claim, "u2-own-he");
-    const role = (user: string) =>
-      env.DB.prepare(
-        "SELECT role, removed_at FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42001'",
-      )
-        .bind(user)
+    const role = (user: string, list = "l_kakao_42001") =>
+      env.DB.prepare("SELECT role, removed_at FROM user_lists WHERE user_id = ? AND list_id = ?")
+        .bind(user, list)
         .first<{ role: string; removed_at: number | null }>();
     expect(await role(hisId)).toEqual({ role: "follower", removed_at: null });
+    expect(await role(hisId, "l_kakao_42002")).toEqual({ role: "owner", removed_at: null });
     expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
 
     // His next complete sync without it removes it for him only.
@@ -641,6 +656,22 @@ describe("another person's list", () => {
     ).toBe(0);
     expect((await role(hisId))?.removed_at).not.toBeNull();
     expect(await role(herId)).toEqual({ role: "owner", removed_at: null });
+  });
+
+  it("an own folder with no owner id in the read is followed", async () => {
+    const cookie = await devLogin("km-bare-own");
+    const user = await userIdOf(cookie);
+    const read: Read = {
+      folders: [ownFolder(42101, "u1-bare"), { folderid: 42102, title: "주인 없음", status: "O" }],
+      favorites: { 42101: [favorite(4210101, "94210101")], 42102: [favorite(4210201, "94210201")] },
+    };
+    await upload(cookie, read, "u1-bare");
+    const role = await env.DB.prepare(
+      "SELECT role FROM user_lists WHERE user_id = ? AND list_id = 'l_kakao_42102'",
+    )
+      .bind(user)
+      .first<{ role: string }>();
+    expect(role?.role).toBe("follower");
   });
 });
 

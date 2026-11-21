@@ -14,6 +14,11 @@ const BOOLEAN_COLUMNS: Partial<Record<SyncTable, readonly string[]>> = {
   visit_notes: ["edited_by_user"],
 };
 
+/** Columns kept on the server: never sent to clients (a list's provider owner account). */
+const SERVER_ONLY_COLUMNS: Partial<Record<SyncTable, readonly string[]>> = {
+  lists: ["provider_owner_id"],
+};
+
 const toSnake = (key: string) => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
 const toCamel = (key: string) => key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 
@@ -39,12 +44,13 @@ export function toDbRow<T extends SyncTable>(
   return out as unknown as DbRow<T>;
 }
 
-/** Database row → wire row (drops user_id and client_updated_at, keeps seq). */
+/** Database row → wire row (drops user_id, client_updated_at and server-only columns; keeps seq). */
 export function fromDbRow<T extends SyncTable>(table: T, row: DbRow<T>): RowOf<T> {
   const booleans: readonly string[] = BOOLEAN_COLUMNS[table] ?? [];
+  const serverOnly: readonly string[] = SERVER_ONLY_COLUMNS[table] ?? [];
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row as unknown as Record<string, unknown>)) {
-    if (key === "user_id" || key === "client_updated_at") continue;
+    if (key === "user_id" || key === "client_updated_at" || serverOnly.includes(key)) continue;
     out[toCamel(key)] = booleans.includes(key) ? Boolean(value) : value;
   }
   return out as unknown as RowOf<T>;

@@ -176,22 +176,47 @@ async function olderForUser(db: Db, userId: string, provider: string, snapshotAt
 }
 
 /**
- * Of these provider lists, those another user holds as owner. A list's external id is global (a
- * Kakao folder id), so a read can name someone else's list: only its first owner owns it, and
- * anyone else claiming it as their own is a follower. An owner row removed only from that
- * owner's own lists still counts; a deleted account leaves no row, so its lists can be claimed.
+ * The provider account bound to this user (for Kakao, their Kakao Map account), or null.
+ * A shared list's owner in magomap is the user bound to the account that owns it at the provider.
  */
-async function ownedByOthers(db: Db, userId: string, listIds: string[]): Promise<Set<string>> {
-  if (listIds.length === 0) return new Set();
-  const rows = await db.kysely
-    .selectFrom("user_lists")
-    .select("list_id")
-    .where("role", "=", "owner")
-    .where("user_id", "<>", userId)
-    .where("deleted_at", "is", null)
-    .where(inJson(db, "list_id", listIds))
-    .execute();
-  return new Set(rows.map((r) => r.list_id));
+async function boundProviderAccount(
+  db: Db,
+  userId: string,
+  provider: string,
+): Promise<string | null> {
+  if (provider !== "kakao") return null;
+  const row = await db.kysely
+    .selectFrom("kakao_map_accounts")
+    .select("kakao_map_user_id")
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+  return row?.kakao_map_user_id ?? null;
+}
+
+/**
+ * Who owns a list in magomap: the user bound to the provider account that owns it there.
+ * - A read that names the list's owner (an upload): owner only when that is the user's bound
+ *   account; a list the read names no owner for (a bare folder) is followed.
+ * - A read that can't name it (kakao-list): when the list has a recorded owner and the user is
+ *   bound to a different account, a follower; otherwise kakao-list's own rule.
+ * Never owner for a list the read marks followed.
+ */
+function decideRole(o: {
+  followed: boolean;
+  namesOwners: boolean;
+  readOwner: string | undefined;
+  recordedOwner: string | null;
+  bound: string | null;
+  subscriptionKnown: boolean;
+  current: string | undefined;
+}): "owner" | "follower" {
+  if (o.followed) return "follower";
+  if (o.namesOwners)
+    return o.readOwner !== undefined && o.readOwner === o.bound ? "owner" : "follower";
+  if (o.recordedOwner !== null && o.bound !== null && o.recordedOwner !== o.bound)
+    return "follower";
+  if (o.subscriptionKnown) return "owner";
+  return o.current === "owner" ? "owner" : "follower";
 }
 
 const same = (a: Row, b: Row) => Object.keys(b).every((k) => k === "seq" || a[k] === b[k]);
@@ -234,6 +259,7 @@ export async function startImportRun(
     item_count: l.itemCount,
     pages_done: 0,
     finished: 0,
+    provider_owner_id: l.providerOwnerId ?? null,
   }));
   return withWrite(
     db,
@@ -318,6 +344,9 @@ export async function importListChunk(
         description: progress.description ?? undefined,
         ownerName: progress.owner_name ?? undefined,
         followed: progress.followed === 1,
+        ...(progress.provider_owner_id == null
+          ? {}
+          : { providerOwnerId: progress.provider_owner_id }),
       };
       const decided = await decideChunk(db, userId, runId, meta, pageIndex, items, now, ctx);
       decided.statements.push(
@@ -376,7 +405,7 @@ async function decideChunk(
     validUntil,
     listSnapshots,
     older,
-    othersOwn,
+    bound,
   ] = await Promise.all([
     readByIds(db, userId, "lists", [listId]),
     readByIds(db, userId, "places", placeIds),
@@ -387,7 +416,7 @@ async function decideChunk(
     latestValidUntil(db, placeIds),
     newestListSnapshot(db, placeIds),
     olderForUser(db, userId, provider, snapshotAt),
-    ownedByOthers(db, userId, [listId]),
+    boundProviderAccount(db, userId, provider),
   ]);
 
   const writes = new Map<SyncTable, Map<string, Row>>();
@@ -412,6 +441,10 @@ async function decideChunk(
   ) {
     throw new ImportConflictError();
   }
+  const recordedOwner =
+    typeof existingList?.provider_owner_id === "string"
+      ? existingList.provider_owner_id
+      : undefined;
   // An older snapshot than the list's own never changes what's in the list (it still grants access).
   const listIsCurrent = !existingList || isNewer(snapshotAt, existingList);
   const listRow: Row = {
@@ -424,6 +457,8 @@ async function decideChunk(
     owner_name: meta.ownerName ?? null,
     removed_at_provider: null,
     provider_snapshot_at: snapshotAt,
+    // The read's owner when it names one (newest snapshot wins, like the other fields).
+    provider_owner_id: meta.providerOwnerId ?? recordedOwner ?? null,
     created_at: existingList?.created_at ?? now,
     updated_at: now,
     deleted_at: null,
@@ -445,16 +480,18 @@ async function decideChunk(
     } else if (Number(existingList.provider_snapshot_at) !== snapshotAt) touchLists.push(listId);
   }
 
-  // This user's access: owner only when the snapshot knows who follows what, and no one else
-  // owns the list already.
+  // This user's access: owner only as the user bound to the list's owner at the provider.
   const accessId = userListRowId(listId);
   const access = myLists.get(accessId);
-  const role =
-    meta.followed || othersOwn.has(listId)
-      ? "follower"
-      : run.subscription_known === 1
-        ? "owner"
-        : (access?.role ?? "follower");
+  const role = decideRole({
+    followed: meta.followed,
+    namesOwners: run.source === "kakao_map",
+    readOwner: meta.providerOwnerId,
+    recordedOwner: recordedOwner ?? null,
+    bound,
+    subscriptionKnown: run.subscription_known === 1,
+    current: typeof access?.role === "string" ? access.role : undefined,
+  });
   // Gaining the list only writes this row: the user's device then pulls everything again once.
   const gainsList = !access || access.removed_at != null || access.deleted_at != null;
   // A snapshot older than the user's newest one only grants a list they never had: it can't
@@ -821,21 +858,21 @@ export async function completeImportRun(
             "user_lists.role",
             "lists.provider_snapshot_at",
             "lists.removed_at_provider",
+            "lists.provider_owner_id",
           ])
           .where("user_lists.user_id", "=", userId)
           .where("user_lists.removed_at", "is", null)
           .where("lists.provider", "=", run.provider)
           .execute();
         const absent = mine.filter((m) => !keep.has(m.list_id));
-        // A list someone else owns is never removed for everyone by this user's snapshot.
-        const othersOwn = await ownedByOthers(
-          db,
-          userId,
-          absent.filter((m) => m.role === "owner").map((m) => m.list_id),
-        );
+        // Only the list's owner removes it for everyone: where the list has a recorded owner at
+        // the provider, the user must be bound to it.
+        const bound = absent.some((m) => m.role === "owner" && m.provider_owner_id != null)
+          ? await boundProviderAccount(db, userId, run.provider)
+          : null;
         const authoritative = (m: (typeof absent)[number]) =>
           m.role === "owner" &&
-          !othersOwn.has(m.list_id) &&
+          (m.provider_owner_id == null || m.provider_owner_id === bound) &&
           run.subscription_known === 1 &&
           (m.provider_snapshot_at == null || snapshotAt >= Number(m.provider_snapshot_at));
         // Already removed at the provider: a newer owner snapshot confirms it (a later, older

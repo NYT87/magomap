@@ -24,6 +24,11 @@ export interface ImportList {
   description?: string;
   followed: boolean;
   ownerName?: string;
+  /**
+   * The provider account that owns the list at the provider, when the read names it. Its owner in
+   * magomap is the user bound to that account. Server-side only; never synced to clients.
+   */
+  providerOwnerId?: string;
   items: ImportItem[];
 }
 
@@ -71,6 +76,7 @@ export const importListMetaSchema = z.object({
   description: text(LIMITS.importText).optional(),
   followed: z.boolean(),
   ownerName: text(LIMITS.importTitle).optional(),
+  providerOwnerId: required(200).optional(),
 });
 
 export const importItemsChunkSchema = z.array(importItemSchema).max(LIMITS.importChunkItems);

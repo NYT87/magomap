@@ -18,3 +18,11 @@ CREATE TABLE kakao_map_accounts (
   nickname TEXT,
   bound_at INTEGER NOT NULL
 );
+-- statement
+-- The provider account that owns a shared list at the provider (for Kakao, the Kakao Map account
+-- that owns the folder). The list's owner in magomap is the user bound to that account.
+-- Server-side only: never sent to clients.
+ALTER TABLE lists ADD COLUMN provider_owner_id TEXT;
+-- statement
+-- The same, for each list of a running import.
+ALTER TABLE import_run_lists ADD COLUMN provider_owner_id TEXT;

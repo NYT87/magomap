@@ -66,6 +66,7 @@ export const COLUMN_TYPES: {
     item_count: "integer",
     pages_done: "integer",
     finished: "integer",
+    provider_owner_id: "text",
   },
   import_run_pages: {
     user_id: "text",
@@ -133,6 +134,7 @@ export const COLUMN_TYPES: {
     owner_name: "text",
     removed_at_provider: "bigint",
     provider_snapshot_at: "bigint",
+    provider_owner_id: "text",
     created_at: "bigint",
     updated_at: "bigint",
     deleted_at: "bigint",

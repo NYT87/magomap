@@ -139,7 +139,7 @@ const listable = (folderid: number) =>
  * `kakao_map_user_id`. Only her own (unflagged) folders vouch for that pairing; a `map_user_id`
  * paired with two different `kakao_map_user_id`s is unclear.
  */
-function accountOf(folders: Folder[]): string {
+function accountOf(folders: Folder[]): { account: string; alias: Map<string, string> } {
   const own = folders.filter(({ raw }) => !flagged(raw.subscribe)).map(({ raw }) => raw);
   const alias = new Map<string, string>();
   for (const raw of own) {
@@ -162,17 +162,26 @@ function accountOf(folders: Folder[]): string {
   }
   const [only, ...more] = owners;
   if (!only || more.length > 0) throw new KakaoAccountUnclearError();
-  return only;
+  return { account: only, alias };
 }
 
-/** The read's lists, its account, and that it knows which lists are followed. */
+/**
+ * The read's lists, its account, that it knows which lists are followed, and each list's Kakao
+ * owner (by external id): the Kakao Map account that owns the folder in Kakao, which decides who
+ * owns the list in magomap. Kept apart from `lists`, which match kakao-list's mapping exactly.
+ */
 export function kakaoMapListsToImport(
   start: KakaoMapStart,
   kakaoLoginId: string,
-): { lists: ImportListSummary[]; account: KakaoMapAccount; subscriptionKnown: boolean } {
+): {
+  lists: ImportListSummary[];
+  account: KakaoMapAccount;
+  subscriptionKnown: boolean;
+  providerOwnerIds: Map<string, string>;
+} {
   const folders = dedupeFolders(start.folders);
   if (folders.length === 0) throw new KakaoSignedOutError();
-  const kakaoMapUserId = accountOf(folders);
+  const { account: kakaoMapUserId, alias } = accountOf(folders);
 
   // Followed exactly as kakao-list decides it: flagged, and not made by an owner of an unflagged
   // folder (a folder with no owner id, such as a bare followed one, is never her own).
@@ -185,11 +194,20 @@ export function kakaoMapListsToImport(
   const counts = new Map(start.counts.map((c) => [c.folderid, c]));
 
   const lists: ImportListSummary[] = [];
+  const providerOwnerIds = new Map<string, string>();
   let nickname: string | undefined;
   for (const { folderid, raw } of folders) {
     const followed = flagged(raw.subscribe) && !ownOwners.has(ownerOf(raw) ?? "");
     if (!followed) nickname ??= usableNickname(raw.nickname);
     if (!listable(folderid)) continue;
+    const externalId = kakaoListExternalId(folderid, kakaoLoginId);
+    // `kakao_map_user_id || map_user_id`; a bare map_user_id joins her account only on her own
+    // folders. A bare folder names no owner.
+    const owner = ownerOf(raw);
+    const ownerId =
+      owner && !followed && !trimmed(raw.kakao_map_user_id) ? (alias.get(owner) ?? owner) : owner;
+    const storedOwner = ownerId === undefined ? undefined : id(ownerId);
+    if (storedOwner) providerOwnerIds.set(externalId, storedOwner);
     const count = counts.get(folderid);
     const mapUserId = raw.map_user_id;
     const creatorName =
@@ -200,7 +218,7 @@ export function kakaoMapListsToImport(
         : undefined);
     lists.push(
       defined({
-        externalId: kakaoListExternalId(folderid, kakaoLoginId),
+        externalId,
         name: clip(raw.title, LIMITS.importTitle) ?? `Folder ${folderid}`,
         description: clip(trimmed(raw.memo) || count?.firstDisplay2, LIMITS.importText),
         followed,
@@ -214,6 +232,7 @@ export function kakaoMapListsToImport(
     lists,
     account: nickname ? { kakaoMapUserId, nickname } : { kakaoMapUserId },
     subscriptionKnown: true,
+    providerOwnerIds,
   };
 }
 

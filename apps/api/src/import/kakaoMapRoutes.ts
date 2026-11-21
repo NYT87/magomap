@@ -223,7 +223,11 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
         subscriptionKnown: read.lists.length > 0,
         // The Worker's clock, never the client's: every direct sync is a new snapshot.
         importedAt: new Date(now).toISOString(),
-        lists: read.lists,
+        // Each list's Kakao owner decides who owns it in magomap (spec: "Who owns a list").
+        lists: read.lists.map((l) => {
+          const providerOwnerId = read.providerOwnerIds.get(l.externalId);
+          return providerOwnerId === undefined ? l : { ...l, providerOwnerId };
+        }),
       },
       now,
     );

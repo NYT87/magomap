@@ -18,6 +18,7 @@ import {
   runProgress,
   startImportRun,
 } from "./importRuns";
+import { bindKakaoMapAccount } from "./kakaoMapAccounts";
 import { pull } from "./sync";
 import {
   addUser,
@@ -1056,14 +1057,17 @@ forEachDialect("import (an older run for the user)", (makeDb) => {
 
   it("a direct sync protects her roles and removals from an older kakao-list import", async () => {
     const db = await setup(makeDb);
-    // Direct Kakao Map syncs: list 1 hers, list 2 followed; then list 2 dropped at T3.
+    // Direct Kakao Map syncs, from her bound account: list 1 hers (its Kakao owner is her
+    // account), list 2 followed; then list 2 dropped at T3.
+    await bindKakaoMapAccount(db, WIFE, { kakaoMapUserId: "km-wife" }, T0);
+    const hers = { providerOwnerId: "km-wife" };
     await importSnapshot(
       db,
       WIFE,
-      [list("1", [item("10", "A")]), list("2", [item("20", "B")], { followed: true })],
+      [list("1", [item("10", "A")], hers), list("2", [item("20", "B")], { followed: true })],
       { source: "kakao_map", snapshot: T0 + 20, at: T0 + 20 },
     );
-    await importSnapshot(db, WIFE, [list("1", [item("10", "A")])], {
+    await importSnapshot(db, WIFE, [list("1", [item("10", "A")], hers)], {
       source: "kakao_map",
       snapshot: T0 + 30,
       at: T0 + 30,

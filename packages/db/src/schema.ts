@@ -73,6 +73,7 @@ export interface ImportRunListsTable {
   item_count: number;
   pages_done: number;
   finished: number;
+  provider_owner_id: string | null;
 }
 
 /** The list items one page of a running import held (`item_ids`: a JSON array of `list_items.id`). */
@@ -147,6 +148,8 @@ export interface ListsTable {
   owner_name: string | null;
   removed_at_provider: number | null;
   provider_snapshot_at: number | null;
+  /** Server-side only (see migration 0003): the provider account that owns the list. */
+  provider_owner_id: string | null;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
