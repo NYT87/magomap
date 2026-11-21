@@ -742,6 +742,16 @@ a {
   font-weight: 600;
 }
 
+/* The open place: a heavier title and an Ink bar, not colour alone. */
+.mm-place-row[aria-current="true"] {
+  border-left: 4px solid var(--color-text);
+  padding-left: var(--space-sm);
+}
+
+.mm-place-row[aria-current="true"] .mm-place-row__title {
+  font-weight: 800;
+}
+
 .mm-floating-card {
   position: absolute;
   left: var(--space-md);
