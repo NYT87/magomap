@@ -8,9 +8,9 @@ She plans trips in Kakao Map, where Skyview (satellite photos) helps her see the
 
 ## What changes
 
-- **A layers button** on the map, beside "my location", on phone and computer. It opens a small menu: **Map / Skyview / Skyview + labels** (지도 / 스카이뷰 / 스카이뷰 + 라벨).
+- **A "Map layer" setting in Account, beside the Map choice** (owner, 2026-11-21: in settings for now, not a button on the map). A select: **Map / Skyview / Skyview + labels** (지도 / 스카이뷰 / 스카이뷰 + 라벨).
 - **On Kakao Map** these are Kakao's own map types (`ROADMAP`, `SKYVIEW`, `HYBRID`).
-- **On OpenStreetMap** only "Map" is available; the other two are shown disabled with "Skyview is available on Kakao Map". In Korea, Automatic picks Kakao Map anyway.
+- **On OpenStreetMap** only "Map" is available; the other two are disabled in the select, with the hint "Skyview is available on Kakao Map" when OpenStreetMap is chosen. In Korea, Automatic picks Kakao Map anyway.
 - **Remembered per device**, like the map choice (`mm.mapLayer.<userId>`). If the map switches to OpenStreetMap, it shows the standard map; when it's back on Kakao Map, the saved layer returns.
 - **The "Map: …" label goes.** OpenStreetMap's required "© OpenStreetMap contributors" credit stays.
 - Pins, clusters and the selected pin are unchanged on every layer; they must stay readable on Skyview (photos are busy and dark).
@@ -22,5 +22,5 @@ She plans trips in Kakao Map, where Skyview (satellite photos) helps her see the
 
 ## Left to the builder
 
-- The icon and the menu's exact look (brand guidelines; 44 px targets; keyboard and screen reader: a menu button with radio items).
+- The setting's exact look: the same field markup as the Map select (brand guidelines; 44 px targets; labelled select).
 - Whether pins need a stronger outline on Skyview (judged from screenshots).
