@@ -39,7 +39,7 @@ kakao-list's extension lets her, while looking at a place on the Kakao Map site,
 
 The extension has **no magomap login of its own**. It calls magomap's API with the **magomap session already in that browser**: the extension gets a host permission for magomap's origin, so the browser sends the session cookie with its requests (Chrome treats an extension's requests to its permitted hosts as first-party). So "who the extension acts as" is always whoever is signed in to magomap in that browser, and signing out of magomap signs the extension out too. If no one is signed in, the panel says "Sign in to magomap in this browser" with a link.
 
-The Worker must accept these requests: state-changing routes that check the request's origin must also accept the extension's origin (`chrome-extension://<id>`, the released id only).
+No origin check is added: today the API relies on the `SameSite=Lax` cookie plus the required `x-magomap-user` header, which a cross-site page can't send without a preflight. The extension sends that header like the app does, after asking `/api/me` who is signed in. *(Designer's call.)*
 
 ## Account check (every write)
 
@@ -88,6 +88,15 @@ Everything Kakao-specific (place detection on the page, the folder and favourite
 - Host permissions: `https://map.kakao.com/*` (existing) and magomap's own origin. Messages from web pages are still accepted only from magomap's origins (`externally_connectable`); the new write message is subject to the same origin check and the account check.
 - No cookies or tokens are read or stored by the extension; nothing read or written is logged.
 - The Worker never trusts the client for ownership: the note route checks the list role server-side.
+
+## Settled after the builder check (designer's calls, open to correction)
+
+- **Order:** this builds after the direct-sync branch merges. It needs its extension, the Kakao Map binding and the **recorded Kakao owner id** on lists ("Who owns a list", built in that branch's Task 5).
+- **Reading one place:** a new read-only route returns one place's magomap data for the signed-in user (the place, its memberships and Kakao notes with each list's role and recorded owner, the user's visit notes and links, with the fields a push needs). The extension keeps nothing between panel openings, matching "the extension stores no session and no read".
+- **Lists with no recorded Kakao owner id** (only ever imported from kakao-list) can't have their Kakao note edited yet: the panel says "Sync from Kakao Map once to edit notes on this list". Her next sync is a direct one anyway. The panel decides "lists she owns" from the recorded owner id; the live Kakao read is used only for the account check and the write.
+- **A note changed underneath:** before writing, the extension compares Kakao's current memo with the text she started editing from. If they differ (edited in the Kakao Map app meanwhile, or magomap's copy is stale), nothing is written; she sees both and picks "Keep mine" or "Use Kakao's". From the app, the starting text is magomap's copy, so this check matters most there.
+- **"An older sync never reverts the edit":** a separate edit time is stored on the list item (server clock). An import or sync whose snapshot is older than it leaves that item's **note** alone; every other field of the item follows the existing rules.
+- **No Kakao Map tab open when the app asks for a write:** the extension opens one in the background, as `magomap.read` does, and closes it afterwards.
 
 ## Left to the builder
 
