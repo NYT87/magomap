@@ -9,7 +9,6 @@ import {
   importedSnapshot,
   importListChunk,
   latestImportRun,
-  migratedFromKakaoList,
   RunClosedError,
   RunNotFoundError,
   runProgress,
@@ -258,11 +257,6 @@ importRoutes.post("/import/runs/:runId/lists/:externalId/finish", (c) =>
 
 importRoutes.post("/import/runs/:runId/complete", (c) =>
   handled(c, () => completeImportRun(c.var.db, c.var.userId, c.req.param("runId"), Date.now())),
-);
-
-/** Whether the caller finished the complete kakao-list import that moves their local notes over. */
-importRoutes.get("/import/kakao-list/migrated", async (c) =>
-  c.json({ done: await migratedFromKakaoList(c.var.db, c.var.userId) }),
 );
 
 importRoutes.get("/import/runs/latest", async (c) =>
