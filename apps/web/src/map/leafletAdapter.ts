@@ -52,9 +52,11 @@ export function createLeafletAdapter(): MapAdapter {
           iconAnchor: m.kind === "search" ? [HIT / 2, HIT / 2] : [HIT / 2, HIT - 2],
         }),
         opacity: 1,
+        // The open place stays above every other pin, whatever their latitude.
+        ...(m.selected ? { zIndexOffset: 1000 } : {}),
       });
       marker.on("click keypress", () => select(m.id));
-      (m.kind === "search" ? loose : cluster).addLayer(marker);
+      (m.kind === "search" || m.selected ? loose : cluster).addLayer(marker);
     }
   };
 

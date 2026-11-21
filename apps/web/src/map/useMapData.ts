@@ -15,7 +15,7 @@ function swatch(lib: Library, listId: string): string {
 }
 
 /** The picker sections, visible places and markers, from the local library and the map prefs. */
-export function useMapData() {
+export function useMapData(selectedPlaceId?: string) {
   const lib = useLibrary();
   const { hidden, showPrevious } = useMapPrefs();
   const { t } = useTranslation();
@@ -48,8 +48,10 @@ export function useMapData() {
       saved: lib.saved,
       visibleListIds,
       showPrevious,
+      selectedPlaceId,
     }).map((m) => {
       // A previous location says so, and until when, so it isn't mistaken for the current one.
+      if (m.selected) return { ...m, label: t("map.selectedLabel", { title: m.label }) };
       const date = until.get(m.id);
       return m.kind === "previous" && date !== undefined
         ? { ...m, label: t("map.previousLabel", { title: m.label, date: formatDate(date) }) }
@@ -73,5 +75,5 @@ export function useMapData() {
       shownPlaces,
       withoutLocation,
     };
-  }, [lib, hidden, showPrevious, t]);
+  }, [lib, hidden, showPrevious, selectedPlaceId, t]);
 }

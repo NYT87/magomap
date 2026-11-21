@@ -96,6 +96,7 @@
     "placesTitle": "지도에 있는 장소",
     "empty": "아직 지도에 장소가 없어요. 장소를 검색하거나 계정에서 kakao-list 리스트를 가져와 보세요.",
     "previousLabel": "{{title}}, {{date}}까지 있던 이전 위치",
+    "selectedLabel": "{{title}}, 선택한 장소",
     "hasPrevious": "옮겨 간 장소예요. 열어서 이전 위치를 볼 수 있어요."
   },
   "picker": {

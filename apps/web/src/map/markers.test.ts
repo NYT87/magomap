@@ -122,3 +122,26 @@ describe("buildMarkers", () => {
     expect(color(memberships.slice(0, 1))).toBe("#2464ad");
   });
 });
+
+describe("buildMarkers: the selected place", () => {
+  it("marks the selected place's pin", () => {
+    const plain = buildMarkers({ ...base, showPrevious: false });
+    const marked = buildMarkers({ ...base, showPrevious: false, selectedPlaceId: "p1" });
+    const selected = marked.filter((m) => m.selected);
+    expect(selected).toHaveLength(1);
+    expect(selected[0]?.kind).toBe("saved");
+    expect(selected[0]?.placeId).toBe("p1");
+    expect(selected[0]?.color).toBe(plain[0]?.color);
+  });
+
+  it("never marks previous locations or hidden places", () => {
+    const withPrev = buildMarkers({ ...base, selectedPlaceId: "p1" });
+    expect(withPrev.filter((m) => m.kind === "previous").every((m) => !m.selected)).toBe(true);
+    const hidden = buildMarkers({ ...base, visibleListIds: new Set(), selectedPlaceId: "p1" });
+    expect(hidden.some((m) => m.selected)).toBe(false);
+  });
+
+  it("has no selection without an id", () => {
+    expect(buildMarkers(base).some((m) => m.selected)).toBe(false);
+  });
+});

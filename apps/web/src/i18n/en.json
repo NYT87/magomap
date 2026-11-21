@@ -96,6 +96,7 @@
     "placesTitle": "Places on the map",
     "empty": "No places on the map yet. Search for one, or import your lists from kakao-list in Account.",
     "previousLabel": "{{title}}, previous location until {{date}}",
+    "selectedLabel": "{{title}}, selected",
     "hasPrevious": "Moved. Open it to see where it was."
   },
   "picker": {

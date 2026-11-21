@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
+import { redrawKeepingFocus } from "./keepFocus";
 import { preloadLeaflet } from "./leafletAdapter";
 import { createAdapter, loadKakaoSdk } from "./loadMapAdapter";
 import { DEFAULT_VIEW, type MapAdapter } from "./MapAdapter";
@@ -111,7 +112,8 @@ export function MapView({ data }: { data: Data | null }) {
 
   useEffect(() => {
     if (!adapter || !data) return;
-    adapter.setMarkers([...data.markers, ...stage.searchMarkers]);
+    const markers = [...data.markers, ...stage.searchMarkers];
+    redrawKeepingFocus(el.current, () => adapter.setMarkers(markers));
     const saved = data.markers.filter((m) => m.kind === "saved");
     if (!fitted.current && saved.length > 0) {
       fitted.current = true;

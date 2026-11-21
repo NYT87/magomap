@@ -10,13 +10,18 @@ export interface MapMarker {
   label: string;
   kind: "saved" | "search" | "previous";
   placeId?: string;
+  /** The saved place whose details are open; only ever true on a "saved" marker. */
+  selected?: boolean;
 }
 
 /** What the app needs from a map; Kakao Maps and Leaflet both implement it. */
 export interface MapAdapter {
   readonly provider: "kakao" | "leaflet";
   mount(el: HTMLElement, view: { center: LatLng; zoom: number }): void;
-  /** Saved and previous markers cluster; previous ones are faded and smaller. */
+  /**
+   * Saved and previous markers cluster; previous ones are faded and smaller. A selected marker
+   * never clusters and is drawn above all others.
+   */
   setMarkers(markers: MapMarker[]): void;
   fitTo(points: LatLng[]): void;
   panTo(point: LatLng): void;
