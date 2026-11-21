@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.3](https://github.com/NYT87/magomap/compare/magomap-v0.1.2...magomap-v0.1.3) (2026-11-21)
+
+
+### Features
+
+* **api:** import uploads read from Kakao Map ([c6caae2](https://github.com/NYT87/magomap/commit/c6caae24e974b85c8a158174309d13b6b10cab02))
+* **domain:** map raw Kakao Map records like kakao-list does ([e033dd0](https://github.com/NYT87/magomap/commit/e033dd0a687708749424cd88db824e672b3dc30e))
+* **web:** a selected place's pin — bigger, ringed, in its list colour ([0900a08](https://github.com/NYT87/magomap/commit/0900a084381ec2a3187b1098a32c5fb5a4f3ecbd))
+* **web:** sync from Kakao Map in Account ([d6ed73f](https://github.com/NYT87/magomap/commit/d6ed73f9c1daa223b7925e40c0bbab36952a4020))
+* **web:** the selected pin is never clustered and sits on top ([f672d2b](https://github.com/NYT87/magomap/commit/f672d2b05cfdf1c12197f079bd7858d525c04191))
+
+
+### Bug Fixes
+
+* a bare followed folder only grants access ([b47d306](https://github.com/NYT87/magomap/commit/b47d306acd74b79c3277911480a42446f67440b6))
+* a list's owner is the Kakao Map account that owns it ([b806a87](https://github.com/NYT87/magomap/commit/b806a8769407d2c843c0d7184aafd670a9d73982))
+* a list's recorded Kakao owner never changes ([9d1d3ac](https://github.com/NYT87/magomap/commit/9d1d3ace1856177b822d947cda35a9a7d71e937d))
+* a read can't record an owner over someone who already owns the list ([fcee0f3](https://github.com/NYT87/magomap/commit/fcee0f34b5b069a60a98f6e316cd766068c6993b))
+* an upload can't take over another person's list or empty her lists ([a85c66d](https://github.com/NYT87/magomap/commit/a85c66d2137bd4e74530020e3269a37ece596b2c))
+* **domain:** test every parity rule; own-account alias only from her own folders ([93549aa](https://github.com/NYT87/magomap/commit/93549aadf799f2b32225800f4ee36814e99fa96f))
+* no removal for everyone over another live owner ([8f99909](https://github.com/NYT87/magomap/commit/8f99909f12c65f10b3f87300b9670efac7c42314))
+* only an honest read records a list's Kakao owner ([b283fd1](https://github.com/NYT87/magomap/commit/b283fd15c270afba50b7d0585185a86086c7bf8e))
+* **web:** clearer Kakao Map sync — fallback, account prompts, next steps ([1c2b123](https://github.com/NYT87/magomap/commit/1c2b123fa0026e7243071498973983e0d65f7672))
+* **web:** keep keyboard focus on the selected pin; survive a malformed place URL ([6e1bdae](https://github.com/NYT87/magomap/commit/6e1bdae0059a707b3248755275d5fcec977a5bc9))
+* **web:** say exactly what switching Kakao Map accounts keeps ([fc10881](https://github.com/NYT87/magomap/commit/fc1088106a5e601d0f95d22a9892fd4c2d8a502c))
+
 ## [0.1.2](https://github.com/NYT87/magomap/compare/magomap-v0.1.1...magomap-v0.1.2) (2026-11-20)
 
 
