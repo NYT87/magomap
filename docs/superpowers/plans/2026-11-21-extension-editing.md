@@ -19,7 +19,7 @@
 
 - **Kakao note writes:** only by the list's Kakao owner (bound Kakao Map account = the list's recorded Kakao owner id); Kakao Map first, verified, then magomap; nothing in magomap changes if Kakao refuses.
 - **A note changed underneath** (Kakao's current memo ≠ the text she started from) → nothing written; she picks "Keep mine" or "Use Kakao's".
-- **Grouped edit:** editing one note card updates every list she owns that the card covers; followed lists unchanged; partial failures name the lists not updated.
+- **One note per list, everywhere:** a Kakao note belongs to one list. The panel and the app (computer and phone) show one note per list the place is in, each labelled with its list's name, never grouped. On lists she owns, where editing is possible, it's an input; saving writes only that list's favourite (Kakao Map, then magomap). Followed lists, and the phone, show it read-only with the reason.
 - **Lists with no recorded Kakao owner id** → the note isn't editable: "Sync from Kakao Map once to edit notes on this list".
 - **Older imports never revert an edited note:** a server-clock edit time on the list item; an import whose snapshot is older leaves that item's note alone.
 - **Who is signed in:** the extension has no magomap login of its own; it calls magomap with the browser's magomap session (host permission for magomap's origin) and the `x-magomap-user` header from `/api/me`. Signed out → "Sign in to magomap in this browser".
@@ -35,7 +35,7 @@
 
 1. **Two browsers' sessions disagree:** magomap signed in as him, Kakao Map as her → the panel shows both names, every write is blocked, reading works. (Tasks 3, 4.)
 2. **She edited the note in the Kakao Map app since the last sync, then edits from the magomap app (stale copy)** → no silent overwrite; "Keep mine / Use Kakao's". (Tasks 2, 5.)
-3. **A grouped note covering an owned and a followed list** → only the owned list's favourite is written; the followed one is untouched. (Tasks 1, 5.)
+3. **The same place in an owned and a followed list** → two labelled notes; only the owned list's is an input, and saving it writes only that list's favourite. (Tasks 4, 5.)
 4. **A kakao-list import older than her edit, run after it** → the note stays as she edited it. (Task 1.)
 5. **Kakao Map page markup changes so the open place can't be detected** → the panel says it can't tell which place is open, never shows another place's data. (Task 3.)
 
@@ -61,17 +61,17 @@
 **Interfaces:**
 - Produces:
   - `GET /api/places/:placeId` (requireUser) → `200 { place, memberships: { listId, listName, itemId, providerNote, role, kakaoOwner: "me" | "other" | "unknown", folderId, seq }[], notes, links }` (the user's visit notes and links as full rows, as pull returns them) or `404`.
-  - `POST /api/kakao-notes` (requireUser, allowlist as uploads) with `{ items: { listId: string; itemId: string }[] (1..20), memo: string (≤ LIMITS.importText) }` → `200 { updated: string[] }`; `403 not_allowed`; `409 kakao_account_unconfirmed` (no binding); `403 not_owner` for any item whose list's recorded Kakao owner id isn't the caller's bound account (nothing written); `409 owner_unknown` when the list has no recorded owner id.
-  - `recordKakaoNoteEdit(db, userId, items, memo, now)`: writes `provider_note`, `note_edited_at = now`, seq (one guarded write).
+  - `POST /api/kakao-notes` (requireUser, allowlist as uploads) with `{ listId: string; itemId: string; memo: string (≤ LIMITS.importText) }` (one list item) → `200 { updated: true }`; `403 not_allowed`; `409 kakao_account_unconfirmed` (no binding); `403 not_owner` for any item whose list's recorded Kakao owner id isn't the caller's bound account (nothing written); `409 owner_unknown` when the list has no recorded owner id.
+  - `recordKakaoNoteEdit(db, userId, item, memo, now)`: writes that item's `provider_note`, `note_edited_at = now`, seq (one guarded write).
   - Import rule: when a list item's `note_edited_at` is newer than the run's `snapshot_at`, the import keeps that item's `provider_note`; all other fields follow existing rules.
 
 - [ ] **Step 1: Write the failing tests** (db tests on both dialects):
   - `an owner's note edit is shared with followers`: she owns L; edit → pull for a follower includes the new `providerNote`.
   - `an older import keeps the edited note`: edit at T5; a kakao-list import with snapshot T3 → note unchanged; an import at T7 → Kakao's value wins.
   - `only the Kakao owner may edit`: a follower → 403 `not_owner`, nothing written; a list without a recorded owner id → 409 `owner_unknown`; no binding → 409 `kakao_account_unconfirmed`.
-  - `one request, several owned lists`: two items in two of her lists → both updated; one owned + one followed → 403 and neither written.
+  - `one list at a time`: the same place in two of her lists; editing list A's item leaves list B's note unchanged; a followed list's item → 403, nothing written.
   - `the place read`: returns her memberships with `kakaoOwner` (`me` for hers, `other` for a followed list, `unknown` for no recorded id), her own notes and links only (never another user's), 404 for a place she can't see.
-  - Write budget: one edit of two items writes at most 2 list-item rows + the write claim (countWrites).
+  - Write budget: one edit writes at most 1 list-item row + the write claim (countWrites).
 - [ ] **Step 2: Run** the focused tests (`npx vitest run …`) — Expected: FAIL.
 - [ ] **Step 3: Implement** as specified.
 - [ ] **Step 4: Run** db + api tests on both dialects and the gate — Expected: PASS.
@@ -96,7 +96,7 @@
   }
   ```
   - `writeNote` reads the favourite fresh (all pages of its folder); if its `memo` ≠ `expectedMemo` → `changed` (nothing written); otherwise `POST /favorite/update` with `{ datas: [{ seq, display1, display2, color, memo }] }` (all but `memo` from the fresh read), then re-reads up to 4 times (350 ms apart) until `memo` matches → else `unverified`. Each function injected into the page runs self-contained (`world: "MAIN"`), like `readInPage`.
-  - Message from magomap pages: `{ type: "magomap.writeKakaoNote", items: { folderId: number; seq: string }[], memo: string, expectedMemo: string, expectedAccount: string }` → `{ ok: true, written: string[] } | { ok: false, error, written: string[] }`; it first checks `readAccount` equals `expectedAccount` (`account_mismatch` otherwise); opens a background Kakao Map tab if none (as `magomap.read`), closes it after.
+  - Message from magomap pages: `{ type: "magomap.writeKakaoNote", folderId: number, seq: string, memo: string, expectedMemo: string, expectedAccount: string }` (one favourite) → `{ ok: true } | { ok: false, error }`; it first checks `readAccount` equals `expectedAccount` (`account_mismatch` otherwise); opens a background Kakao Map tab if none (as `magomap.read`), closes it after.
 
 - [ ] **Step 1: Write the failing tests** (mocked fetch/window, as `readInPage.test.ts`):
   - `writes the note and verifies it` (update body exact; verify loop);
@@ -104,7 +104,7 @@
   - `signed out / favourite gone / refused / never verified` → each error, no false success;
   - `keeps display1, display2 and color from the fresh read`;
   - `detects the open place from the place card link`, and `returns null when nothing is detectable` (never a guess);
-  - `the write message checks the account first` (`account_mismatch`, nothing written), `writes several items and reports which were written when one fails`;
+  - `the write message checks the account first` (`account_mismatch`, nothing written);
   - the bundled self-contained check for every injected function (as the existing dist test).
 - [ ] **Step 2: Run** `pnpm --filter @magomap/extension test` — Expected: FAIL.
 - [ ] **Step 3: Implement** as specified; port `updateKakaoFavoriteNoteInPageEnvelope` and the place detection from kakao-list (note the origin and commit in the file header).
@@ -119,7 +119,7 @@
 
 **Interfaces:**
 - Consumes: Task 1 `GET /api/places/:placeId`, `/api/me`; Task 2 `detectOpenPlace`, `readAccount`.
-- Produces: the panel shows, for the open place: header `magomap: <name> · Kakao Map: <nickname> (••••<last 4>) ✓/✗`, title, its lists, the Kakao note grouped as the app groups it (`groupKakaoNotes` logic, copied with a header if it can't be imported), visit notes, links. States: signed out of magomap, signed out of Kakao Map, account mismatch, no place detectable, place not in magomap, loading, offline.
+- Produces: the panel shows, for the open place: header `magomap: <name> · Kakao Map: <nickname> (••••<last 4>) ✓/✗`, title, its lists, one Kakao note per list the place is in, each labelled with the list's name (not grouped), visit notes, links. States: signed out of magomap, signed out of Kakao Map, account mismatch, no place detectable, place not in magomap, loading, offline.
 
 - [ ] **Step 1: Write the failing tests** (Testing Library, with stubbed `chrome` and fetch): one per state above; `follows the open place` (a place-change event re-reads); `never shows a previous place's data while the next loads`; `the header shows both accounts and ✗ when they differ`.
 - [ ] **Step 2: Run** the tests — Expected: FAIL.
@@ -135,10 +135,10 @@
 **Interfaces:**
 - Consumes: Task 1 `POST /api/kakao-notes`, `/api/sync/push`; Task 2 `writeNote`.
 - Produces:
-  - **Kakao note card edit** (Edit shown when the card covers at least one list with `kakaoOwner: "me"`; only those lists are written; a card with none is read-only with the spec's line): Save → account check → `writeNote` for each owned favourite the card covers → `POST /api/kakao-notes` with those written → states: saved; `changed` → "Kakao Map has a different note now" with Keep mine / Use Kakao's; partial → which lists didn't update; Kakao ok but magomap failed → "Saved in Kakao Map; it will reach magomap with the next sync".
+  - **Kakao note per list:** each list with `kakaoOwner: "me"` has its own labelled input; others are read-only with the spec's line. Save → account check → `writeNote` for that list's favourite → `POST /api/kakao-notes` for that item → states: saved; `changed` → "Kakao Map has a different note now" with Keep mine / Use Kakao's; Kakao ok but magomap failed → "Saved in Kakao Map; it will reach magomap with the next sync".
   - **Visit notes and links:** add/edit/delete through `/api/sync/push` with the app's mutation format (`packages/domain/src/sync.ts`); failure keeps the edit with "Couldn't save — try again"; nothing queued.
 
-- [ ] **Step 1: Write the failing tests:** each save outcome above; `Keep mine` rewrites with the new expected memo, `Use Kakao's` shows Kakao's text and writes nothing; `a card with an owned and a followed list writes only the owned one`; `writes are disabled on account mismatch`; visit note add/edit/delete and link add/delete push the right mutations; a failed push keeps the text.
+- [ ] **Step 1: Write the failing tests:** each save outcome above; `Keep mine` rewrites with the new expected memo, `Use Kakao's` shows Kakao's text and writes nothing; `the same place in two of her lists: saving list A's note writes only list A's favourite`; `writes are disabled on account mismatch`; visit note add/edit/delete and link add/delete push the right mutations; a failed push keeps the text.
 - [ ] **Step 2: Run** — Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** tests, builds and the gate; screenshots of the edit states.
@@ -151,9 +151,9 @@
 
 **Interfaces:**
 - Consumes: Task 1 routes and `kakaoOwner`; Task 2 `magomap.writeKakaoNote`.
-- Produces: on a computer with the extension, a note card covering lists she owns (`kakaoOwner: "me"`) has Edit; Save sends `magomap.writeKakaoNote` (expectedMemo = the card's text, expectedAccount = her bound account), then `POST /api/kakao-notes` for the written items, then syncs. Same outcome states and wording as Task 4. Without the extension: read-only with "Edit it on your computer with the magomap extension"; followed lists: "Only the list's owner can change this note"; no recorded owner: "Sync from Kakao Map once to edit notes on this list".
+- Produces: the place screen shows the Kakao note **per list** (each labelled with its list's name, never grouped), on phone and computer, replacing the grouped cards (`groupKakaoNotes`). On a computer with the extension, each list she owns (`kakaoOwner: "me"`) has its own Edit; Save sends `magomap.writeKakaoNote` for that list's favourite (expectedMemo = that list's note, expectedAccount = her bound account), then `POST /api/kakao-notes` for that item, then syncs. Same outcome states and wording as Task 4. Without the extension: read-only with "Edit it on your computer with the magomap extension"; followed lists: "Only the list's owner can change this note"; no recorded owner: "Sync from Kakao Map once to edit notes on this list".
 
-- [ ] **Step 1: Write the failing tests:** Edit shown only with the extension and an owned list; each outcome state; `changed` → Keep mine / Use Kakao's; the phone/no-extension line; e2e: open a place, edit its Kakao note with the extension stubbed, the card shows the new text after sync.
+- [ ] **Step 1: Write the failing tests:** one labelled note per list, on phone and desktop (an existing grouping test is replaced, with the reason in the commit); Edit shown only with the extension and on owned lists; saving list A leaves list B unchanged; each outcome state; `changed` → Keep mine / Use Kakao's; the phone/no-extension line; e2e: open a place, edit its Kakao note with the extension stubbed, the card shows the new text after sync.
 - [ ] **Step 2: Run** — Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** web tests, the e2e spec (`E2E_PORT`/`E2E_FAKE_PORT` if needed) and the gate; screenshots phone (read-only line) and desktop (edit), light and dark, ko and en.
