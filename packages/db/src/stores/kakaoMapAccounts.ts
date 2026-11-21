@@ -1,4 +1,5 @@
 import type { Db } from "../core";
+import { AccountGoneError } from "./sync";
 
 /** The Kakao Map account is already bound to a different magomap user. */
 export class KakaoMapAccountTakenError extends Error {
@@ -66,14 +67,22 @@ export async function bindKakaoMapAccount(
 ): Promise<void> {
   const nickname = account.nickname ?? null;
   try {
-    await db.kysely
+    // Inserting from `users` binds nothing for a user deleted meanwhile, so no orphan row can
+    // hold the Kakao Map account.
+    const result = await db.kysely
       .insertInto("kakao_map_accounts")
-      .values({
-        user_id: userId,
-        kakao_map_user_id: account.kakaoMapUserId,
-        nickname,
-        bound_at: now,
-      })
+      .columns(["user_id", "kakao_map_user_id", "nickname", "bound_at"])
+      .expression((eb) =>
+        eb
+          .selectFrom("users")
+          .select([
+            eb.val(userId).as("user_id"),
+            eb.val(account.kakaoMapUserId).as("kakao_map_user_id"),
+            eb.val(nickname).as("nickname"),
+            eb.val(now).as("bound_at"),
+          ])
+          .where("id", "=", userId),
+      )
       .onConflict((oc) =>
         oc.column("user_id").doUpdateSet({
           kakao_map_user_id: account.kakaoMapUserId,
@@ -81,7 +90,8 @@ export async function bindKakaoMapAccount(
           bound_at: now,
         }),
       )
-      .execute();
+      .executeTakeFirst();
+    if (Number(result.numInsertedOrUpdatedRows ?? 0) === 0) throw new AccountGoneError();
   } catch (error) {
     if (isAccountTaken(error)) throw new KakaoMapAccountTakenError();
     throw error;

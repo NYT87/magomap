@@ -5,6 +5,7 @@ import {
   boundKakaoMapAccount,
   KakaoMapAccountTakenError,
 } from "./kakaoMapAccounts";
+import { AccountGoneError } from "./sync";
 import { createSession, deleteAccount, findOrCreateUserByIdentity } from "./users";
 
 const now = 1_763_000_000_000;
@@ -64,16 +65,33 @@ forEachDialect("kakao map accounts", (makeDb) => {
   });
 });
 
+forEachDialect("kakao map accounts (deleted user)", (makeDb) => {
+  it("binding for a deleted user writes nothing and frees the account for its owner", async () => {
+    const db = await makeDb();
+    const a = await user(db, "a");
+    const b = await user(db, "b");
+    await deleteAccount(db, a);
+    await expect(bindKakaoMapAccount(db, a, { kakaoMapUserId: "km1" }, now)).rejects.toBeInstanceOf(
+      AccountGoneError,
+    );
+    expect(await boundKakaoMapAccount(db, a)).toBeNull();
+    await bindKakaoMapAccount(db, b, { kakaoMapUserId: "km1" }, now);
+    expect(await boundKakaoMapAccount(db, b)).toEqual({ kakaoMapUserId: "km1", nickname: null });
+  });
+});
+
 it("recognises D1's wording of the unique violation", async () => {
   const d1Error = new Error(
     "D1_ERROR: UNIQUE constraint failed: kakao_map_accounts.kakao_map_user_id: SQLITE_CONSTRAINT",
   );
+  const insert = {
+    columns: () => insert,
+    expression: () => insert,
+    onConflict: () => insert,
+    executeTakeFirst: () => Promise.reject(d1Error),
+  };
   const db = {
-    kysely: {
-      insertInto: () => ({
-        values: () => ({ onConflict: () => ({ execute: () => Promise.reject(d1Error) }) }),
-      }),
-    },
+    kysely: { insertInto: () => insert },
   } as unknown as Parameters<typeof bindKakaoMapAccount>[0];
   await expect(bindKakaoMapAccount(db, "u", { kakaoMapUserId: "km" }, now)).rejects.toBeInstanceOf(
     KakaoMapAccountTakenError,

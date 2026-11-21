@@ -46,7 +46,7 @@ export interface ImportRunsTable {
   source: Generated<string>;
 }
 
-/** A user's newest complete import snapshot per provider; older imports don't change their access. */
+/** The one Kakao Map account a user is bound to; an account belongs to at most one user. */
 export interface KakaoMapAccountsTable {
   user_id: string;
   kakao_map_user_id: string;
@@ -54,6 +54,7 @@ export interface KakaoMapAccountsTable {
   bound_at: number;
 }
 
+/** A user's newest complete import snapshot per provider; older imports don't change their access. */
 export interface UserProviderSnapshotsTable {
   user_id: string;
   provider: string;
