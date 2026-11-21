@@ -128,9 +128,17 @@ function isAliasTaken(error: unknown): boolean {
  * `kakao_map_user_id` refuses an account another user holds. Like the other account rows in
  * users.ts it is not sync data, so it skips the global write counter.
  * `alias` (the account's map_user_id, when its folders carry both ids) is kept only when no other
- * account uses it as its id or alias: an id belongs to at most one account, so matching an owner
- * id by alias can't reach someone else's lists. In doubt it is left out.
+ * account uses it as its id or alias, and it isn't recorded as the owner of a list another user
+ * owns: an id belongs to at most one account, and a read's claimed id can't reach someone else's
+ * lists. In doubt it is left out. An account id recorded on a list another user owns is refused.
  */
+/**
+ * An id is recorded as the Kakao owner of a list another live user holds as owner. Such an id
+ * can't become this user's account or alias: through it they would match (and own) that list.
+ */
+const ownsOthersList = (userId: string, id: string) =>
+  sql<boolean>`EXISTS (SELECT 1 FROM lists l INNER JOIN user_lists ul ON ul.list_id = l.id WHERE l.provider_owner_id = ${id} AND ul.role = 'owner' AND ul.user_id <> ${userId} AND ul.deleted_at IS NULL)`;
+
 export async function bindKakaoMapAccount(
   db: Db,
   userId: string,
@@ -139,11 +147,12 @@ export async function bindKakaoMapAccount(
 ): Promise<void> {
   const nickname = account.nickname ?? null;
   const wanted = account.alias !== undefined && account.alias !== account.kakaoMapUserId;
-  // NULL when another account already uses the alias, decided in the same statement.
+  // NULL when another account already uses the alias, or it names the owner of a list another
+  // user owns, decided in the same statement.
   const alias = wanted
     ? sql<
         string | null
-      >`CASE WHEN EXISTS (SELECT 1 FROM kakao_map_accounts WHERE user_id <> ${userId} AND (kakao_map_user_id = ${account.alias} OR kakao_map_alias = ${account.alias})) THEN NULL ELSE ${account.alias} END`
+      >`CASE WHEN EXISTS (SELECT 1 FROM kakao_map_accounts WHERE user_id <> ${userId} AND (kakao_map_user_id = ${account.alias} OR kakao_map_alias = ${account.alias})) OR ${ownsOthersList(userId, account.alias ?? "")} THEN NULL ELSE ${account.alias} END`
     : sql<string | null>`NULL`;
   try {
     // Inserting from `users` binds nothing for a user deleted meanwhile, so no orphan row can
@@ -161,7 +170,9 @@ export async function bindKakaoMapAccount(
             eb.val(nickname).as("nickname"),
             eb.val(now).as("bound_at"),
           ])
-          .where("id", "=", userId),
+          .where("id", "=", userId)
+          // An account id recorded as the owner of a list someone else owns is refused (taken).
+          .where(sql<boolean>`NOT ${ownsOthersList(userId, account.kakaoMapUserId)}`),
       )
       .onConflict((oc) =>
         oc.column("user_id").doUpdateSet({
@@ -172,7 +183,14 @@ export async function bindKakaoMapAccount(
         }),
       )
       .executeTakeFirst();
-    if (Number(result.numInsertedOrUpdatedRows ?? 0) === 0) throw new AccountGoneError();
+    if (Number(result.numInsertedOrUpdatedRows ?? 0) === 0) {
+      const exists = await db.kysely
+        .selectFrom("users")
+        .select("id")
+        .where("id", "=", userId)
+        .executeTakeFirst();
+      throw exists ? new KakaoMapAccountTakenError() : new AccountGoneError();
+    }
   } catch (error) {
     if (isAccountTaken(error)) throw new KakaoMapAccountTakenError();
     // Another account took the alias meanwhile: bind without it.
@@ -185,7 +203,8 @@ export async function bindKakaoMapAccount(
 
 /**
  * Fills in the bound account's alias when it has none yet (a later read showed it), under the
- * same rule as binding: never an id another account uses. Changes nothing otherwise.
+ * same rule as binding: never an id another account uses, nor one recorded as the owner of a
+ * list another user owns. Changes nothing otherwise.
  */
 export async function fillKakaoMapAlias(db: Db, userId: string, alias: string): Promise<void> {
   try {
@@ -198,6 +217,7 @@ export async function fillKakaoMapAlias(db: Db, userId: string, alias: string): 
       .where(
         sql<boolean>`NOT EXISTS (SELECT 1 FROM kakao_map_accounts other WHERE other.user_id <> ${userId} AND (other.kakao_map_user_id = ${alias} OR other.kakao_map_alias = ${alias}))`,
       )
+      .where(sql<boolean>`NOT ${ownsOthersList(userId, alias)}`)
       .execute();
   } catch (error) {
     if (!isAliasTaken(error)) throw error;

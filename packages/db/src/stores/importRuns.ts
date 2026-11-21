@@ -237,22 +237,30 @@ function decideRole(o: {
   return o.current === "owner" ? "owner" : "follower";
 }
 
-/** Whether another user (not `userId`) holds the list as owner, removed from their lists or not. */
-async function ownedByAnother(db: Db, userId: string, listId: string): Promise<boolean> {
+/**
+ * The guard on recording a list's owner id: no other live user holds the list as `owner` unless
+ * that owner's binding goes by `ownerId` (its id or alias). A read can't record an owner over
+ * someone who already owns the list; with no other owner, any read may record it. (For a
+ * self-claim, `ownerId` is the uploader's own account, which no one else's binding goes by.)
+ */
+const noOtherOwner = (userId: string, listId: string, ownerId: string) =>
+  sql<boolean>`NOT EXISTS (SELECT 1 FROM user_lists ul WHERE ul.list_id = ${listId} AND ul.role = 'owner' AND ul.user_id <> ${userId} AND ul.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM kakao_map_accounts k WHERE k.user_id = ul.user_id AND (k.kakao_map_user_id = ${ownerId} OR k.kakao_map_alias = ${ownerId})))`;
+
+/** Whether `noOtherOwner` would refuse recording `ownerId` on the list (one read). */
+async function ownedByAnother(
+  db: Db,
+  userId: string,
+  listId: string,
+  ownerId: string,
+): Promise<boolean> {
   const row = await db.kysely
-    .selectFrom("user_lists")
+    .selectFrom("lists")
     .select("id")
-    .where("list_id", "=", listId)
-    .where("role", "=", "owner")
-    .where("user_id", "<>", userId)
-    .where("deleted_at", "is", null)
+    .where("id", "=", listId)
+    .where(sql<boolean>`NOT ${noOtherOwner(userId, listId, ownerId)}`)
     .executeTakeFirst();
   return row !== undefined;
 }
-
-/** The SQL form of `ownedByAnother`, so a self-claim's write checks it again atomically. */
-const noOtherOwner = (userId: string, listId: string) =>
-  sql<boolean>`NOT EXISTS (SELECT 1 FROM user_lists WHERE list_id = ${listId} AND role = 'owner' AND user_id <> ${userId} AND deleted_at IS NULL)`;
 
 const same = (a: Row, b: Row) => Object.keys(b).every((k) => k === "seq" || a[k] === b[k]);
 
@@ -481,13 +489,17 @@ async function decideChunk(
       ? existingList.provider_owner_id
       : undefined;
   // The list's owner at the provider is recorded once, from the first read that names it, and
-  // never changes (a provider never changes a list's owner). A read naming the uploader's own
-  // account as the owner (a self-claim, which a forged read could make) records it only while no
-  // other user holds the list as owner; a read naming another account (a follower's) records it.
+  // never changes (a provider never changes a list's owner). While another user holds the list as
+  // owner, a read records only an id that owner's binding goes by: a self-claim (which a forged
+  // read could make) or an id no binding matches records nothing. A list nobody owns yet records
+  // the id from any read.
   const readOwner = run.source === "kakao_map" ? meta.providerOwnerId : undefined;
   const selfClaim = recordedOwner === undefined && isBound(readOwner, bound);
   const anotherOwns =
-    selfClaim && existingList !== undefined && (await ownedByAnother(db, userId, listId));
+    recordedOwner === undefined &&
+    readOwner !== undefined &&
+    existingList !== undefined &&
+    (await ownedByAnother(db, userId, listId, readOwner));
   const recordsOwner = recordedOwner === undefined && readOwner !== undefined && !anotherOwns;
   // An older snapshot than the list's own never changes what's in the list (it still grants access).
   const listIsCurrent = !existingList || isNewer(snapshotAt, existingList);
@@ -780,7 +792,7 @@ async function decideChunk(
             .set({ provider_owner_id: readOwner })
             .where("id", "=", listId)
             .where("provider_owner_id", "is", null)
-            .where(selfClaim ? noOtherOwner(userId, listId) : sql<boolean>`true`)
+            .where(noOtherOwner(userId, listId, readOwner))
             .where(ctx.guard),
         ]
       : []),

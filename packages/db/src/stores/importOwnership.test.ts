@@ -3,7 +3,11 @@ import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { countWrites } from "../testing/countWrites";
 import { forEachDialect } from "../testing/dbs";
-import { bindKakaoMapAccount } from "./kakaoMapAccounts";
+import {
+  bindKakaoMapAccount,
+  boundKakaoMapAccount,
+  KakaoMapAccountTakenError,
+} from "./kakaoMapAccounts";
 import { pull } from "./sync";
 import { addUser, importSnapshot, T0 } from "./testkit";
 import { deleteAccount } from "./users";
@@ -365,6 +369,72 @@ forEachDialect("a list's owner is the Kakao Map account that owns it", (makeDb) 
     expect((await shared(db)).provider_owner_id).toBeNull();
     expect((await shared(db, "l_kakao_600")).provider_owner_id).toBeNull();
     expect((await shared(db, "l_kakao_700")).provider_owner_id).toBe("km-b");
+  });
+
+  it("a read naming an id her binding doesn't go by records nothing on her list", async () => {
+    const db = await setup(makeDb);
+    await kakaoList(db, A, [list("500", "A의 리스트")], T0 + 1000);
+    // B marks her unrecorded list followed and names a junk owner id.
+    await upload(
+      db,
+      B,
+      [list("500", "A의 리스트", { followed: true, providerOwnerId: "k-junk" })],
+      T0 + 2000,
+    );
+    expect((await shared(db)).provider_owner_id).toBeNull();
+    expect(await access(db, A)).toMatchObject({ role: "owner", removed_at: null });
+    await upload(db, A, [owned("A의 리스트")], T0 + 3000);
+    expect(await access(db, A)).toMatchObject({ role: "owner" });
+    expect((await shared(db)).provider_owner_id).toBe("km-a");
+  });
+
+  it("his read with her kakao_map_user_id doesn't record over her map_user_id binding", async () => {
+    const db = await makeDb();
+    await addUser(db, A);
+    await addUser(db, B);
+    // She's bound by her map_user_id only; she owns the list through kakao-list.
+    await bindKakaoMapAccount(db, A, { kakaoMapUserId: "m-a" }, T0);
+    await bindKakaoMapAccount(db, B, { kakaoMapUserId: "km-b" }, T0);
+    await kakaoList(db, A, [list("500", "A의 리스트")], T0 + 1000);
+    // His honest read of her folder carries her kakao_map_user_id, which no binding goes by.
+    await upload(
+      db,
+      B,
+      [list("500", "A의 리스트", { followed: true, providerOwnerId: "k-a" })],
+      T0 + 2000,
+    );
+    expect((await shared(db)).provider_owner_id).toBeNull();
+    await upload(db, A, [list("500", "A의 리스트", { providerOwnerId: "m-a" })], T0 + 3000);
+    expect((await shared(db)).provider_owner_id).toBe("m-a");
+    expect(await access(db, A)).toMatchObject({ role: "owner", removed_at: null });
+  });
+
+  it("a forged alias equal to an owner id on someone else's list isn't kept", async () => {
+    const db = await setup(makeDb);
+    const C = "unbound-c";
+    await addUser(db, C);
+    // A follower's read records "m-x" while nobody owns the list; then C owns it via kakao-list.
+    await upload(
+      db,
+      B,
+      [list("500", "C의 리스트", { followed: true, providerOwnerId: "m-x" })],
+      T0 + 1000,
+    );
+    await kakaoList(db, C, [list("500", "C의 리스트")], T0 + 2000);
+    expect(await access(db, C)).toMatchObject({ role: "owner" });
+    // B's forged read pairs his account with "m-x".
+    await bindKakaoMapAccount(db, B, { kakaoMapUserId: "km-b", alias: "m-x" }, T0 + 3000);
+    expect((await boundKakaoMapAccount(db, B))?.alias).toBeUndefined();
+    await upload(db, B, [list("500", "C의 리스트", { providerOwnerId: "km-b" })], T0 + 4000);
+    expect(await access(db, B)).toMatchObject({ role: "follower" });
+    await upload(db, B, [list("600", "B의 리스트", { providerOwnerId: "km-b" })], T0 + 5000);
+    expect((await shared(db)).removed_at_provider).toBeNull();
+    // Nor can someone bind "m-x" as their account.
+    const D = "binder-d";
+    await addUser(db, D);
+    await expect(
+      bindKakaoMapAccount(db, D, { kakaoMapUserId: "m-x" }, T0 + 6000),
+    ).rejects.toBeInstanceOf(KakaoMapAccountTakenError);
   });
 
   it("an unchanged upload re-import stays within the write budget", async () => {
