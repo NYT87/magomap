@@ -40,6 +40,12 @@ export async function readInPage(): Promise<ReadResult> {
   const SIGNED_OUT: ReadError = "kakao_signed_out";
   const UNAVAILABLE: ReadError = "kakao_unavailable";
   const MAX_PARALLEL = 4;
+  /** Per request, body included. A hung request must not hold the read forever. */
+  const REQUEST_TIMEOUT_MS = 30_000;
+  /** The server's `kakaoMapStartSchema` takes at most 2000 folder records. */
+  const MAX_FOLDERS = 2000;
+  /** Far above a real account (the owner had about 3,000), but bounded. */
+  const MAX_FAVORITES = 50_000;
 
   class ReadFailure extends Error {
     constructor(readonly reason: ReadError) {
@@ -48,30 +54,46 @@ export async function readInPage(): Promise<ReadResult> {
   }
 
   const fetchJson = async (path: string): Promise<unknown> => {
-    let response: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      response = await fetch(new URL(path, window.location.origin).toString(), {
-        credentials: "include",
-      });
-    } catch {
-      throw new ReadFailure(UNAVAILABLE);
-    }
-    // Kakao answers a signed-out session with an auth status, a redirect to its login
-    // page, or an HTML page.
-    if (response.redirected || response.status === 401 || response.status === 403) {
-      throw new ReadFailure(SIGNED_OUT);
-    }
-    if (!response.ok) throw new ReadFailure(UNAVAILABLE);
-    let raw: string;
-    try {
-      raw = await response.text();
-    } catch {
-      throw new ReadFailure(UNAVAILABLE);
-    }
-    try {
-      return JSON.parse(raw) as unknown;
-    } catch {
-      throw new ReadFailure(SIGNED_OUT);
+      let response: Response;
+      try {
+        response = await fetch(new URL(path, window.location.origin).toString(), {
+          credentials: "include",
+          // Signed out, Kakao may redirect to its login page on another domain. Followed,
+          // that fails as a CORS error; not followed, it is an opaque redirect we can see.
+          redirect: "manual",
+          signal: controller.signal,
+        });
+      } catch {
+        throw new ReadFailure(UNAVAILABLE);
+      }
+      // Kakao answers a signed-out session with an auth status, a redirect to its login
+      // page, or an HTML page.
+      if (
+        response.type === "opaqueredirect" ||
+        response.status === 0 ||
+        response.redirected ||
+        response.status === 401 ||
+        response.status === 403
+      ) {
+        throw new ReadFailure(SIGNED_OUT);
+      }
+      if (!response.ok) throw new ReadFailure(UNAVAILABLE);
+      let raw: string;
+      try {
+        raw = await response.text();
+      } catch {
+        throw new ReadFailure(UNAVAILABLE);
+      }
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        throw new ReadFailure(SIGNED_OUT);
+      }
+    } finally {
+      clearTimeout(timer);
     }
   };
 
@@ -87,7 +109,7 @@ export async function readInPage(): Promise<ReadResult> {
 
   try {
     const folders = arrayIn(await fetchJson("/folder/list"), "folders");
-    if (!folders) throw new ReadFailure(UNAVAILABLE);
+    if (!folders || folders.length > MAX_FOLDERS) throw new ReadFailure(UNAVAILABLE);
 
     // Each non-deleted folder id once. The raw records stay as received, duplicates and
     // deleted ones included; choosing between duplicates is the server's job.
@@ -105,6 +127,7 @@ export async function readInPage(): Promise<ReadResult> {
     const favoritesById = new Map<number, unknown[]>();
     let next = 0;
     let failed = false;
+    let favoriteTotal = 0;
     const worker = async (): Promise<void> => {
       // After one failure the read is lost, so the other workers start nothing new.
       while (!failed && next < folderIds.length) {
@@ -116,6 +139,8 @@ export async function readInPage(): Promise<ReadResult> {
             "favorites",
           );
           if (!favorites) throw new ReadFailure(UNAVAILABLE);
+          favoriteTotal += favorites.length;
+          if (favoriteTotal > MAX_FAVORITES) throw new ReadFailure(UNAVAILABLE);
           favoritesById.set(folderid, favorites);
         } catch (error) {
           failed = true;

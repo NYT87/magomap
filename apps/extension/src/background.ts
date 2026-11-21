@@ -11,18 +11,28 @@
  * Only magomap's own origins are answered (the same list as `externally_connectable` in
  * manifest.json). Nothing read is ever logged.
  */
+import { DEV_ORIGINS, RELEASE_ORIGINS } from "./origins";
 import { type ReadResult, readInPage } from "./readInPage";
 
-/** magomap's origins. manifest.json's `externally_connectable.matches` is this list + `/*`. */
-export const ALLOWED_ORIGINS = [
-  "https://magomap.jmn8718.workers.dev",
-  "http://localhost:5173",
-  "http://localhost:8787",
-] as const;
+/**
+ * magomap's origins for this build (see origins.ts): production only in the release build,
+ * plus the local dev servers in the dev build. vite.config.ts writes the same list into
+ * manifest.json's `externally_connectable.matches`.
+ */
+export const ALLOWED_ORIGINS: readonly string[] =
+  // Written as a literal condition so the release bundle drops the dev origins entirely.
+  import.meta.env.MODE === "development"
+    ? [...RELEASE_ORIGINS, ...DEV_ORIGINS]
+    : [...RELEASE_ORIGINS];
 
 const KAKAO_MAP_TABS = "https://map.kakao.com/*";
 const KAKAO_MAP_URL = "https://map.kakao.com/";
 const TAB_LOAD_TIMEOUT_MS = 30_000;
+/**
+ * The whole in-page read. Each Kakao request already times out after 30 s in the page; this
+ * is the backstop so a stuck injection can't leave every later read answering busy.
+ */
+export const READ_TIMEOUT_MS = 5 * 60_000;
 
 export type ReadAnswer = ReadResult | { ok: false; error: "busy" };
 export type PingAnswer = { ok: true; version: string };
@@ -31,6 +41,8 @@ export interface TabInfo {
   id?: number;
   status?: string;
   lastAccessed?: number;
+  /** Memory Saver unloaded it; it won't load again by itself. */
+  discarded?: boolean;
 }
 
 export type TabUpdatedListener = (tabId: number, changeInfo: { status?: string }) => void;
@@ -76,12 +88,42 @@ function messageType(message: unknown): unknown {
   return message && typeof message === "object" ? (message as { type?: unknown }).type : undefined;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isReadResult(value: unknown): value is ReadResult {
-  if (!value || typeof value !== "object") return false;
-  const result = value as { ok?: unknown; error?: unknown; start?: unknown; favorites?: unknown };
-  if (result.ok === true)
-    return typeof result.start === "object" && typeof result.favorites === "object";
-  return result.error === "kakao_signed_out" || result.error === "kakao_unavailable";
+  if (!isPlainObject(value)) return false;
+  if (value.ok === true) {
+    const start = value.start;
+    return (
+      isPlainObject(start) &&
+      Array.isArray(start.folders) &&
+      Array.isArray(start.counts) &&
+      isPlainObject(value.favorites)
+    );
+  }
+  return (
+    value.ok === false &&
+    (value.error === "kakao_signed_out" || value.error === "kakao_unavailable")
+  );
+}
+
+/** Rejects when `promise` hasn't settled after `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timed out")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 /** Resolves once the tab has finished loading, or rejects after the timeout. */
@@ -111,7 +153,11 @@ function waitForLoad(api: ExtensionApi, tabId: number): Promise<void> {
 async function read(api: ExtensionApi): Promise<ReadAnswer> {
   const tabs = await api.tabs.query({ url: KAKAO_MAP_TABS });
   let tab = tabs
-    .filter((candidate) => candidate.id !== undefined)
+    // A tab Memory Saver discarded doesn't load again until she opens it; skip it.
+    .filter(
+      (candidate) =>
+        candidate.id !== undefined && !candidate.discarded && candidate.status !== "unloaded",
+    )
     .sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0))[0];
   let openedTabId: number | undefined;
 
@@ -124,11 +170,10 @@ async function read(api: ExtensionApi): Promise<ReadAnswer> {
     if (tabId === undefined) return UNAVAILABLE;
     if (tab.status !== "complete") await waitForLoad(api, tabId);
 
-    const [injection] = await api.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      func: readInPage,
-    });
+    const [injection] = await withTimeout(
+      api.scripting.executeScript({ target: { tabId }, world: "MAIN", func: readInPage }),
+      READ_TIMEOUT_MS,
+    );
     return isReadResult(injection?.result) ? injection.result : UNAVAILABLE;
   } catch {
     return UNAVAILABLE;

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:dev": "vite build --mode development",
     "bundle": "vite build && cd dist && rm -f ../magomap-extension.zip && zip -qr ../magomap-extension.zip .",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"

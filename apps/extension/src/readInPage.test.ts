@@ -22,6 +22,8 @@ function serve(routes: Record<string, Route>) {
     requests.push(url);
     expect(init?.credentials).toBe("include");
     expect(init?.headers).toBeUndefined();
+    expect(init?.redirect).toBe("manual");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
     const key = url.pathname + (url.searchParams.has("folderid") ? `?${url.searchParams}` : "");
     const route = routes[key];
     if (!route) throw new Error(`unexpected request ${key}`);
@@ -169,6 +171,16 @@ describe("readInPage", () => {
       ["401", () => new Response("no", { status: 401 })],
       ["403", () => new Response("<html>forbidden</html>", { status: 403 })],
       [
+        "a cross-site redirect to the login page (opaque, with redirect: manual)",
+        () => {
+          const response = new Response(null, { status: 302 });
+          Object.defineProperty(response, "type", { value: "opaqueredirect" });
+          Object.defineProperty(response, "status", { value: 0 });
+          Object.defineProperty(response, "ok", { value: false });
+          return response;
+        },
+      ],
+      [
         "a redirect",
         () => {
           const response = folderList([{ folderid: 0 }]);
@@ -259,5 +271,88 @@ describe("readInPage", () => {
     const rebuilt = new Function(`return (${readInPage.toString()});`)() as typeof readInPage;
 
     expect(expectOk(await rebuilt()).favorites).toEqual({ "0": [{ seq: 1 }] });
+  });
+  it("a request that hangs is aborted after 30 s and reads as kakao_unavailable", async () => {
+    vi.useFakeTimers();
+    try {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 0 }, { folderid: 1 }]),
+        "/favorite/mine/list?folderid=0": () => favoriteList([{ seq: 1 }]),
+        "/favorite/mine/list?folderid=1": () => new Promise<Response>(() => {}),
+      });
+      // The mocked fetch for folder 1 never answers; only the abort signal can end it.
+      const fetchMock = vi.mocked(fetch);
+      const real = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        const answer = real ? real(input, init) : Promise.reject(new Error("no route"));
+        return new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+          answer.then(resolve, reject);
+        });
+      });
+
+      const result = readInPage();
+      await vi.advanceTimersByTimeAsync(29_999);
+      let settled = false;
+      void result.then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await result).toEqual({ ok: false, error: "kakao_unavailable" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("more than 2000 folder records is kakao_unavailable, before any favourites are read", async () => {
+    serve({
+      "/folder/list": () =>
+        folderList(Array.from({ length: 2001 }, (_, index) => ({ folderid: index }))),
+    });
+
+    expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("2000 folder records is still read", async () => {
+    const routes: Record<string, Route> = {
+      "/folder/list": () =>
+        folderList(Array.from({ length: 2000 }, (_, index) => ({ folderid: index }))),
+    };
+    for (let index = 0; index < 2000; index += 1) {
+      routes[`/favorite/mine/list?folderid=${index}`] = () => favoriteList([]);
+    }
+    serve(routes);
+
+    expect(expectOk(await readInPage()).start.counts).toHaveLength(2000);
+  });
+
+  it("more than 50,000 favourites in all is kakao_unavailable", async () => {
+    const many = (count: number) => Array.from({ length: count }, (_, seq) => ({ seq }));
+    serve({
+      "/folder/list": () => folderList([{ folderid: 0 }, { folderid: 1 }]),
+      "/favorite/mine/list?folderid=0": () => favoriteList(many(25_000)),
+      "/favorite/mine/list?folderid=1": () => favoriteList(many(25_001)),
+    });
+
+    expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+  });
+
+  it("exactly 50,000 favourites is still read", async () => {
+    const many = (count: number) => Array.from({ length: count }, (_, seq) => ({ seq }));
+    serve({
+      "/folder/list": () => folderList([{ folderid: 0 }, { folderid: 1 }]),
+      "/favorite/mine/list?folderid=0": () => favoriteList(many(25_000)),
+      "/favorite/mine/list?folderid=1": () => favoriteList(many(25_000)),
+    });
+
+    expect(expectOk(await readInPage()).start.counts.map((count) => count.itemCount)).toEqual([
+      25_000, 25_000,
+    ]);
   });
 });

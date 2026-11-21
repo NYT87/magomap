@@ -1,14 +1,16 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ALLOWED_ORIGINS,
   type ExtensionApi,
   type ExternalListener,
   install,
+  READ_TIMEOUT_MS,
   type ReadAnswer,
   type TabInfo,
   type TabUpdatedListener,
 } from "./background";
+import { allowedOrigins } from "./origins";
 import { readInPage } from "./readInPage";
 
 const MAGOMAP = "https://magomap.jmn8718.workers.dev";
@@ -27,6 +29,7 @@ interface Stub {
   create: ReturnType<typeof vi.fn>;
   remove: ReturnType<typeof vi.fn>;
   fireUpdated: (tabId: number, status: string) => void;
+  updatedListenerCount: () => number;
 }
 
 function makeStub(options: {
@@ -94,6 +97,7 @@ function makeStub(options: {
     fireUpdated: (tabId, status) => {
       for (const updated of [...updatedListeners]) updated(tabId, { status });
     },
+    updatedListenerCount: () => updatedListeners.size,
   };
 }
 
@@ -213,6 +217,9 @@ describe("background", () => {
     const stub = makeStub({ tabs: [{ id: 1, status: "complete", lastAccessed: 1 }] });
 
     for (const origin of [
+      // The release build doesn't answer local dev servers (tests run as the release build).
+      "http://localhost:5173",
+      "http://localhost:8787",
       "https://evil.example",
       "https://magomap.jmn8718.workers.dev.evil.example",
       "http://magomap.jmn8718.workers.dev",
@@ -241,12 +248,113 @@ describe("background", () => {
   });
 
   it("checks sender.origin against the same list as externally_connectable", () => {
+    // manifest.json carries no list of its own: vite.config.ts writes
+    // externally_connectable from origins.ts, the list ALLOWED_ORIGINS comes from.
+    // dist.test.ts checks both built manifests against it.
     const manifest = JSON.parse(
       readFileSync(new URL("../manifest.json", import.meta.url), "utf8"),
-    ) as { externally_connectable: { matches: string[] } };
+    ) as { externally_connectable?: unknown; permissions?: string[] };
 
-    expect(manifest.externally_connectable.matches).toEqual(
-      ALLOWED_ORIGINS.map((origin) => `${origin}/*`),
+    expect(manifest.externally_connectable).toBeUndefined();
+    expect(ALLOWED_ORIGINS).toEqual(allowedOrigins(false));
+    expect(ALLOWED_ORIGINS).toEqual(["https://magomap.jmn8718.workers.dev"]);
+  });
+
+  it("skips map.kakao.com tabs that Memory Saver discarded", async () => {
+    const stub = makeStub({
+      tabs: [
+        { id: 1, status: "unloaded", discarded: true, lastAccessed: 500 },
+        { id: 2, status: "unloaded", lastAccessed: 400 },
+        { id: 3, status: "complete", lastAccessed: 100 },
+      ],
+    });
+
+    expect(await stub.send({ type: "magomap.read" })).toEqual(okRead);
+    expect(stub.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { tabId: 3 } }),
     );
+    expect(stub.create).not.toHaveBeenCalled();
+  });
+
+  it("opens a fresh tab when every map.kakao.com tab is discarded", async () => {
+    const stub = makeStub({
+      tabs: [{ id: 1, status: "unloaded", discarded: true, lastAccessed: 500 }],
+      created: { id: 42, status: "complete" },
+    });
+
+    expect(await stub.send({ type: "magomap.read" })).toEqual(okRead);
+    expect(stub.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { tabId: 42 } }),
+    );
+    expect(stub.remove).toHaveBeenCalledWith(42);
+  });
+
+  describe("with fake timers", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("a tab that never finishes loading answers kakao_unavailable and is cleaned up", async () => {
+      const stub = makeStub({ tabs: [], created: { id: 42, status: "loading" } });
+
+      const answer = stub.send({ type: "magomap.read" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(stub.updatedListenerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(await answer).toEqual({ ok: false, error: "kakao_unavailable" });
+      expect(stub.updatedListenerCount()).toBe(0);
+      expect(stub.executeScript).not.toHaveBeenCalled();
+      expect(stub.remove).toHaveBeenCalledWith(42);
+    });
+
+    it("a read stuck in the page times out, and the next read isn't busy", async () => {
+      let calls = 0;
+      const stub = makeStub({
+        tabs: [{ id: 1, status: "complete", lastAccessed: 1 }],
+        read: () => {
+          calls += 1;
+          return calls === 1 ? new Promise(() => {}) : Promise.resolve(okRead);
+        },
+      });
+
+      const stuck = stub.send({ type: "magomap.read" });
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+      expect(await stub.send({ type: "magomap.read" })).toEqual({ ok: false, error: "busy" });
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await stuck).toEqual({ ok: false, error: "kakao_unavailable" });
+      expect(await stub.send({ type: "magomap.read" })).toEqual(okRead);
+    });
+  });
+
+  describe("an injection result of the wrong shape is kakao_unavailable", () => {
+    const bad: [string, unknown][] = [
+      ["start is null", { ok: true, start: null, favorites: {} }],
+      ["folders isn't an array", { ok: true, start: { folders: {}, counts: [] }, favorites: {} }],
+      ["counts is missing", { ok: true, start: { folders: [] }, favorites: {} }],
+      ["favorites is null", { ok: true, start: { folders: [], counts: [] }, favorites: null }],
+      ["favorites is an array", { ok: true, start: { folders: [], counts: [] }, favorites: [] }],
+      ["an unknown error", { ok: false, error: "nope" }],
+      ["an error without ok: false", { error: "kakao_signed_out" }],
+      ["nothing", undefined],
+    ];
+
+    for (const [name, result] of bad) {
+      it(name, async () => {
+        const stub = makeStub({
+          tabs: [{ id: 1, status: "complete", lastAccessed: 1 }],
+          read: async () => result,
+        });
+
+        expect(await stub.send({ type: "magomap.read" })).toEqual({
+          ok: false,
+          error: "kakao_unavailable",
+        });
+      });
+    }
   });
 });

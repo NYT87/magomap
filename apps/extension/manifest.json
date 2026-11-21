@@ -11,13 +11,6 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["scripting", "tabs"],
-  "host_permissions": ["https://map.kakao.com/*"],
-  "externally_connectable": {
-    "matches": [
-      "https://magomap.jmn8718.workers.dev/*",
-      "http://localhost:5173/*",
-      "http://localhost:8787/*"
-    ]
-  }
+  "permissions": ["scripting"],
+  "host_permissions": ["https://map.kakao.com/*"]
 }
