@@ -2,7 +2,7 @@
 
 Phase 0 of the direct Kakao Map sync (`docs/superpowers/specs/2026-11-20-kakao-direct-sync-design.md`). These are the results of tests run on 2026-11-20 with the owner's account, signed in on his computer. The tests used throwaway scripts that are not kept in the repo. No cookie, token or list contents are recorded here.
 
-**Verdict:** `Phone sync: cookie, pending the Worker read and the 7-day lifetime check`. The Kakao Login token route is closed.
+**Verdict:** `Phone sync: cookie, pending the Worker read and the 7-day lifetime check`. The Kakao Login token route is closed. `seq` matches across accounts (section 6), so the mapping work can go ahead.
 
 ## Endpoints
 
@@ -71,8 +71,17 @@ Folder records carry `map_user_id`, but not always `kakao_map_user_id`. The own 
 - `/api/v1/mapsearch/srcid?id=<place key>` (place detail) gives lat/lon, category (`cate_name_depth1..3`), `tel` and `new_address`. It could fill in places later, through the extension only.
 - `/api/v1/mapsearch/search_addr?docid=…` (address lookup) answers `403 Gate Token Rejected` outside the Kakao Map page.
 
+## 6. Two accounts, one folder (2026-11-21)
+
+Read in each account's own signed-in tab with a console snippet (no cookie copied). Only folder ids, `seq` numbers and place keys were compared.
+
+- **`seq` is the same for both readers.** Folder `16499871` (hers; he follows it): 500 favourites in both accounts, and the first 8 `[seq, key]` pairs are identical. Memberships can stay keyed by `seq`.
+- **Owner ids** are filled for every folder of her own account (`kakao_map_user_id` or `map_user_id`), and `subscribe` is `1` only on folders she follows.
+- **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, never invent a name, and must cope if its favourites can't be read.
+- **500 favourites in one folder.** Both accounts got exactly 500 for `16499871`. She also splits places into numbered lists ("Incheon 1"/"Incheon 2", "Seúl 0/1/2"), which suggests a 500-place folder limit in Kakao Map rather than a 500-item page. Not yet confirmed (see below).
+
 ## Still open
 
-- **The `seq` of one shared favourite, as seen by the owner and by his wife.** It needs her signed in to Kakao Map on the computer once. If the two differ, the build stops before the mapping work (spec, "Settled after the builder check").
+- **Paging:** does `/favorite/mine/list` ever stop at 500 for a folder holding more? Check the response's field names for a total or "more" flag, or compare with the Kakao Map app's count for `16499871`.
 - Phone edits reaching the endpoint (step 4).
 - The read from a Worker and the multi-day lifetime, both needed before phase 2 (phone sync).

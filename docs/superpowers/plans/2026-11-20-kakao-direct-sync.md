@@ -75,7 +75,7 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
 
 - [x] **Step 1: Write `docs/kakao-map-access.md`** from the spec's "Phase 0 results": the token result, the one cookie and the headers, zero folders when signed out, the `folders` key, the lifetime so far, coordinates, folder 0, favourite types and owner ids. Never include a cookie, token or list contents.
 - [x] **Step 2: Fixtures.** Write `export const OWNER_FIXTURES: { x: number; y: number; lat: number; lng: number }[]` into `wcongnamul.fixtures.ts` with the two pairs from phase 0 (`471350, -32433` → `33.37661909, 126.87684594`; `608064, 1159067` → `37.67127631, 127.48995646`).
-- [ ] **Step 3 (owner and his wife): compare one shared favourite's `seq`** as seen by her account and the owner's (both signed in to Kakao Map on the computer, one at a time, reading the same followed folder). **If the `seq`s differ, stop the plan here and tell the owner** (spec, "Settled after the builder check").
+- [x] **Step 3 (owner and his wife): compare one shared favourite's `seq`** as seen by her account and the owner's (both signed in to Kakao Map on the computer, one at a time, reading the same followed folder). **If the `seq`s differ, stop the plan here and tell the owner** (spec, "Settled after the builder check").
 - [ ] **Step 4 (owner, optional now): phone edits.** Add a place to a list in the Kakao Map phone app; within a minute, read that folder and record whether it appears.
 - [x] **Step 5: Verdict line** in `docs/kakao-map-access.md`: `Phone sync: cookie, pending the Worker read and the 7-day lifetime check` (the token route is closed). The phase 2 plan is written once those two pass.
 - [ ] **Step 6: Commit** with `docs: Kakao Map access test results`.
@@ -137,6 +137,7 @@ Steps 1, 2 (from the owner's computer), part of 3, and the fixtures ran on 2026-
   - folder 0 (own, the default list) and two own folders (user `"u1"`, one flagged public with `subscribe: "Y"`); one own folder carries only `map_user_id: 1`, no `kakao_map_user_id`;
   - one followed folder (user `"u2"`, `subscribe: "Y"`, `nickname: "Bap"`);
   - one `status: "D"` folder, and a duplicate folder record with less metadata;
+  - a followed folder that comes back bare (only `folderid` and `subscribe: 1`, no title and no owner id; docs/kakao-map-access.md section 6): it is followed, never own, and keeps kakao-list's fallback name;
   - favourites of types `PLACE`, `ADDRESS` (key `N34923295`), `POINT`, `ROUTE_BICYCLE` (no `x`/`y`) and untyped;
   - one favourite with Kakao `lat`/`lon` and one with a negative `y`;
   - one favourite without `seq` and one with neither `seq` nor `key`;
