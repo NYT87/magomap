@@ -223,6 +223,35 @@ describe("runKakaoMapSync", () => {
     });
   });
 
+  it("a confirming start that fails offline keeps the read, so the retry confirms the same read", async () => {
+    const send = extension((m) => (m.type === "magomap.read" ? READ : undefined));
+    let online = true;
+    server((path, body) => {
+      if (path !== "/api/import/kakao-map/runs") return null;
+      if ((body as { confirmAccount?: string }).confirmAccount === undefined) {
+        return new ApiError(409, {
+          error: "kakao_account_unconfirmed",
+          account: { idTail: "7800" },
+        });
+      }
+      return online ? null : new NetworkError();
+    });
+    await runKakaoMapSync(() => {}).catch(() => {});
+    online = false;
+    await expect(runKakaoMapSync(() => {}, { confirmAccount: "7800" })).rejects.toMatchObject({
+      code: "offline",
+    });
+    online = true;
+    api.mockClear();
+    await expect(runKakaoMapSync(() => {}, { confirmAccount: "7800" })).resolves.toEqual(summary);
+    // One read in all: both confirmations used the read she was shown.
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(bodyOf("/api/import/kakao-map/runs")).toEqual({
+      ...READ.start,
+      confirmAccount: ACCOUNT,
+    });
+  });
+
   it("never confirms an account other than the one she was shown", async () => {
     const send = extension((m) => (m.type === "magomap.read" ? READ : undefined));
     server(

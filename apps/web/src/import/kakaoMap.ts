@@ -199,6 +199,9 @@ export async function runKakaoMapSync(
         code === "kakao_account_mismatch" ? hintOf(body.bound) : undefined,
       );
     }
+    // A confirmation that couldn't go out: keep the read, so confirming again once she's back
+    // online sends the same read she was shown.
+    if (code === "offline" && confirmAccount) pending = { account, read };
     throw new KakaoMapSyncError(code);
   }
 

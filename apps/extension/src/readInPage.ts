@@ -137,6 +137,8 @@ export async function readInPage(): Promise<ReadResult> {
     const readFolder = async (folderid: number): Promise<unknown[]> => {
       const all: unknown[] = [];
       const seen = new Set<string>();
+      /** Each favourite's `seq` in this folder: the server keys a membership by it. */
+      const seqs = new Set<string>();
       let nextId: string | undefined;
       for (let pageNumber = 1; ; pageNumber += 1) {
         const path =
@@ -148,7 +150,19 @@ export async function readInPage(): Promise<ReadResult> {
         if (!favorites) throw new ReadFailure(UNAVAILABLE);
         favoriteTotal += favorites.length;
         if (favoriteTotal > MAX_FAVORITES) throw new ReadFailure(UNAVAILABLE);
-        for (const favorite of favorites) all.push(favorite);
+        for (const favorite of favorites) {
+          const seq =
+            favorite && typeof favorite === "object"
+              ? (favorite as { seq?: unknown }).seq
+              : undefined;
+          if ((typeof seq === "number" && Number.isFinite(seq)) || typeof seq === "string") {
+            // A favourite seen twice in one folder (Kakao's paging repeating itself): the read
+            // can't be trusted, and the server would refuse it.
+            if (seqs.has(String(seq))) throw new ReadFailure(UNAVAILABLE);
+            seqs.add(String(seq));
+          }
+          all.push(favorite);
+        }
 
         const raw =
           payload && typeof payload === "object" && !Array.isArray(payload)

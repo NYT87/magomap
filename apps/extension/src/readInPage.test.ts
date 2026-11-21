@@ -497,6 +497,33 @@ describe("readInPage", () => {
       }
     });
 
+    it("a favourite seq seen again on a later page is kakao_unavailable, with no partial result", async () => {
+      // Kakao's paging repeated a favourite: the read can't be trusted (and would be refused).
+      for (const seq of [499, "499"]) {
+        requests = [];
+        serve({
+          "/folder/list": () => folderList([{ folderid: 0 }, { folderid: 9 }]),
+          "/favorite/mine/list?folderid=0": () => favoriteList([{ seq: 1 }]),
+          "/favorite/mine/list?folderid=9": () => page(many(0, 500), 1),
+          "/favorite/mine/list?folderid=9&next_id=1": () =>
+            page([...many(500, 3), { seq, folderid: 9 }]),
+        });
+
+        expect(await readInPage()).toEqual({ ok: false, error: "kakao_unavailable" });
+      }
+    });
+
+    it("the same seq in two different folders is fine", async () => {
+      serve({
+        "/folder/list": () => folderList([{ folderid: 8 }, { folderid: 9 }]),
+        "/favorite/mine/list?folderid=8": () => page(many(0, 2, 8)),
+        "/favorite/mine/list?folderid=9": () => page(many(0, 1), 1),
+        "/favorite/mine/list?folderid=9&next_id=1": () => page(many(1, 1)),
+      });
+
+      expect(expectOk(await readInPage()).start.counts.map((c) => c.itemCount)).toEqual([2, 2]);
+    });
+
     it("pages count toward the 50,000-favourite cap", async () => {
       serve({
         "/folder/list": () => folderList([{ folderid: 9 }]),
