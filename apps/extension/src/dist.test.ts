@@ -15,6 +15,8 @@ interface Manifest {
   name?: string;
   version?: string;
   key?: string;
+  icons?: Record<string, string>;
+  action?: { default_icon?: Record<string, string> };
   background?: { service_worker?: string; type?: string };
   permissions?: string[];
   host_permissions?: string[];
@@ -93,6 +95,12 @@ describe("the built extension", () => {
       const worker = manifest.background?.service_worker ?? "";
       expect(worker).not.toBe("");
       expect(existsSync(join(outDir, worker))).toBe(true);
+      const icons = [
+        ...Object.values(manifest.icons ?? {}),
+        ...Object.values(manifest.action?.default_icon ?? {}),
+      ];
+      expect(icons.length).toBeGreaterThan(0);
+      for (const icon of icons) expect(existsSync(join(outDir, icon))).toBe(true);
     });
 
     it(`${name}: ALLOWED_ORIGINS matches externally_connectable`, () => {

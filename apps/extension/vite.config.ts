@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import { connectableMatches } from "./src/origins.ts";
 
@@ -30,6 +30,13 @@ export default defineConfig(({ mode }) => {
             readFileSync(new URL("./manifest.json", import.meta.url), "utf8"),
           ) as Record<string, unknown>;
           manifest.externally_connectable = { matches: connectableMatches(dev) };
+          for (const icon of readdirSync(new URL("./icons/", import.meta.url))) {
+            this.emitFile({
+              type: "asset",
+              fileName: `icons/${icon}`,
+              source: readFileSync(new URL(`./icons/${icon}`, import.meta.url)),
+            });
+          }
           this.emitFile({
             type: "asset",
             fileName: "manifest.json",

@@ -69,6 +69,8 @@ export interface ExtensionApi {
       removeListener: (listener: TabUpdatedListener) => void;
     };
   };
+  /** Absent in the tests' stub; `chrome` always has it. */
+  action?: { onClicked: { addListener: (listener: () => void) => void } };
   scripting: {
     executeScript: (injection: {
       target: { tabId: number };
@@ -187,6 +189,11 @@ async function read(api: ExtensionApi): Promise<ReadAnswer> {
 
 export function install(api: ExtensionApi): void {
   let reading = false;
+
+  // The button has no popup: a click takes her to where the sync is, magomap's Account page.
+  api.action?.onClicked.addListener(() => {
+    void api.tabs.create({ url: `${ALLOWED_ORIGINS[0]}/account`, active: true }).catch(() => {});
+  });
 
   api.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
     // Answer magomap only. Anything else gets no answer at all.
