@@ -15,6 +15,7 @@
     "apps/extension": {
       "release-type": "node",
       "component": "extension",
+      "draft": true,
       "extra-files": ["manifest.json"]
     }
   }

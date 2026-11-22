@@ -23,6 +23,7 @@ const okRead: ReadAnswer = {
 
 interface Stub {
   api: ExtensionApi;
+  click: () => void;
   send: (message: unknown, origin?: string) => Promise<unknown>;
   executeScript: ReturnType<typeof vi.fn>;
   query: ReturnType<typeof vi.fn>;
@@ -39,6 +40,7 @@ function makeStub(options: {
   getStatus?: string;
 }): Stub {
   let listener: ExternalListener | undefined;
+  let clicked: (() => void) | undefined;
   const updatedListeners = new Set<TabUpdatedListener>();
 
   const executeScript = vi.fn(async () => [
@@ -71,6 +73,13 @@ function makeStub(options: {
         },
       },
     },
+    action: {
+      onClicked: {
+        addListener: (added) => {
+          clicked = added;
+        },
+      },
+    },
     scripting: { executeScript },
   };
 
@@ -89,6 +98,7 @@ function makeStub(options: {
 
   return {
     api,
+    click: () => clicked?.(),
     send,
     executeScript,
     query,
@@ -100,6 +110,14 @@ function makeStub(options: {
     updatedListenerCount: () => updatedListeners.size,
   };
 }
+
+describe("the toolbar button", () => {
+  it("opens magomap's Account page", () => {
+    const stub = makeStub({});
+    stub.click();
+    expect(stub.create).toHaveBeenCalledWith({ url: `${MAGOMAP}/account`, active: true });
+  });
+});
 
 describe("background", () => {
   it("ping answers", async () => {
