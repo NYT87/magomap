@@ -365,6 +365,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Immutable releases refuse new assets once published, so Release Please creates the extension
+  # release as a draft (release-please-config.json); this job attaches the zip, then publishes it.
   extension-upload:
     needs: [release-please, extension-bundle]
     runs-on: ubuntu-latest
@@ -379,4 +381,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-please.outputs.extension_tag_name }}
-        run: gh release upload "$TAG" magomap-extension.zip --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" magomap-extension.zip --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
