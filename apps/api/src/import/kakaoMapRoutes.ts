@@ -233,6 +233,40 @@ async function ownerIdsOf(
   return owners;
 }
 
+/**
+ * Whether the Kakao Map account signed in on the page is the one bound to the caller, before a
+ * copy writes to Kakao Map. The same decision as the sync's start, without confirming or binding
+ * anything and without writing a run: bound goes ahead; otherwise the usual 409 with the accounts
+ * named by their last 4 characters.
+ */
+kakaoMapRoutes.post("/import/kakao-map/account", (c) =>
+  uploadHandled(c, async () => {
+    const loginId = await uploader(c);
+    const raw = await readJson(c);
+    const body = z.object({ folders: z.array(z.unknown()).max(2000) }).safeParse(raw);
+    if (!body.success) throw invalid();
+    let read: ReturnType<typeof kakaoMapListsToImport>;
+    try {
+      read = kakaoMapListsToImport({ folders: body.data.folders, counts: [] }, loginId);
+    } catch (error) {
+      if (error instanceof KakaoSignedOutError) {
+        throw new Refusal(422, { error: "kakao_signed_out" });
+      }
+      if (error instanceof KakaoAccountUnclearError) {
+        throw new Refusal(422, { error: "kakao_account_unclear" });
+      }
+      throw error;
+    }
+    const accountId = read.account.kakaoMapUserId;
+    if (accountId.length > 200 || !isStorableText(accountId)) {
+      throw new Refusal(422, { error: "kakao_account_unclear" });
+    }
+    // No confirmation is ever passed, so nothing is bound here.
+    await checkAccount(c, read.account, read.accountAlias, undefined, Date.now());
+    return { ok: true };
+  }),
+);
+
 kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
   uploadHandled(c, async () => {
     const loginId = await uploader(c);

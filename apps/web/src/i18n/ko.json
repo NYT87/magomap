@@ -305,7 +305,25 @@
       "defaultName": "{{name}} (복사본)",
       "copyHere": "magomap에서 복사",
       "cancel": "취소",
-      "failed": "리스트를 복사하지 못했어요. 다시 시도해 주세요."
+      "failed": "리스트를 복사하지 못했어요. 다시 시도해 주세요.",
+      "copyKakao": "카카오맵으로 복사",
+      "needsExtension": "카카오맵으로 복사하려면 이 브라우저에 magomap 확장 프로그램이 필요해요. magomap 안에서는 복사할 수 있어요.",
+      "copying": "카카오맵으로 복사하는 중…",
+      "resultAdded_other": "{{count}}곳을 카카오맵에 추가했어요.",
+      "resultLeftOut_other": "{{count}}곳은 카카오 장소나 위치가 없어 빠졌어요.",
+      "resultNotSynced": "새 리스트가 아직 여기에 없어요. 계정의 ‘카카오맵에서 동기화’로 가져오세요.",
+      "tryAgain": "다시 시도",
+      "close": "닫기",
+      "errExtension": "magomap 확장 프로그램이 응답하지 않아요. 켜져 있는지 확인하고 다시 시도하세요.",
+      "errAccount": "카카오맵에 로그인된 계정이 magomap에 연결된 계정과 달라요. 아무것도 쓰지 않았어요.",
+      "errSignedOut": "카카오맵에 로그인되어 있지 않아요. map.kakao.com에서 로그인한 뒤 다시 시도하세요.",
+      "errBusy": "확장 프로그램이 다른 작업 중이에요. 잠시 뒤 다시 시도하세요.",
+      "errOffline": "오프라인이에요. 아무것도 쓰지 않았어요.",
+      "errUnavailable": "카카오맵이 복사를 받아들이지 않았어요. 더 쓰지는 않았어요. 다시 시도하세요.",
+      "errPartial_other": "멈추기 전에 {{count}}곳을 카카오맵에 추가했어요. 다시 시도하면 같은 리스트에 나머지를 추가해요.",
+      "resultAdded_one": "{{count}}곳을 카카오맵에 추가했어요.",
+      "resultLeftOut_one": "{{count}}곳은 카카오 장소나 위치가 없어 빠졌어요.",
+      "errPartial_one": "멈추기 전에 {{count}}곳을 카카오맵에 추가했어요. 다시 시도하면 같은 리스트에 나머지를 추가해요."
     }
   },
   "sync": {

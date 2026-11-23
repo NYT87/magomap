@@ -302,6 +302,63 @@ describe("the Kakao Map account", () => {
   });
 });
 
+describe("checking the account before a copy to Kakao Map", () => {
+  const ACCOUNT = "/api/import/kakao-map/account";
+
+  it("accepts the bound account and writes nothing", async () => {
+    const cookie = await devLogin("km-acct-ok");
+    const user = await userIdOf(cookie);
+    const read = smallRead("u1-acct-ok-1111", 33001);
+    await upload(cookie, read, "u1-acct-ok-1111");
+    const runs = await runsOf(user);
+    const res = await call(ACCOUNT, post(cookie, { folders: read.folders }), DEV);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(await runsOf(user)).toBe(runs);
+  });
+
+  it("refuses another Kakao Map account, naming both by their last 4 characters", async () => {
+    const cookie = await devLogin("km-acct-other");
+    const user = await userIdOf(cookie);
+    await upload(cookie, smallRead("u1-acct-aaaa", 33101), "u1-acct-aaaa");
+    const other = smallRead("u2-acct-bbbb", 33102, { nickname: "호세" });
+    const res = await call(ACCOUNT, post(cookie, { folders: other.folders }), DEV);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "kakao_account_mismatch",
+      account: { nickname: "호세", idTail: "bbbb" },
+      bound: { nickname: "수지", idTail: "aaaa" },
+    });
+    expect((await bindingOf(user))?.id).toBe("u1-acct-aaaa");
+  });
+
+  it("refuses when nothing is bound yet, and binds nothing", async () => {
+    const cookie = await devLogin("km-acct-unbound");
+    const user = await userIdOf(cookie);
+    const read = smallRead("u1-acct-unb-9999", 33201);
+    const res = await call(ACCOUNT, post(cookie, { folders: read.folders }), DEV);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe("kakao_account_unconfirmed");
+    expect(await bindingOf(user)).toBeNull();
+  });
+
+  it("refuses someone who isn't allowed", async () => {
+    const cookie = await devLogin("km-acct-denied");
+    const read = smallRead("u1-acct-den-0000", 33301);
+    const res = await call(ACCOUNT, post(cookie, { folders: read.folders }), {
+      ALLOWED_KAKAO_USER_IDS: "someone-else",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("answers 422 for a signed-out read", async () => {
+    const cookie = await devLogin("km-acct-out");
+    const res = await call(ACCOUNT, post(cookie, { folders: [] }), DEV);
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toBe("kakao_signed_out");
+  });
+});
+
 describe("signed out", () => {
   it("a signed-out read (zero folders) gives 422 kakao_signed_out", async () => {
     const cookie = await devLogin("km-signed-out");
