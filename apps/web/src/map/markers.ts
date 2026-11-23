@@ -28,6 +28,12 @@ export interface MarkerInput {
 const rank = (list: ListRow, roles: MarkerInput["roles"]) =>
   list.provider === null ? 0 : roles.get(list.id) === "follower" ? 2 : 1;
 
+/** The colour Kakao gave this place in a Kakao list, when this app knows its code. */
+const kakaoColorOf = (item: ListItemRow, list: ListRow): string | undefined =>
+  list.provider !== null && item.providerColor
+    ? KAKAO_PLACE_COLORS[item.providerColor]?.value
+    : undefined;
+
 /** The colour a membership gives its place: Kakao's favourite colour, the own list's, or the theme. */
 export function membershipColor(item: ListItemRow, list: ListRow): string {
   if (list.provider !== null) {
@@ -59,12 +65,16 @@ export function buildMarkers(input: MarkerInput): MapMarker[] {
     const ms = byPlace.get(place.id);
     let color: string;
     if (ms && ms.length > 0) {
-      ms.sort(
+      // A colour Kakao gave the place wins, so a copy of the list in an own list doesn't hide it.
+      // Then own lists, owned Kakao lists and followed ones, in that order.
+      const coloured = ms.filter((m) => kakaoColorOf(m.item, m.list) !== undefined);
+      const pool = coloured.length > 0 ? coloured : ms;
+      pool.sort(
         (a, b) =>
           rank(a.list, input.roles) - rank(b.list, input.roles) ||
           a.list.name.localeCompare(b.list.name),
       );
-      const first = ms[0] as { item: ListItemRow; list: ListRow };
+      const first = pool[0] as { item: ListItemRow; list: ListRow };
       color = membershipColor(first.item, first.list);
     } else if (showSaved && input.saved.has(place.id) && !listedAnywhere.has(place.id)) {
       color = THEME_PRIMARY;

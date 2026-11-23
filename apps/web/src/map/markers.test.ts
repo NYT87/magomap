@@ -95,7 +95,7 @@ describe("buildMarkers", () => {
     expect(buildMarkers({ ...base, visibleListIds: new Set() })).toEqual([]);
   });
 
-  it("colours a place by own lists first, then Kakao lists, then subscribed lists", () => {
+  describe("colouring a place in several lists", () => {
     const lists = [
       list("own", "빵", null, "#7A4E7E"),
       list("kk", "카페", "kakao"),
@@ -107,7 +107,6 @@ describe("buildMarkers", () => {
       ["sub", "follower" as const],
     ]);
     const all = new Set(["own", "kk", "sub"]);
-    const memberships = [item("sub", "p1", "05"), item("kk", "p1", "01"), item("own", "p1")];
     const color = (ms: ListItemRow[]) =>
       buildMarkers({
         ...base,
@@ -117,9 +116,29 @@ describe("buildMarkers", () => {
         visibleListIds: all,
         showPrevious: false,
       })[0]?.color;
-    expect(color(memberships)).toBe("#7A4E7E");
-    expect(color(memberships.slice(0, 2))).toBe("#c8373e");
-    expect(color(memberships.slice(0, 1))).toBe("#2464ad");
+
+    it("the Kakao colour wins over an own list's, whichever list is first", () => {
+      expect(color([item("own", "p1"), item("kk", "p1", "01")])).toBe("#c8373e");
+      expect(color([item("kk", "p1", "01"), item("own", "p1")])).toBe("#c8373e");
+    });
+
+    it("an owned Kakao list's colour comes before one from a list she follows", () => {
+      expect(color([item("sub", "p1", "05"), item("kk", "p1", "01"), item("own", "p1")])).toBe(
+        "#c8373e",
+      );
+      expect(color([item("sub", "p1", "05"), item("own", "p1")])).toBe("#2464ad");
+    });
+
+    it("an own list's colour shows when no Kakao list gives the place one", () => {
+      expect(color([item("own", "p1")])).toBe("#7A4E7E");
+      // A Kakao item with no colour code, or one this app doesn't know, doesn't hide it.
+      expect(color([item("kk", "p1"), item("own", "p1")])).toBe("#7A4E7E");
+      expect(color([item("kk", "p1", "99"), item("own", "p1")])).toBe("#7A4E7E");
+    });
+
+    it("a Kakao list alone with no colour code falls back to the theme colour", () => {
+      expect(color([item("kk", "p1")])).toBe("var(--color-pine)");
+    });
   });
 });
 
