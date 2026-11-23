@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
+import { applyFocus } from "./applyFocus";
 import { redrawKeepingFocus } from "./keepFocus";
 import { preloadLeaflet } from "./leafletAdapter";
 import { createAdapter, loadKakaoSdk } from "./loadMapAdapter";
@@ -121,13 +122,14 @@ export function MapView({ data }: { data: Data | null }) {
     }
   }, [adapter, data, stage.searchMarkers]);
 
-  // Looking at one place: bring it close, not just to the middle of the country. Once per place:
-  // a map switch must not pull the view back (that would switch again, and again).
+  // Looking at one place: a saved one is only brought to the middle (the zoom stays), a search
+  // result is brought close. Once per place: a map switch must not pull the view back (that
+  // would switch again, and again).
   const focused = useRef<typeof stage.focus>(null);
   useEffect(() => {
     if (!adapter || !stage.focus || focused.current === stage.focus) return;
     focused.current = stage.focus;
-    adapter.fitTo([stage.focus]);
+    applyFocus(adapter, stage.focus);
   }, [adapter, stage.focus]);
 
   const providerName =

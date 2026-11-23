@@ -68,7 +68,7 @@ export function SearchBar() {
       navigate(`/places/${encodeURIComponent(id)}`);
     } else if (hit.kind === "kakao") {
       setSelected(hitKey(hit));
-      stage.setFocus({ lat: hit.result.lat, lng: hit.result.lng });
+      stage.setFocus({ lat: hit.result.lat, lng: hit.result.lng }, { close: true });
     }
   };
 
