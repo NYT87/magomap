@@ -535,6 +535,7 @@ async function decidePush(
             externalId: null,
             providerNote: null,
             providerColor: null,
+            itemColor: r.itemColor ?? null,
             removedAtProvider: null,
             providerSnapshotAt: null,
             updatedAt: acceptedAt,

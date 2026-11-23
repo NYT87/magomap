@@ -21,7 +21,7 @@ She and the owner build lists of places. He wants to start a new list from an ex
 
 ## Non-goals
 
-- Copying notes: Kakao notes belong to the source's list item (and on his wife's list they are hers); diary notes and links belong to the place and are already his. Only places are copied. *(Designer's call.)*
+- Copying notes: Kakao notes belong to the source's list item (and on his wife's list they are hers); diary notes and links belong to the place and are already his. Only places are copied, each with its colour (agreed 2026-11-23): an own-list item carries the Kakao colour code of the place it was copied from, and the Kakao copy sends it. *(Designer's call on notes.)*
 - Places with no Kakao place id (a custom pin, an address favourite) in the Kakao copy: they are left out and counted in the result.
 - The Kakao copy on a phone or without the extension: not offered (the local copy still is).
 - Merging a copy back, or keeping a copy in step with its source.

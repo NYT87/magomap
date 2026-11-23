@@ -169,6 +169,8 @@ export interface ListItemsTable {
   external_id: string | null;
   provider_note: string | null;
   provider_color: string | null;
+  /** An own-list item's Kakao colour code, copied from the place it was copied from. */
+  item_color: string | null;
   removed_at_provider: number | null;
   provider_snapshot_at: number | null;
   created_at: number;

@@ -95,7 +95,7 @@ describe("duplicateList", () => {
     });
   }
 
-  it("does not copy Kakao notes or colours, and leaves the source as it was", async () => {
+  it("does not copy Kakao notes or the Kakao colour field, and leaves the source as it was", async () => {
     const db = openUserDb(`dup${n}`);
     await seed(db, list("src", "제주 카페", "kakao"), "owner");
     const before = await db.list_items.where("listId").equals("src").toArray();
@@ -135,5 +135,32 @@ describe("duplicateList", () => {
   it("refuses a source that doesn't exist", async () => {
     openUserDb(`dup${n}`);
     await expect(duplicateList("nope", "copy")).rejects.toThrow("no such list");
+  });
+
+  it("keeps each place's colour as an item colour: a known Kakao code only", async () => {
+    const db = openUserDb(`dup${n}`);
+    await db.lists.put(list("src", "제주 카페", "kakao"));
+    await db.user_lists.put(role("src", "follower"));
+    await db.list_items.bulkPut([
+      item("a", "src", "p_red", 0, { providerColor: "01" }),
+      item("b", "src", "p_blue", 1, { providerColor: "05" }),
+      item("c", "src", "p_unknown", 2, { providerColor: "99" }),
+      item("d", "src", "p_none", 3),
+    ]);
+    const id = await duplicateList("src", "copy");
+    const colours = Object.fromEntries(
+      (await itemsOf(db, id)).map((i) => [i.placeId, i.itemColor ?? null]),
+    );
+    expect(colours).toEqual({ p_red: "01", p_blue: "05", p_unknown: null, p_none: null });
+  });
+
+  it("a copy of a copy keeps the colours too", async () => {
+    const db = openUserDb(`dup${n}`);
+    await db.lists.put(list("src", "제주 카페", "kakao"));
+    await db.user_lists.put(role("src", "owner"));
+    await db.list_items.bulkPut([item("a", "src", "p_red", 0, { providerColor: "01" })]);
+    const first = await duplicateList("src", "first");
+    const second = await duplicateList(first, "second");
+    expect((await itemsOf(db, second)).map((i) => i.itemColor)).toEqual(["01"]);
   });
 });

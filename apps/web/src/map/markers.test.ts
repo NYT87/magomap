@@ -136,6 +136,18 @@ describe("buildMarkers", () => {
       expect(color([item("kk", "p1", "99"), item("own", "p1")])).toBe("#7A4E7E");
     });
 
+    it("an own-list item's colour (copied from Kakao) beats its list's colour", () => {
+      expect(color([{ ...item("own", "p1"), itemColor: "02" }])).toBe("#bd5b00");
+      // An unknown code is ignored, as for Kakao items.
+      expect(color([{ ...item("own", "p1"), itemColor: "99" }])).toBe("#7A4E7E");
+    });
+
+    it("an own-list item's copied colour and a Kakao colour: the own list's copy decides", () => {
+      expect(color([{ ...item("own", "p1"), itemColor: "02" }, item("kk", "p1", "01")])).toBe(
+        "#bd5b00",
+      );
+    });
+
     it("a Kakao list alone with no colour code falls back to the theme colour", () => {
       expect(color([item("kk", "p1")])).toBe("var(--color-pine)");
     });

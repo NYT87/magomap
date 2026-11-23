@@ -206,3 +206,83 @@ forEachDialect("pull asOf", (makeDb) => {
     expect(after).toBeGreaterThan(before ?? 0);
   });
 });
+
+forEachDialect("a colour on an own-list item", (makeDb) => {
+  const itemOf = async (db: Db, user: string) =>
+    (await pull(db, user, null)).rows.find((r) => r.table === "list_items")?.row as
+      | Record<string, unknown>
+      | undefined;
+
+  it("goes through a push and comes back on a pull", async () => {
+    const db = await setup(makeDb);
+    await push(
+      db,
+      A,
+      [
+        up("places", searchedPlace("1")),
+        up("lists", ownList("own-a")),
+        up("list_items", ownItem("own-a", "p_kakao_1", { itemColor: "03" })),
+      ],
+      T0,
+    );
+    expect((await itemOf(db, A))?.itemColor).toBe("03");
+  });
+
+  it("is null when the item has none", async () => {
+    const db = await setup(makeDb);
+    await push(
+      db,
+      A,
+      [
+        up("places", searchedPlace("1")),
+        up("lists", ownList("own-a")),
+        up("list_items", ownItem("own-a", "p_kakao_1")),
+      ],
+      T0,
+    );
+    expect((await itemOf(db, A))?.itemColor ?? null).toBeNull();
+  });
+
+  it("refuses anything that isn't a two-digit code", async () => {
+    const db = await setup(makeDb);
+    for (const bad of ["red", "3", "123", "#c8373e", ""]) {
+      const res = await push(
+        db,
+        A,
+        [
+          up("places", searchedPlace("1")),
+          up("lists", ownList("own-a")),
+          up("list_items", ownItem("own-a", "p_kakao_1", { itemColor: bad })),
+        ],
+        T0,
+      );
+      expect(
+        res.results.find((r) => r.mutationId.length > 0 && r.status === "rejected")?.reason,
+        bad,
+      ).toBe("invalid");
+    }
+  });
+
+  it("can be changed and cleared by a later push", async () => {
+    const db = await setup(makeDb);
+    const first = [
+      up("places", searchedPlace("1")),
+      up("lists", ownList("own-a")),
+      up("list_items", ownItem("own-a", "p_kakao_1", { itemColor: "03" })),
+    ];
+    await push(db, A, first, T0);
+    await push(
+      db,
+      A,
+      [
+        up(
+          "list_items",
+          ownItem("own-a", "p_kakao_1", { itemColor: null, updatedAt: T0 + 5 }),
+          T0 + 5,
+        ),
+      ],
+      T0 + 5,
+    );
+    expect((await itemOf(db, A))?.itemColor ?? null).toBeNull();
+  });
+});
