@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openUserDb } from "../data/db";
@@ -32,16 +32,104 @@ describe("Memberships", () => {
     );
   });
 
-  it("offers only own lists to add the place to", async () => {
+  it("has no 'make a list' hint, and an add icon at the section's top right", async () => {
     const db = openUserDb(`members${n}`);
     await seed(db);
     render(<Memberships placeId={PLACE.id} />);
-    const select = await screen.findByRole("combobox", { name: "Add to list" });
-    const options = [...(select as HTMLSelectElement).options].map((o) => o.textContent);
-    expect(options).toContain("가 볼 곳");
-    expect(options).not.toContain("빵 지도");
-    expect(options).not.toContain("제주 카페");
-    expect(options).not.toContain("아내의 맛집");
+    const add = await screen.findByRole("button", { name: "Add to list" });
+    expect(add).toHaveAttribute("aria-expanded", "false");
+    expect(add.textContent).toBe("");
+    expect(add.closest(".mm-section__head")?.querySelector("h2")).not.toBeNull();
+    expect(screen.queryByText(/Make a list on the Lists screen/)).toBeNull();
+  });
+
+  it("the add icon shows only own lists the place isn't in yet", async () => {
+    const db = openUserDb(`members${n}`);
+    await seed(db);
+    const user = userEvent.setup();
+    render(<Memberships placeId={PLACE.id} />);
+    await user.click(await screen.findByRole("button", { name: "Add to list" }));
+    const panel = screen.getByRole("group", { name: "Add to list" });
+    const names = within(panel)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(names).toContain("가 볼 곳");
+    expect(names).not.toContain("빵 지도"); // already in it
+    expect(names).not.toContain("제주 카페"); // Kakao lists can't be added to
+    expect(names).not.toContain("아내의 맛집");
+    expect(screen.getByRole("button", { name: "Add to list" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("choosing a list adds the place to it and closes the chooser", async () => {
+    const db = openUserDb(`members${n}`);
+    await seed(db);
+    const user = userEvent.setup();
+    render(<Memberships placeId={PLACE.id} />);
+    await user.click(await screen.findByRole("button", { name: "Add to list" }));
+    await user.click(
+      within(screen.getByRole("group", { name: "Add to list" })).getByRole("button", {
+        name: "가 볼 곳",
+      }),
+    );
+    await waitFor(async () =>
+      expect(
+        (await db.list_items.where("listId").equals("own-b").toArray()).filter(
+          (i) => i.placeId === PLACE.id && i.deletedAt == null,
+        ),
+      ).toHaveLength(1),
+    );
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Add to list" })).toBeNull());
+  });
+
+  it("a new list can be made and the place added to it in one step", async () => {
+    const db = openUserDb(`members${n}`);
+    await seed(db);
+    const user = userEvent.setup();
+    render(<Memberships placeId={PLACE.id} />);
+    await user.click(await screen.findByRole("button", { name: "Add to list" }));
+    const create = screen.getByRole("button", { name: "Create and add" });
+    expect(create).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: "New list name" }), "  주말 코스 ");
+    await user.click(create);
+    await waitFor(async () => {
+      const made = (await db.lists.toArray()).find((l) => l.name === "주말 코스");
+      expect(made?.provider).toBeNull();
+      const items = await db.list_items
+        .where("listId")
+        .equals(made?.id ?? "")
+        .toArray();
+      expect(items.map((i) => i.placeId)).toEqual([PLACE.id]);
+    });
+  });
+
+  it("with no own lists the chooser offers only a new list", async () => {
+    const db = openUserDb(`members${n}`);
+    await seed(db);
+    await db.lists.bulkDelete(["own-a", "own-b"]);
+    const user = userEvent.setup();
+    render(<Memberships placeId={PLACE.id} />);
+    await user.click(await screen.findByRole("button", { name: "Add to list" }));
+    const panel = screen.getByRole("group", { name: "Add to list" });
+    expect(
+      within(panel)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Create and add"]);
+  });
+
+  it("Escape closes the chooser and returns focus to the icon", async () => {
+    const db = openUserDb(`members${n}`);
+    await seed(db);
+    const user = userEvent.setup();
+    render(<Memberships placeId={PLACE.id} />);
+    const add = await screen.findByRole("button", { name: "Add to list" });
+    await user.click(add);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("group", { name: "Add to list" })).toBeNull();
+    expect(add).toHaveFocus();
   });
 
   it("shows each Kakao note under its own list, with no separate section", async () => {

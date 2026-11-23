@@ -1099,6 +1099,45 @@ a {
   margin-top: var(--space-sm);
 }
 
+.mm-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+/* The lists a place can be added to, opened from the icon in the section's corner. */
+.mm-add-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mm-add-list__items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-add-list__option {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-sm);
+  color: var(--color-text);
+  font: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
+}
+
+.mm-add-list__option:hover {
+  background: var(--color-surface);
+}
+
 .mm-section {
   display: flex;
   flex-direction: column;
