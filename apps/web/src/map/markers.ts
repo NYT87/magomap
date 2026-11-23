@@ -28,18 +28,21 @@ export interface MarkerInput {
 const rank = (list: ListRow, roles: MarkerInput["roles"]) =>
   list.provider === null ? 0 : roles.get(list.id) === "follower" ? 2 : 1;
 
-/** The colour Kakao gave this place in a Kakao list, when this app knows its code. */
-const kakaoColorOf = (item: ListItemRow, list: ListRow): string | undefined =>
-  list.provider !== null && item.providerColor
-    ? KAKAO_PLACE_COLORS[item.providerColor]?.value
-    : undefined;
+/**
+ * The Kakao colour a membership gives its place, when this app knows its code: the favourite's
+ * own colour in a Kakao list, or the colour kept on the item of an own list a Kakao list was
+ * copied into.
+ */
+const kakaoColorOf = (item: ListItemRow, list: ListRow): string | undefined => {
+  const code = list.provider !== null ? item.providerColor : item.itemColor;
+  return code ? KAKAO_PLACE_COLORS[code]?.value : undefined;
+};
 
-/** The colour a membership gives its place: Kakao's favourite colour, the own list's, or the theme. */
+/** The colour a membership gives its place: a Kakao colour, else the own list's, else the theme. */
 export function membershipColor(item: ListItemRow, list: ListRow): string {
-  if (list.provider !== null) {
-    return (item.providerColor && KAKAO_PLACE_COLORS[item.providerColor]?.value) || THEME_PRIMARY;
-  }
-  return list.color ?? THEME_PRIMARY;
+  const kakao = kakaoColorOf(item, list);
+  if (kakao) return kakao;
+  return list.provider === null && list.color ? list.color : THEME_PRIMARY;
 }
 
 export function buildMarkers(input: MarkerInput): MapMarker[] {
@@ -65,8 +68,8 @@ export function buildMarkers(input: MarkerInput): MapMarker[] {
     const ms = byPlace.get(place.id);
     let color: string;
     if (ms && ms.length > 0) {
-      // A colour Kakao gave the place wins, so a copy of the list in an own list doesn't hide it.
-      // Then own lists, owned Kakao lists and followed ones, in that order.
+      // A colour Kakao gave the place wins (in its Kakao list, or kept on the copy in an own list),
+      // so a copy of the list never hides it. Then own lists, owned Kakao lists and followed ones.
       const coloured = ms.filter((m) => kakaoColorOf(m.item, m.list) !== undefined);
       const pool = coloured.length > 0 ? coloured : ms;
       pool.sort(

@@ -105,6 +105,12 @@ export const mutationRowSchemas = {
     externalId: z.null().optional(),
     providerNote: z.null().optional(),
     providerColor: z.null().optional(),
+    // A Kakao colour code, as Kakao Map's favourites carry (two digits).
+    itemColor: z
+      .string()
+      .regex(/^\d{2}$/)
+      .nullable()
+      .optional(),
     removedAtProvider: z.null().optional(),
     providerSnapshotAt: z.null().optional(),
   }),

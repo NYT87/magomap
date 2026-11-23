@@ -17,6 +17,7 @@ import {
   userListRowId,
   userPlaceRowId,
 } from "@magomap/domain/ids";
+import { KAKAO_PLACE_COLORS } from "@magomap/domain/providers/kakao";
 import { currentDb, type Draft, type MagomapDexie } from "./db";
 import { notifyWrite } from "./events";
 
@@ -287,10 +288,15 @@ export function createList(input: { name: string; color: string | null }): Promi
   return tx(async (db) => (await insertOwnList(db, input)).id);
 }
 
+/** A Kakao colour code this app knows (`01`…`07`), else null. */
+const knownColorCode = (code: string | null | undefined): string | null =>
+  code && Object.hasOwn(KAKAO_PLACE_COLORS, code) ? code : null;
+
 /**
  * A new own list holding the places the source list has now (live items, in the source's order).
- * Works for any list, own or Kakao, followed or owned. Only places are copied: Kakao notes and
- * colours belong to the source's items. Returns the new list's id.
+ * Works for any list, own or Kakao, followed or owned. Only places are copied, each with the
+ * colour it has in the source (as an item colour); Kakao notes belong to the source's items.
+ * Returns the new list's id.
  */
 export function duplicateList(sourceListId: string, name: string): Promise<string> {
   return tx(async (db) => {
@@ -311,6 +317,8 @@ export function duplicateList(sourceListId: string, name: string): Promise<strin
         externalId: null,
         providerNote: null,
         providerColor: null,
+        // The colour the place has in the source (Kakao's code, or an earlier copy's), if known.
+        itemColor: knownColorCode(source.providerColor) ?? knownColorCode(source.itemColor),
         removedAtProvider: null,
         providerSnapshotAt: null,
         createdAt: at,

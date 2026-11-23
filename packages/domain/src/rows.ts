@@ -79,6 +79,8 @@ export interface ListItemRow extends Base {
   externalId: string | null;
   providerNote: string | null;
   providerColor: string | null;
+  /** An own-list item's Kakao colour code (two digits), kept from the place it was copied from. */
+  itemColor?: string | null;
   removedAtProvider: number | null;
   providerSnapshotAt: number | null;
 }

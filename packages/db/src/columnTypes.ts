@@ -152,6 +152,7 @@ export const COLUMN_TYPES: {
     external_id: "text",
     provider_note: "text",
     provider_color: "text",
+    item_color: "text",
     removed_at_provider: "bigint",
     provider_snapshot_at: "bigint",
     created_at: "bigint",
