@@ -56,15 +56,14 @@ export function Memberships({ placeId }: { placeId: string }) {
       </div>
       {open && (
         // A labelled group; Escape closes it and returns focus to the icon.
-        <div
+        <fieldset
           id={panelId}
-          role="group"
-          aria-label={t("place.addToList")}
           className="mm-card mm-add-list"
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
           }}
         >
+          <legend className="mm-visually-hidden">{t("place.addToList")}</legend>
           {addable.length > 0 && (
             <ul className="mm-add-list__items">
               {addable.map((l) => (
@@ -112,7 +111,7 @@ export function Memberships({ placeId }: { placeId: string }) {
               {t("place.createAndAdd")}
             </button>
           </form>
-        </div>
+        </fieldset>
       )}
       {memberships.length === 0 && <p className="mm-muted">{t("place.noLists")}</p>}
       <ul className="mm-memberships">
