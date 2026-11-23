@@ -7,6 +7,7 @@ import { currentDb } from "../data/db";
 import { loadLibrary, SAVED_GROUP, sectionOf, useListPlaces } from "../data/queries";
 import { useListArrival } from "../data/useSyncStatus";
 import { deleteList, editList } from "../data/writes";
+import { DuplicateDialog } from "../lists/DuplicateDialog";
 import { ListForm } from "../lists/ListForm";
 
 /** One list's places in order; Kakao lists are read-only, own lists can be edited or deleted. */
@@ -21,6 +22,7 @@ export function ListScreen({ id }: { id: string }) {
   }, [id]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const arrival = useListArrival();
   if (rows === undefined || meta === undefined) return null;
   const saved = id === SAVED_GROUP;
@@ -36,22 +38,35 @@ export function ListScreen({ id }: { id: string }) {
           <p className="mm-muted">{t("picker.by", { name: list.ownerName })}</p>
         )}
         {list && !own && <p className="mm-note">{t("lists.readOnly")}</p>}
-        {own && list && (
+        {list && (
           <div className="mm-place__actions">
+            {own && (
+              <button
+                type="button"
+                className="mm-button mm-button--secondary"
+                onClick={() => setEditing(true)}
+              >
+                {t("lists.edit")}
+              </button>
+            )}
             <button
               type="button"
               className="mm-button mm-button--secondary"
-              onClick={() => setEditing(true)}
+              // A Kakao list whose places are still arriving would copy only what is here so far.
+              disabled={list.provider != null && arrival != null}
+              onClick={() => setDuplicating(true)}
             >
-              {t("lists.edit")}
+              {t("lists.duplicate.open")}
             </button>
-            <button
-              type="button"
-              className="mm-button mm-button--danger-text"
-              onClick={() => setDeleting(true)}
-            >
-              {t("lists.delete")}
-            </button>
+            {own && (
+              <button
+                type="button"
+                className="mm-button mm-button--danger-text"
+                onClick={() => setDeleting(true)}
+              >
+                {t("lists.delete")}
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -82,6 +97,7 @@ export function ListScreen({ id }: { id: string }) {
           ))}
         </ul>
       )}
+      {duplicating && list && <DuplicateDialog list={list} onClose={() => setDuplicating(false)} />}
       {editing && list && (
         <ConfirmDialog title={t("lists.edit")} role="dialog" onCancel={() => setEditing(false)}>
           <ListForm

@@ -253,35 +253,73 @@ export function refreshPlaceFromSearch(result: SearchResult): Promise<void> {
 
 // ---------- Own lists ----------
 
+/** Writes a new own list and marks it as one of "My lists" at once (the server records the owner too). */
+async function insertOwnList(db: MagomapDexie, input: { name: string; color: string | null }) {
+  const at = stamp();
+  const row: ListRow = {
+    id: newId(),
+    provider: null,
+    externalId: null,
+    name: input.name.trim(),
+    description: null,
+    color: input.color,
+    ownerName: null,
+    removedAtProvider: null,
+    providerSnapshotAt: null,
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+  };
+  await upsert(db, "lists", row);
+  await db.user_lists.put({
+    id: userListRowId(row.id),
+    listId: row.id,
+    role: "owner",
+    removedAt: null,
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+  });
+  return { id: row.id, at };
+}
+
 export function createList(input: { name: string; color: string | null }): Promise<string> {
+  return tx(async (db) => (await insertOwnList(db, input)).id);
+}
+
+/**
+ * A new own list holding the places the source list has now (live items, in the source's order).
+ * Works for any list, own or Kakao, followed or owned. Only places are copied: Kakao notes and
+ * colours belong to the source's items. Returns the new list's id.
+ */
+export function duplicateList(sourceListId: string, name: string): Promise<string> {
   return tx(async (db) => {
-    const at = stamp();
-    const row: ListRow = {
-      id: newId(),
-      provider: null,
-      externalId: null,
-      name: input.name.trim(),
-      description: null,
-      color: input.color,
-      ownerName: null,
-      removedAtProvider: null,
-      providerSnapshotAt: null,
-      createdAt: at,
-      updatedAt: at,
-      deletedAt: null,
-    };
-    await upsert(db, "lists", row);
-    // The server records the owner too; locally it marks the list as one of "My lists" at once.
-    await db.user_lists.put({
-      id: userListRowId(row.id),
-      listId: row.id,
-      role: "owner",
-      removedAt: null,
-      createdAt: at,
-      updatedAt: at,
-      deletedAt: null,
-    });
-    return row.id;
+    const source = await db.lists.get(sourceListId);
+    if (!source || source.deletedAt != null) throw new Error("no such list");
+    if (!name.trim()) throw new Error("blank name");
+    const items = (await db.list_items.where("listId").equals(sourceListId).toArray())
+      .filter((i) => i.deletedAt == null && i.removedAtProvider == null)
+      .sort((a, b) => a.position - b.position);
+    const { id: listId, at } = await insertOwnList(db, { name, color: null });
+    for (const [position, source] of items.entries()) {
+      const row: ListItemRow = {
+        id: ownItemRowId(listId, source.placeId),
+        listId,
+        placeId: source.placeId,
+        position,
+        addedAt: at,
+        externalId: null,
+        providerNote: null,
+        providerColor: null,
+        removedAtProvider: null,
+        providerSnapshotAt: null,
+        createdAt: at,
+        updatedAt: at,
+        deletedAt: null,
+      };
+      await upsert(db, "list_items", row);
+    }
+    return listId;
   });
 }
 
