@@ -7,6 +7,7 @@ import type { AppEnv } from "./env";
 import { errorResponse } from "./errors";
 import { kakaoMapRoutes } from "./import/kakaoMapRoutes";
 import { importRoutes } from "./import/routes";
+import { scheduled } from "./scheduled";
 import { searchRoutes } from "./search/routes";
 import { syncRoutes } from "./sync/routes";
 
@@ -48,4 +49,6 @@ app.onError((error, c) => {
   return c.json({ error: "internal" }, 500);
 });
 
-export default app;
+// The Worker's entry: `fetch` serves the API, `scheduled` runs the daily clean-up. `app` stays a
+// Hono app, so tests can still call `app.request`.
+export default Object.assign(app, { scheduled });

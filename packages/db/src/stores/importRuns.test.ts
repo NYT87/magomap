@@ -6,6 +6,8 @@ import type { Db, Statement } from "../core";
 import { migrate } from "../migrate";
 import { forEachDialect, migrationsDir } from "../testing/dbs";
 import {
+  ABANDONED_IMPORT_MS,
+  closeAbandonedImportRuns,
   completeImportRun,
   finishImportList,
   ImportIncompleteError,
@@ -1080,5 +1082,83 @@ forEachDialect("import (an older run for the user)", (makeDb) => {
         origin_key: "l_kakao_1",
       }),
     ]);
+  });
+});
+
+forEachDialect("abandoned import runs", (makeDb) => {
+  const rowsOf = async (db: Db, user: string) => ({
+    pages: (
+      await db.kysely
+        .selectFrom("import_run_pages")
+        .select("run_id")
+        .where("user_id", "=", user)
+        .execute()
+    ).length,
+    lists: (
+      await db.kysely
+        .selectFrom("import_run_lists")
+        .select("run_id")
+        .where("user_id", "=", user)
+        .execute()
+    ).length,
+  });
+
+  it("closes a run left running for a week and deletes its pages, only that run", async () => {
+    const db = await setup(makeDb);
+    const old = await startRun(db, WIFE, 0, { "1": 2 });
+    await importListChunk(db, WIFE, old.runId, "1", 0, [item("10", "A")], T0 + 1);
+    const fresh = await startRun(db, ME, 0, { "1": 2 });
+    await importListChunk(db, ME, fresh.runId, "1", 0, [item("20", "B")], T0 + 1);
+    expect(await rowsOf(db, WIFE)).toEqual({ pages: 1, lists: 1 });
+
+    // Just under a week: nothing is closed. Then past it, for the wife's run only (the other
+    // user's run started later).
+    expect(await closeAbandonedImportRuns(db, T0 + ABANDONED_IMPORT_MS - 1)).toBe(0);
+    await db.kysely
+      .updateTable("import_runs")
+      .set({ started_at: T0 + 5000 })
+      .where("user_id", "=", ME)
+      .execute();
+    expect(await closeAbandonedImportRuns(db, T0 + ABANDONED_IMPORT_MS + 1)).toBe(1);
+
+    expect(await rowsOf(db, WIFE)).toEqual({ pages: 0, lists: 0 });
+    expect(await rowsOf(db, ME)).toEqual({ pages: 1, lists: 1 });
+    const closed = await db.kysely
+      .selectFrom("import_runs")
+      .select(["status", "finished_at"])
+      .where("user_id", "=", WIFE)
+      .executeTakeFirstOrThrow();
+    expect(closed.status).toBe("superseded");
+    expect(Number(closed.finished_at)).toBe(T0 + ABANDONED_IMPORT_MS + 1);
+    const kept = await db.kysely
+      .selectFrom("import_runs")
+      .select("status")
+      .where("user_id", "=", ME)
+      .executeTakeFirstOrThrow();
+    expect(kept.status).toBe("running");
+  });
+
+  it("a closed run refuses its pages and finish, and the next import starts fresh", async () => {
+    const db = await setup(makeDb);
+    const old = await startRun(db, WIFE, 0, { "1": 2 });
+    await importListChunk(db, WIFE, old.runId, "1", 0, [item("10", "A")], T0 + 1);
+    await closeAbandonedImportRuns(db, T0 + ABANDONED_IMPORT_MS + 1);
+
+    await expect(
+      importListChunk(db, WIFE, old.runId, "1", 1, [item("11", "B")], T0 + ABANDONED_IMPORT_MS + 2),
+    ).rejects.toBeInstanceOf(RunClosedError);
+    await expect(
+      finishImportList(db, WIFE, old.runId, "1", T0 + ABANDONED_IMPORT_MS + 2),
+    ).rejects.toBeInstanceOf(RunClosedError);
+    // Nothing was marked removed, and a new import works.
+    await runImport(db, WIFE, [list("1", [item("10", "A"), item("11", "B")])], {
+      at: T0 + ABANDONED_IMPORT_MS + 3,
+    });
+    expect((await all(db, "list_items")).length).toBe(2);
+  });
+
+  it("does nothing when there is nothing to close", async () => {
+    const db = await setup(makeDb);
+    expect(await closeAbandonedImportRuns(db, T0 + ABANDONED_IMPORT_MS * 2)).toBe(0);
   });
 });
