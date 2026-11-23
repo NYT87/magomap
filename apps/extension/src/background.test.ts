@@ -13,7 +13,7 @@ import {
 } from "./background";
 import { allowedOrigins } from "./origins";
 import { readInPage } from "./readInPage";
-import { writeInPage } from "./writeList";
+import { WRITE_DEADLINE_MS, writeInPage } from "./writeList";
 
 const MAGOMAP = "https://magomap.jmn8718.workers.dev";
 
@@ -394,15 +394,10 @@ describe("writing to Kakao Map", () => {
     y: 1120559,
   };
 
-  it("account asks the page who is signed in, in the page's own world", async () => {
-    const stub = makeStub({
-      tabs: tab,
-      write: async () => ({ ok: true, kakaoMapUserId: "772826870" }),
-    });
-    expect(await stub.send({ type: "magomap.account" })).toEqual({
-      ok: true,
-      kakaoMapUserId: "772826870",
-    });
+  it("account asks the page for her folder records, in the page's own world", async () => {
+    const folders = [{ folderid: 5, map_user_id: "772826870" }, null];
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true, folders }) });
+    expect(await stub.send({ type: "magomap.account" })).toEqual({ ok: true, folders });
     expect(stub.executeScript).toHaveBeenCalledWith({
       target: { tabId: 1 },
       world: "MAIN",
@@ -466,6 +461,20 @@ describe("writing to Kakao Map", () => {
         places: Array.from({ length: 101 }, () => goodPlace),
       },
       { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, key: "12ab" }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, key: "0" }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, key: "0123" }] },
+      {
+        type: "magomap.addPlaces",
+        folderId: 7,
+        places: [{ ...goodPlace, title: "t".repeat(1001) }],
+      },
+      {
+        type: "magomap.addPlaces",
+        folderId: 7,
+        places: [{ ...goodPlace, address: "a".repeat(1001) }],
+      },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, x: 10_000_001 }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, y: -10_000_001 }] },
       { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, key: "" }] },
       { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, title: "" }] },
       { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, x: Number.NaN }] },
@@ -529,7 +538,8 @@ describe("writing to Kakao Map", () => {
       "ok",
       { ok: true },
       { ok: true, folderId: "7" },
-      { ok: true, kakaoMapUserId: 5 },
+      { ok: true, folders: "nope" },
+      { ok: true, folders: Array.from({ length: 2001 }, () => null) },
       { ok: false, error: "weird" },
     ]) {
       const stub = makeStub({ tabs: tab, write: async () => wrong });
@@ -538,6 +548,14 @@ describe("writing to Kakao Map", () => {
         error: "kakao_unavailable",
       });
     }
+    const accountWrong = makeStub({
+      tabs: tab,
+      write: async () => ({ ok: true, folders: "nope" }),
+    });
+    expect(await accountWrong.send({ type: "magomap.account" })).toEqual({
+      ok: false,
+      error: "kakao_unavailable",
+    });
     // The page's own failure passes through, with how far an add got.
     const failed = makeStub({
       tabs: tab,
@@ -564,9 +582,9 @@ describe("writing to Kakao Map", () => {
     const stub = makeStub({
       tabs: [],
       created: { id: 42, status: "complete" },
-      write: async () => ({ ok: true, kakaoMapUserId: "1" }),
+      write: async () => ({ ok: true, folders: [] }),
     });
-    expect(await stub.send({ type: "magomap.account" })).toEqual({ ok: true, kakaoMapUserId: "1" });
+    expect(await stub.send({ type: "magomap.account" })).toEqual({ ok: true, folders: [] });
     expect(stub.create).toHaveBeenCalledWith({ url: "https://map.kakao.com/", active: false });
     expect(stub.remove).toHaveBeenCalledWith(42);
   });
@@ -597,5 +615,9 @@ describe("writing to Kakao Map", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("gives the page less time than the worker, so the page always stops first", () => {
+    expect(WRITE_DEADLINE_MS).toBeLessThan(WRITE_TIMEOUT_MS);
   });
 });

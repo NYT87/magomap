@@ -1,6 +1,6 @@
 /**
- * Writes to her Kakao Map from inside a signed-in map.kakao.com tab: says whose account is
- * signed in, creates a list, and adds places to it.
+ * Writes to her Kakao Map from inside a signed-in map.kakao.com tab: hands over her folder
+ * records (so magomap can tell whose account is signed in), creates a list, and adds places.
  *
  * The requests are the ones Kakao Map's own page sends, captured on 2026-11-23 (see
  * docs/kakao-map-access.md, "Writing a list"): `POST /folder/add`, `POST /favorite/add`, both
@@ -37,8 +37,15 @@ export type WriteRequest =
 
 export type WriteError = "kakao_signed_out" | "kakao_unavailable";
 
+/**
+ * How long the page keeps working on one write before it stops by itself. It is less than the
+ * worker's own timeout, so the page has always stopped before the worker frees its "busy" flag
+ * (a retry can't then run beside a write that is still going).
+ */
+export const WRITE_DEADLINE_MS = 90_000;
+
 export type WriteResult =
-  | { ok: true; kakaoMapUserId: string }
+  | { ok: true; folders: unknown[] }
   | { ok: true; folderId: number }
   | { ok: true; added: number; skipped: number }
   | { ok: false; error: WriteError; added?: number };
@@ -48,6 +55,22 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
   const UNAVAILABLE = "kakao_unavailable";
   /** Per request, body included. A hung request must not hold the write forever. */
   const REQUEST_TIMEOUT_MS = 30_000;
+  /** The whole write; the same value as WRITE_DEADLINE_MS (module values aren't reachable here). */
+  const DEADLINE_MS = 90_000;
+  const deadline = Date.now() + DEADLINE_MS;
+  /** The `/folder/list` fields magomap's Kakao Map adapter reads, as readInPage keeps them. */
+  const FOLDER_FIELDS = [
+    "folderid",
+    "status",
+    "title",
+    "memo",
+    "nickname",
+    "kakao_map_user_id",
+    "map_user_id",
+    "subscribe",
+    "favorite_cnt",
+    "folder_updated_at",
+  ];
   /** Places per `/favorite/add`. Kakao Map's own maximum wasn't captured: a cautious size. */
   const BATCH_SIZE = 20;
   /** Pages of a list's favourites (500 each), a guard against a paging loop. */
@@ -70,8 +93,11 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
 
   /** One request as the page makes it. Throws a Failure; returns the parsed answer. */
   const send = async (path: string, body?: unknown): Promise<Record<string, unknown>> => {
+    // Nothing is sent once the write's time is up, and no request outlives it.
+    const left = deadline - Date.now();
+    if (left <= 0) throw new Failure(UNAVAILABLE);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), Math.min(REQUEST_TIMEOUT_MS, left));
     try {
       let response: Response;
       try {
@@ -157,20 +183,19 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
   try {
     if (request.op === "account") {
       const answer = await send("/folder/list");
-      if (!Array.isArray(answer.folders)) throw new Failure(UNAVAILABLE);
+      if (!succeeded(answer) || !Array.isArray(answer.folders)) throw new Failure(UNAVAILABLE);
       if (answer.folders.length === 0) throw new Failure(SIGNED_OUT);
-      // Her own account is the owner of the folders she doesn't merely follow.
-      const owners = new Set<string>();
-      for (const folder of answer.folders) {
-        if (!isRecord(folder) || folder.status === "D") continue;
-        if (folder.subscribe === 1 || folder.subscribe === "1" || folder.subscribe === true)
-          continue;
-        const owner = folder.kakao_map_user_id || folder.map_user_id;
-        if (typeof owner === "string" && owner !== "") owners.add(owner);
-      }
-      const [only] = [...owners];
-      if (owners.size !== 1 || only === undefined) throw new Failure(UNAVAILABLE);
-      return { ok: true, kakaoMapUserId: only };
+      // Whose account it is, is the app's to decide with the same rule as the sync (the domain's
+      // Kakao Map adapter): this only hands over the records, trimmed to what that rule reads.
+      const folders = answer.folders.map((folder) => {
+        if (!isRecord(folder)) return null;
+        const kept: Record<string, unknown> = {};
+        for (const field of FOLDER_FIELDS) {
+          if (Object.hasOwn(folder, field)) kept[field] = folder[field];
+        }
+        return kept;
+      });
+      return { ok: true, folders };
     }
 
     if (request.op === "create") {

@@ -7,7 +7,8 @@
  * - `{ type: "magomap.ping" }` → `{ ok: true, version }`
  * - `{ type: "magomap.read" }` → `{ ok: true, start, favorites }`, or
  *   `{ ok: false, error: "kakao_signed_out" | "kakao_unavailable" | "busy" }`
- * - `{ type: "magomap.account" }` → `{ ok: true, kakaoMapUserId }`: whose Kakao Map is signed in
+ * - `{ type: "magomap.account" }` → `{ ok: true, folders }`: her folder records, so magomap can
+ *   tell whose Kakao Map is signed in (it applies the sync's own rule)
  * - `{ type: "magomap.createList", name }` → `{ ok: true, folderId }`: a new Kakao Map list
  * - `{ type: "magomap.addPlaces", folderId, places }` → `{ ok: true, added, skipped }`, or
  *   `{ ok: false, error, added? }` (`added`: how many went in before it stopped)
@@ -46,11 +47,16 @@ export const WRITE_TIMEOUT_MS = 2 * 60_000;
 const MAX_LIST_NAME = 100;
 /** Places per message; the page sends them to Kakao in smaller requests. */
 const MAX_PLACES = 100;
+/** Longest title or address, and the largest coordinate (WCONGNAMUL metres ×2.5, either sign). */
+const MAX_TEXT = 1000;
+const MAX_COORDINATE = 10_000_000;
+/** At most the folders magomap's own read accepts (`kakaoMapStartSchema`). */
+const MAX_FOLDERS = 2000;
 
 export type ReadAnswer = ReadResult | { ok: false; error: "busy" };
 export type PingAnswer = { ok: true; version: string };
 export type WriteAnswer =
-  | { ok: true; kakaoMapUserId: string }
+  | { ok: true; folders: unknown[] }
   | { ok: true; folderId: number }
   | { ok: true; added: number; skipped: number }
   | { ok: false; error: WriteError | "busy" | "invalid"; added?: number };
@@ -249,10 +255,14 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
   for (const raw of list) {
     if (!isPlainObject(raw)) return null;
     const { key, title, address, x, y, color } = raw;
-    if (typeof key !== "string" || !/^\d{1,15}$/.test(key)) return null;
-    if (typeof title !== "string" || title === "") return null;
-    if (typeof address !== "string") return null;
+    // Kakao place ids have no leading zeros, so a key means the same number as its text.
+    if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
+    if (typeof title !== "string" || title === "" || title.length > MAX_TEXT) return null;
+    if (typeof address !== "string" || address.length > MAX_TEXT) return null;
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return null;
+    if (Math.abs(x as number) > MAX_COORDINATE || Math.abs(y as number) > MAX_COORDINATE) {
+      return null;
+    }
     if (color !== undefined && (typeof color !== "string" || !/^\d{1,2}$/.test(color))) return null;
     places.push({
       key,
@@ -277,9 +287,9 @@ function writeAnswerOf(request: WriteRequest, value: unknown): WriteAnswer {
   }
   if (value.ok !== true) return WRITE_UNAVAILABLE;
   if (request.op === "account") {
-    const id = value.kakaoMapUserId;
-    return typeof id === "string" && id !== ""
-      ? { ok: true, kakaoMapUserId: id }
+    const folders = value.folders;
+    return Array.isArray(folders) && folders.length <= MAX_FOLDERS
+      ? { ok: true, folders }
       : WRITE_UNAVAILABLE;
   }
   if (request.op === "create") {

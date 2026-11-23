@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type WritePlace, type WriteResult, writeInPage } from "./writeList";
+import { KAKAO_FOLDER_FIELDS } from "../../../packages/domain/src/providers/kakaoMapFields";
+import { WRITE_DEADLINE_MS, type WritePlace, type WriteResult, writeInPage } from "./writeList";
 
 const json = (body: unknown, init: ResponseInit = {}): Response =>
   new Response(JSON.stringify(body), {
@@ -272,21 +273,40 @@ describe("writeInPage: add", () => {
 describe("writeInPage: account", () => {
   const folders = (list: unknown[]) => json(ok({ folders: list }));
 
-  it("is the account that owns the folders that aren't followed", async () => {
+  it("returns the folder records trimmed to the fields magomap reads, for the app to decide whose they are", async () => {
     serve({
       "GET /folder/list": () =>
         folders([
           { folderid: 0 },
-          { folderid: 5, map_user_id: "772826870" },
-          { folderid: 6, kakao_map_user_id: "772826870", map_user_id: "x" },
-          { folderid: 8, subscribe: 1, map_user_id: "someone-else" },
-          { folderid: 9, status: "D", map_user_id: "deleted-owner" },
+          {
+            folderid: 5,
+            map_user_id: "772826870",
+            subscribe: 1,
+            title: "제주",
+            profile_image: "https://example/never-sent.jpg",
+            nickname: "jose",
+          },
+          "not a record",
         ]),
     });
     expect(await writeInPage({ op: "account" })).toEqual({
       ok: true,
-      kakaoMapUserId: "772826870",
+      folders: [
+        { folderid: 0 },
+        { folderid: 5, map_user_id: "772826870", subscribe: 1, title: "제주", nickname: "jose" },
+        null,
+      ],
     });
+  });
+
+  it("keeps exactly the fields the domain's Kakao Map adapter reads", async () => {
+    const all = Object.fromEntries(KAKAO_FOLDER_FIELDS.map((field) => [field, "v"]));
+    serve({ "GET /folder/list": () => folders([{ ...all, extra: "dropped" }]) });
+    const result = await writeInPage({ op: "account" });
+    if (!result.ok || !("folders" in result)) throw new Error("expected folders");
+    expect(Object.keys(result.folders[0] as object).sort()).toEqual(
+      [...KAKAO_FOLDER_FIELDS].sort(),
+    );
   });
 
   it("is signed out when there are no folders at all", async () => {
@@ -294,23 +314,87 @@ describe("writeInPage: account", () => {
     expect(await writeInPage({ op: "account" })).toEqual({ ok: false, error: "kakao_signed_out" });
   });
 
-  it("is unavailable when it can't tell whose folders they are", async () => {
-    serve({ "GET /folder/list": () => folders([{ folderid: 0 }, { folderid: 8, subscribe: 1 }]) });
-    expect(await writeInPage({ op: "account" })).toEqual({
-      ok: false,
-      error: "kakao_unavailable",
+  it("is unavailable when Kakao doesn't say SUCCESS, or sends no folder list", async () => {
+    for (const answer of [
+      () => json({ status: { code: "FAIL" }, folders: [] }),
+      () => json(ok({ folders: "nope" })),
+      () => json(ok()),
+    ]) {
+      serve({ "GET /folder/list": answer });
+      expect(await writeInPage({ op: "account" })).toEqual({
+        ok: false,
+        error: "kakao_unavailable",
+      });
+    }
+  });
+});
+
+describe("writeInPage: its own deadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("stops by itself before the worker gives up, so a retry can't overlap it", async () => {
+    vi.useFakeTimers();
+    // A slow Kakao: every request answers after 29 s (under the 30 s limit per request), and
+    // honours an abort. Reading the list and five batches would take far longer than the deadline.
+    const SLOW = 29_000;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              const isAdd = new URL(String(input)).pathname === "/favorite/add";
+              const size = isAdd
+                ? (JSON.parse(String(init?.body)) as { datas: unknown[] }).datas.length
+                : 0;
+              resolve(
+                isAdd
+                  ? json(
+                      ok({
+                        data: Array.from({ length: size }, () => ({ status: { code: "SUCCESS" } })),
+                      }),
+                    )
+                  : json({ favorites: [] }),
+              );
+            }, SLOW);
+            init?.signal?.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new TypeError("aborted"));
+            });
+          }),
+      ),
+    );
+    let settled = false;
+    const places = Array.from({ length: 100 }, (_, i) => place(i));
+    const pending = writeInPage({ op: "add", folderId: 7, places }).then((r) => {
+      settled = true;
+      return r;
     });
-    serve({
-      "GET /folder/list": () =>
-        folders([
-          { folderid: 5, map_user_id: "a" },
-          { folderid: 6, map_user_id: "b" },
-        ]),
+    await vi.advanceTimersByTimeAsync(WRITE_DEADLINE_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    // The list read (29 s) and two batches (58 s, 87 s) finished; the third was cut off at 90 s.
+    expect(await pending).toEqual({ ok: false, error: "kakao_unavailable", added: 40 });
+  });
+
+  it("sends nothing more once the deadline has passed", async () => {
+    vi.useFakeTimers();
+    let first = true;
+    const fetchMock = vi.fn(async () => {
+      if (first) {
+        first = false;
+        // The list read answers, but only after the deadline.
+        vi.setSystemTime(Date.now() + WRITE_DEADLINE_MS + 1);
+        return json({ favorites: [] });
+      }
+      return json(ok({ data: [{ status: { code: "SUCCESS" } }] }));
     });
-    expect(await writeInPage({ op: "account" })).toEqual({
-      ok: false,
-      error: "kakao_unavailable",
-    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await writeInPage({ op: "add", folderId: 7, places: [place(1)] });
+    expect(result).toEqual({ ok: false, error: "kakao_unavailable", added: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -331,7 +415,7 @@ describe("writeInPage: never logs", () => {
 
 // A type check the compiler enforces: every result is one of the documented shapes.
 const _shapes: WriteResult[] = [
-  { ok: true, kakaoMapUserId: "1" },
+  { ok: true, folders: [{ folderid: 1 }] },
   { ok: true, folderId: 1 },
   { ok: true, added: 1, skipped: 0 },
   { ok: false, error: "kakao_signed_out" },
