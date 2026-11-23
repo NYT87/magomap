@@ -14,10 +14,15 @@ vi.mock("./setKakaoNote", () => {
       super(code);
     }
   }
-  return { NoteError, setKakaoNote: (i: unknown) => setNote(i) };
+  class NoteChangedError extends NoteError {
+    constructor(readonly current: string) {
+      super("note_changed");
+    }
+  }
+  return { NoteChangedError, NoteError, setKakaoNote: (i: unknown) => setNote(i) };
 });
 const { Memberships } = await import("./Memberships");
-const { NoteError } = await import("./setKakaoNote");
+const { NoteChangedError, NoteError } = await import("./setKakaoNote");
 
 let n = 0;
 beforeEach(async () => {
@@ -132,6 +137,45 @@ describe("Memberships: editing a Kakao note", () => {
     expect(screen.getByRole("textbox", { name: "Kakao note in 제주 카페" })).toHaveValue(
       "창가 자리!",
     );
+  });
+
+  it("warns when the note was changed in Kakao Map, showing the new note, and overwrites only after confirming", async () => {
+    setNote.mockRejectedValueOnce(new NoteChangedError("아내가 바꾼 메모"));
+    const user = userEvent.setup();
+    await open();
+    await user.click(await screen.findByRole("button", { name: "Edit Kakao note in 제주 카페" }));
+    await user.type(screen.getByRole("textbox", { name: "Kakao note in 제주 카페" }), "!");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const warning = await screen.findByRole("alertdialog");
+    expect(warning).toHaveTextContent(/changed in Kakao Map since your last sync/i);
+    expect(warning).toHaveTextContent("아내가 바꾼 메모");
+    expect(warning).toHaveTextContent(/overwrite/i);
+    // Nothing was overwritten yet, and what he typed is kept.
+    expect(setNote).toHaveBeenCalledTimes(1);
+    expect(setNote.mock.calls[0]?.[0]).not.toHaveProperty("overwrite");
+    await user.click(screen.getByRole("button", { name: "Overwrite the updated note" }));
+    await waitFor(() => expect(setNote).toHaveBeenCalledTimes(2));
+    expect(setNote.mock.calls[1]?.[0]).toEqual({
+      itemId: "i_kakao_1_10",
+      note: "창가 자리!",
+      overwrite: true,
+    });
+  });
+
+  it("goes back to editing, with his text kept, when he doesn't overwrite", async () => {
+    setNote.mockRejectedValueOnce(new NoteChangedError("아내가 바꾼 메모"));
+    const user = userEvent.setup();
+    await open();
+    await user.click(await screen.findByRole("button", { name: "Edit Kakao note in 제주 카페" }));
+    await user.type(screen.getByRole("textbox", { name: "Kakao note in 제주 카페" }), "!");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("alertdialog");
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Kakao note in 제주 카페" })).toHaveValue(
+      "창가 자리!",
+    );
+    expect(setNote).toHaveBeenCalledTimes(1);
   });
 
   it("says Kakao Map has the note when only magomap's own save failed", async () => {

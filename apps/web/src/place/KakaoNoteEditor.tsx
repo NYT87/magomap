@@ -1,7 +1,7 @@
 import { LIMITS } from "@magomap/domain/limits";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NoteError, setKakaoNote } from "./setKakaoNote";
+import { NoteChangedError, NoteError, setKakaoNote } from "./setKakaoNote";
 
 const errorKey = (code: string) =>
   ({
@@ -39,22 +39,33 @@ export function KakaoNoteEditor({
   const [text, setText] = useState(current);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kakao Map's note, when it was changed there since the last sync (shown before overwriting it).
+  const [changed, setChanged] = useState<string | null>(null);
+  const warning = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   // A second click before the first finishes must not send a second change.
   const working = useRef(false);
   const boxId = useId();
   const errorId = useId();
+  const warningTitleId = useId();
+  const warningBodyId = useId();
 
   useEffect(() => {
     box.current?.focus();
   }, []);
 
-  const save = () => {
+  // Moves to the warning when it appears, so a screen reader reads it.
+  useEffect(() => {
+    if (changed !== null) warning.current?.focus();
+  }, [changed]);
+
+  const save = (overwrite = false) => {
     if (working.current) return;
     working.current = true;
     setBusy(true);
     setError(null);
-    setKakaoNote({ itemId, note: text }).then(
+    setChanged(null);
+    setKakaoNote({ itemId, note: text, ...(overwrite ? { overwrite: true } : {}) }).then(
       () => {
         working.current = false;
         setBusy(false);
@@ -63,7 +74,8 @@ export function KakaoNoteEditor({
       (e) => {
         working.current = false;
         setBusy(false);
-        setError(e instanceof NoteError ? e.code : "kakao_unavailable");
+        if (e instanceof NoteChangedError) setChanged(e.current);
+        else setError(e instanceof NoteError ? e.code : "kakao_unavailable");
       },
     );
   };
@@ -96,13 +108,58 @@ export function KakaoNoteEditor({
         rows={4}
         maxLength={LIMITS.importText}
         value={text}
-        disabled={busy}
+        disabled={busy || changed !== null}
         aria-describedby={error ? errorId : undefined}
         aria-invalid={error ? true : undefined}
         onChange={(e) => setText(e.target.value)}
       />
+      {changed !== null && (
+        <div
+          ref={warning}
+          role="alertdialog"
+          tabIndex={-1}
+          aria-labelledby={warningTitleId}
+          aria-describedby={warningBodyId}
+          className="mm-card mm-note-editor__warning"
+        >
+          <p id={warningTitleId} className="mm-note-editor__warning-title">
+            {t("place.kakaoNoteEdit.changedTitle")}
+          </p>
+          <p id={warningBodyId}>
+            {changed.trim() ? (
+              <>
+                {t("place.kakaoNoteEdit.changedNow")}
+                <q className="mm-note-editor__theirs">{changed}</q>
+              </>
+            ) : (
+              t("place.kakaoNoteEdit.changedNowEmpty")
+            )}
+          </p>
+          <p>{t("place.kakaoNoteEdit.changedWarning")}</p>
+          <div className="mm-note-editor__actions">
+            <button
+              type="button"
+              className="mm-button mm-button--primary"
+              onClick={() => save(true)}
+            >
+              {t("place.kakaoNoteEdit.overwrite")}
+            </button>
+            <button
+              type="button"
+              className="mm-button mm-button--secondary"
+              onClick={() => setChanged(null)}
+            >
+              {t("place.kakaoNoteEdit.keepEditing")}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mm-note-editor__actions">
-        <button type="submit" className="mm-button mm-button--primary" disabled={busy}>
+        <button
+          type="submit"
+          className="mm-button mm-button--primary"
+          disabled={busy || changed !== null}
+        >
           {t("place.kakaoNoteEdit.save")}
         </button>
         <button

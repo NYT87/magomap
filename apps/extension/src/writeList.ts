@@ -35,9 +35,17 @@ export type WriteRequest =
   | { op: "create"; name: string }
   | { op: "add"; folderId: number; places: WritePlace[] }
   | { op: "color"; folderId: number; key: string; color: string }
-  | { op: "note"; folderId: number; key: string; note: string };
+  | {
+      op: "note";
+      folderId: number;
+      key: string;
+      note: string;
+      /** The note magomap last knew; if Kakao's differs, nothing is written (unless `overwrite`). */
+      expected?: string;
+      overwrite?: boolean;
+    };
 
-export type WriteError = "kakao_signed_out" | "kakao_unavailable" | "not_found";
+export type WriteError = "kakao_signed_out" | "kakao_unavailable" | "not_found" | "note_changed";
 
 /**
  * How long the page keeps working on one write before it stops by itself. It is less than the
@@ -51,7 +59,7 @@ export type WriteResult =
   | { ok: true; folderId: number }
   | { ok: true; added: number; skipped: number }
   | { ok: true }
-  | { ok: false; error: WriteError; added?: number };
+  | { ok: false; error: WriteError; added?: number; current?: string };
 
 export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
   const SIGNED_OUT = "kakao_signed_out";
@@ -236,6 +244,18 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       // A note that can't be read as text must never be sent back as empty: that would erase it.
       if (memo !== undefined && memo !== null && typeof memo !== "string") {
         throw new Failure(UNAVAILABLE);
+      }
+      // The note was changed in Kakao Map since magomap last knew it: write nothing, hand it back.
+      if (request.op === "note" && request.expected !== undefined && request.overwrite !== true) {
+        const plainNote = (text: unknown) =>
+          typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
+        if (plainNote(memo) !== plainNote(request.expected)) {
+          return {
+            ok: false,
+            error: "note_changed",
+            current: typeof memo === "string" ? memo : "",
+          };
+        }
       }
       const colour = request.op === "color" ? request.color : found.color;
       if (typeof colour !== "string") throw new Failure(UNAVAILABLE);

@@ -393,6 +393,39 @@ describe("writeInPage: note", () => {
     });
   const req = { op: "note", folderId: 5, key: "1002", note: "새 메모\n둘째 줄" } as const;
 
+  it("writes nothing and hands back Kakao's note when it differs from the one magomap knew", async () => {
+    list([fav("1002", 12, "아내가 바꾼 메모")]);
+    expect(await writeInPage({ ...req, expected: "옛 메모" })).toEqual({
+      ok: false,
+      error: "note_changed",
+      current: "아내가 바꾼 메모",
+    });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
+  it("writes when Kakao's note is still the one magomap knew (line breaks and edge spaces aside)", async () => {
+    list([fav("1002", 12, "옛 메모\r\n둘째 ")]);
+    expect(await writeInPage({ ...req, expected: "옛 메모\n둘째" })).toEqual({ ok: true });
+  });
+
+  it("treats a missing note and an empty expected note as the same", async () => {
+    const empty = { ...fav("1002", 12, "") } as Partial<ReturnType<typeof fav>>;
+    delete empty.memo;
+    list([empty as ReturnType<typeof fav>]);
+    expect(await writeInPage({ ...req, expected: "" })).toEqual({ ok: true });
+  });
+
+  it("overwrites the changed note when asked to", async () => {
+    list([fav("1002", 12, "아내가 바꾼 메모")]);
+    expect(await writeInPage({ ...req, expected: "옛 메모", overwrite: true })).toEqual({
+      ok: true,
+    });
+    const sent = calls.find((c) => c.path === "/favorite/update")?.body as
+      | { datas: { memo: string }[] }
+      | undefined;
+    expect(sent?.datas[0]?.memo).toBe("새 메모\n둘째 줄");
+  });
+
   it("reads the list, sends the favourite back with only the memo changed, then reads again", async () => {
     list([fav("1001", 11, "a"), fav("1002", 12, "옛 메모")]);
     expect(await writeInPage(req)).toEqual({ ok: true });

@@ -20,12 +20,23 @@ export type NoteErrorCode =
   | "busy"
   | "offline"
   | "too_long"
+  | "note_changed"
   | "server_failed";
 
 export class NoteError extends Error {
   constructor(readonly code: NoteErrorCode) {
     super(`Changing the Kakao note failed: ${code}`);
     this.name = "NoteError";
+  }
+}
+
+/** Kakao Map's note was changed there since magomap last knew it; nothing was written. */
+export class NoteChangedError extends NoteError {
+  constructor(
+    /** The note Kakao Map has now (empty when it has none). */
+    readonly current: string,
+  ) {
+    super("note_changed");
   }
 }
 
@@ -36,7 +47,15 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 /** Kakao Map is being written by something else in this page right now. */
 let working = false;
 
-export async function setKakaoNote(input: { itemId: string; note: string }): Promise<void> {
+/**
+ * `overwrite` goes with the note only after he confirmed overwriting a note that was changed in
+ * Kakao Map since the last sync; without it, a changed note throws `NoteChangedError`.
+ */
+export async function setKakaoNote(input: {
+  itemId: string;
+  note: string;
+  overwrite?: boolean;
+}): Promise<void> {
   const note = input.note.trim();
   if (note.length > LIMITS.importText) throw new NoteError("too_long");
   const db = currentDb();
@@ -72,12 +91,25 @@ export async function setKakaoNote(input: { itemId: string; note: string }): Pro
     }
     // Kakao Map first; nothing is recorded anywhere unless it took the note.
     const answer = await askExtension(
-      { type: "magomap.setNote", folderId, key, note },
+      {
+        type: "magomap.setNote",
+        folderId,
+        key,
+        note,
+        // The note magomap knows: the extension compares it with Kakao Map's before writing.
+        expected: item.providerNote ?? "",
+        ...(input.overwrite ? { overwrite: true } : {}),
+      },
       WRITE_WAIT_MS,
     );
     if (answer === undefined) throw new NoteError("extension_missing");
     if (!isRecord(answer) || answer.ok !== true) {
       const error = isRecord(answer) ? answer.error : undefined;
+      if (error === "note_changed") {
+        throw new NoteChangedError(
+          isRecord(answer) && typeof answer.current === "string" ? answer.current : "",
+        );
+      }
       if (error === "kakao_signed_out" || error === "busy" || error === "not_found") {
         throw new NoteError(error);
       }

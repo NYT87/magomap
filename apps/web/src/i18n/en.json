@@ -232,7 +232,13 @@
       "errOffline": "You're offline. Nothing was changed.",
       "errTooLong": "That note is too long. Shorten it and try again.",
       "errServer": "Kakao Map has the new note, but magomap couldn't save it here yet. Sync from Kakao Map to bring it in.",
-      "errUnavailable": "Kakao Map didn't accept the change. Nothing was changed; try again."
+      "errUnavailable": "Kakao Map didn't accept the change. Nothing was changed; try again.",
+      "changedTitle": "This note was changed in Kakao Map since your last sync.",
+      "changedNow": "Kakao Map has now: ",
+      "changedNowEmpty": "Kakao Map has no note for it now.",
+      "changedWarning": "Saving will overwrite the updated note with yours.",
+      "overwrite": "Overwrite the updated note",
+      "keepEditing": "Keep editing"
     }
   },
   "kakaoMap": {

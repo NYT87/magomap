@@ -482,6 +482,49 @@ describe("writing to Kakao Map", () => {
     });
   });
 
+  it("setNote passes the expected note and overwrite flag on, and hands Kakao's note back", async () => {
+    const stub = makeStub({
+      tabs: tab,
+      write: async () => ({ ok: false, error: "note_changed", current: "아내가 바꾼 메모" }),
+    });
+    expect(
+      await stub.send({
+        type: "magomap.setNote",
+        folderId: 7,
+        key: "1063803587",
+        note: "새",
+        expected: "옛",
+        overwrite: true,
+        extra: 1,
+      }),
+    ).toEqual({ ok: false, error: "note_changed", current: "아내가 바꾼 메모" });
+    expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
+      args: [
+        { op: "note", folderId: 7, key: "1063803587", note: "새", expected: "옛", overwrite: true },
+      ],
+    });
+  });
+
+  it("setNote refuses an expected note or overwrite flag of the wrong type", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true }) });
+    for (const extra of [
+      { expected: 5 },
+      { overwrite: "yes" },
+      { expected: "x".repeat(100_000) },
+    ]) {
+      expect(
+        await stub.send({
+          type: "magomap.setNote",
+          folderId: 7,
+          key: "1063803587",
+          note: "a",
+          ...extra,
+        }),
+      ).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(stub.executeScript).not.toHaveBeenCalled();
+  });
+
   it("setNote passes not_found through and refuses bad input without touching Kakao Map", async () => {
     const stub = makeStub({ tabs: tab, write: async () => ({ ok: false, error: "not_found" }) });
     expect(
