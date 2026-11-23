@@ -167,13 +167,10 @@
     "deleteLinkTitle": "Delete this link?",
     "lists": "Lists",
     "addToList": "Add to list",
-    "chooseList": "Choose a list",
-    "add": "Add",
     "removeFrom": "Remove from {{name}}",
     "removedFromKakao": "Removed from Kakao",
     "kakaoNote": "Kakao note",
     "noLists": "Not in any of your lists yet.",
-    "noOwnLists": "Make a list on the Lists screen to add places to it.",
     "close": "Close",
     "discardDraft": "Discard draft",
     "draftKept": "Closing keeps what you wrote as a draft.",
@@ -185,7 +182,10 @@
     "newTab": "(opens in a new tab)",
     "kakaoNotes": "Kakao notes",
     "kakaoNoteReadOnly": "Change it in Kakao Map.",
-    "removedSuffix": "(Removed from Kakao)"
+    "removedSuffix": "(Removed from Kakao)",
+    "newListName": "New list name",
+    "createAndAdd": "Create and add",
+    "inAllLists": "It's already in all your lists."
   },
   "kakaoMap": {
     "title": "Sync from Kakao Map",
