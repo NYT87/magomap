@@ -1862,6 +1862,9 @@ a {
   justify-content: center;
   width: 44px;
   height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
   cursor: pointer;
 }
 
@@ -1872,12 +1875,12 @@ a {
   border: 2px solid transparent;
 }
 
-.mm-color-picker__option:has(input:checked) .mm-color-picker__dot {
+.mm-color-picker__option[aria-pressed="true"] .mm-color-picker__dot {
   border-color: var(--color-text);
   box-shadow: 0 0 0 2px var(--color-surface) inset;
 }
 
-.mm-color-picker__option:has(input:focus-visible) {
+.mm-color-picker__option:focus-visible {
   outline: 2px solid var(--color-pine);
   outline-offset: -2px;
   border-radius: 50%;

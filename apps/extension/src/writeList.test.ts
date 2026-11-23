@@ -328,6 +328,23 @@ describe("writeInPage: color", () => {
     expect(r.ok).toBe(false);
   });
 
+  it("sends nothing when the favourite's note can't be read as text, so it can't be cleared", async () => {
+    list([{ ...fav("1002", 12, "02"), memo: 5 as unknown as string }]);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
+  it("sends an empty note when the favourite has none", async () => {
+    const noMemo = { ...fav("1002", 12, "02") } as Partial<ReturnType<typeof fav>>;
+    delete noMemo.memo;
+    list([noMemo as ReturnType<typeof fav>]);
+    await writeInPage(req);
+    const sent = calls.find((c) => c.path === "/favorite/update")?.body as
+      | { datas: { memo: string }[] }
+      | undefined;
+    expect(sent?.datas[0]?.memo).toBe("");
+  });
+
   it("is not_found, sending nothing, when the place isn't in the list", async () => {
     list([fav("1001", 11, "01")]);
     expect(await writeInPage(req)).toEqual({ ok: false, error: "not_found" });

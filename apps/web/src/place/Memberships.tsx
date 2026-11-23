@@ -155,6 +155,7 @@ export function Memberships({ placeId }: { placeId: string }) {
                   <button
                     type="button"
                     className="mm-icon-button"
+                    id={`color-button-${item.id}`}
                     aria-label={t("place.color.change", { name: list.name })}
                     title={t("place.color.change", { name: list.name })}
                     aria-expanded={coloring === item.id}
@@ -180,7 +181,13 @@ export function Memberships({ placeId }: { placeId: string }) {
                   itemId={item.id}
                   listName={list.name}
                   current={currentColor}
-                  onDone={() => setColoring(null)}
+                  onDone={() => {
+                    setColoring(null);
+                    // The picker is gone: keep the keyboard user where they were.
+                    requestAnimationFrame(() =>
+                      document.getElementById(`color-button-${item.id}`)?.focus(),
+                    );
+                  }}
                 />
               )}
               {note && (

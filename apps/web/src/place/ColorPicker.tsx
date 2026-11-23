@@ -58,20 +58,20 @@ export function ColorPicker({
   };
 
   return (
-    <fieldset className="mm-color-picker" disabled={busy}>
+    <fieldset className="mm-color-picker" aria-busy={busy}>
       <legend className="mm-visually-hidden">{t("place.color.in", { name: listName })}</legend>
       {Object.entries(KAKAO_PLACE_COLORS).map(([code, { name, value }]) => (
-        <label key={code} className="mm-color-picker__option">
-          <input
-            type="radio"
-            name={`color-${itemId}`}
-            className="mm-visually-hidden"
-            checked={current === code}
-            onChange={() => choose(code)}
-          />
+        // Real buttons, so arrow keys only move focus: a colour is sent only on click or Enter.
+        <button
+          key={code}
+          type="button"
+          className="mm-color-picker__option"
+          aria-pressed={current === code}
+          aria-label={t(`place.color.names.${name}`)}
+          onClick={() => choose(code)}
+        >
           <span className="mm-color-picker__dot" style={{ background: value }} aria-hidden />
-          <span className="mm-visually-hidden">{t(`place.color.names.${name}`)}</span>
-        </label>
+        </button>
       ))}
       <p role="status" className="mm-muted mm-color-picker__status">
         {busy ? t("place.color.saving") : ""}

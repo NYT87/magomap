@@ -232,6 +232,10 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       if (typeof seq !== "number" || typeof display1 !== "string" || typeof display2 !== "string") {
         throw new Failure(UNAVAILABLE);
       }
+      // A note that can't be read as text must never be sent back as empty: that would erase it.
+      if (memo !== undefined && memo !== null && typeof memo !== "string") {
+        throw new Failure(UNAVAILABLE);
+      }
       const answer = await send("/favorite/update", {
         datas: [
           {
@@ -239,7 +243,7 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
             display1,
             display2,
             color: request.color,
-            memo: typeof memo === "string" ? memo : "",
+            memo: memo ?? "",
           },
         ],
       });

@@ -60,17 +60,44 @@ describe("Memberships: changing a colour", () => {
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
     const group = screen.getByRole("group", { name: "Colour in 제주 카페" });
-    const radios = within(group).getAllByRole("radio");
+    const radios = within(group).getAllByRole("button");
     expect(radios).toHaveLength(7);
-    expect(within(group).getByRole("radio", { name: "Red" })).toBeChecked();
-    expect(within(group).getByRole("radio", { name: "Blue" })).not.toBeChecked();
+    expect(within(group).getByRole("button", { name: "Red" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(group).getByRole("button", { name: "Blue" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("moving between colours with the arrow keys changes nothing; only Enter or a click does", async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
+    await user.tab();
+    await user.tab();
+    await user.keyboard("{ArrowRight}{ArrowLeft}");
+    expect(setColor).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    expect(setColor).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts focus back on the colour button after a change", async () => {
+    const user = userEvent.setup();
+    await open();
+    const trigger = await screen.findByRole("button", { name: "Change colour in 제주 카페" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Blue" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("choosing a colour changes it and closes the group", async () => {
     const user = userEvent.setup();
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
-    await user.click(screen.getByRole("radio", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Blue" }));
     expect(setColor).toHaveBeenCalledWith({ itemId: "i_kakao_1_10", color: "05" });
     await waitFor(() => expect(screen.queryByRole("group", { name: /Colour in/ })).toBeNull());
   });
@@ -80,7 +107,7 @@ describe("Memberships: changing a colour", () => {
     const user = userEvent.setup();
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
-    await user.click(screen.getByRole("radio", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Blue" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/different Kakao Map account/i);
     expect(screen.getByRole("group", { name: "Colour in 제주 카페" })).toBeInTheDocument();
   });
@@ -90,7 +117,7 @@ describe("Memberships: changing a colour", () => {
     const user = userEvent.setup();
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
-    await user.click(screen.getByRole("radio", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Blue" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Kakao Map has the new colour/i);
   });
 });
