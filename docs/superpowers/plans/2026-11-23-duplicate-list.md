@@ -89,9 +89,9 @@ This is the owner's step; the build pauses and says exactly this:
 
 **Interfaces:**
 - Produces (messages the page sends with `chrome.runtime.sendMessage`, answered only to magomap's origin like `magomap.read`):
-  - `{ type: "magomap.account" }` → `{ ok: true, kakaoMapUserId: string }` (the signed-in Kakao Map account, by the sync's own rule: `kakao_map_user_id || map_user_id` of the folders not flagged `subscribe`) or `{ ok: false, error: "kakao_signed_out" | "kakao_unavailable" | "busy" }`.
+  - `{ type: "magomap.account" }` → `{ ok: true, folders: unknown[] }` (her `/folder/list` records trimmed to the fields magomap's Kakao Map adapter reads, up to 2000) or `{ ok: false, error: "kakao_signed_out" | "kakao_unavailable" | "busy" }`. *Changed in the build (ruling in the ledger):* the extension no longer decides whose account it is; the app does, with the domain's own rule, so the check can't drift from the sync's.
   - `{ type: "magomap.createList", name: string }` → `{ ok: true, folderId: number }` or `{ ok: false, error: … }`. `name` is 1–100 characters.
-  - `{ type: "magomap.addPlaces", folderId: number, placeKeys: string[] }` → `{ ok: true, added: number, skipped: number }` (`skipped`: already in the folder), or `{ ok: false, error: …, added: number }` when it stopped midway. At most the page size recorded in Task 2 per message.
+  - `{ type: "magomap.addPlaces", folderId: number, places: { key: string; title: string; address: string; x: number; y: number; color?: string }[] }` → `{ ok: true, added: number, skipped: number }` (`skipped`: already in the folder, or sent twice), or `{ ok: false, error: …, added?: number }` when it stopped midway (`added` absent: the page itself didn't answer, so read the list again). At most 100 places per message; the page sends 20 per Kakao request. *Changed in the build:* `places`, not `placeKeys`: the captured `/favorite/add` needs the title, address and Kakao's own x/y.
 - Produces (`writeList.ts`): self-contained in-page functions `createFolderInPage(name: string)`, `addFavoritesInPage(folderId: number, placeKeys: string[])`, `accountInPage()`, each returning a plain result object (no imports, no closures over module state), run with `world: "MAIN"`.
 - A write is refused while another read or write runs (`busy`), like `read`.
 
@@ -111,7 +111,7 @@ This is the owner's step; the build pauses and says exactly this:
 - Test: `apps/web/src/lists/duplicateToKakao.test.ts`, `apps/web/src/lists/DuplicateDialog.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 3's messages; `detectExtension`, the sync's existing way of learning the linked Kakao Map account and of running a sync (find them in `import/kakaoMap.ts`); `placeSourceRowId`/`place_sources` for a place's Kakao key.
+- Consumes: Task 3's messages (`magomap.account` hands over folder records: run them through the domain's account rule, adding a small export beside `kakaoMapListsToImport` in `packages/domain/src/providers/kakaoMap.ts`, e.g. `kakaoMapAccountOf(folders: unknown[]): string`, so the comparison with the linked account uses exactly the sync's rule; a place's `x`/`y` come from its lat/lng by the section 5 projection of `docs/kakao-map-access.md`, times 2.5, rounded); `detectExtension`, the sync's existing way of learning the linked Kakao Map account and of running a sync (find them in `import/kakaoMap.ts`); `placeSourceRowId`/`place_sources` for a place's Kakao key.
 - Produces: `duplicateToKakao(input: { sourceListId: string; name: string; resume?: { folderId: number } }): Promise<{ folderId: number; added: number; skipped: number; leftOut: number }>`. It throws `KakaoCopyError` with `code: "extension_missing" | "account_mismatch" | "kakao_signed_out" | "kakao_unavailable" | "busy" | "partial"`, where `partial` carries `{ folderId, added }` so a retry (`duplicateToKakao` again with `resume: { folderId }`) fills the same list.
 - Produces: `askExtension(message: { type: string; [k: string]: unknown }, timeoutMs: number): Promise<unknown>` exported from `import/kakaoMap.ts` (today's private `send`).
 

@@ -7,12 +7,19 @@
  * - `{ type: "magomap.ping" }` → `{ ok: true, version }`
  * - `{ type: "magomap.read" }` → `{ ok: true, start, favorites }`, or
  *   `{ ok: false, error: "kakao_signed_out" | "kakao_unavailable" | "busy" }`
+ * - `{ type: "magomap.account" }` → `{ ok: true, folders }`: her folder records, so magomap can
+ *   tell whose Kakao Map is signed in (it applies the sync's own rule)
+ * - `{ type: "magomap.createList", name }` → `{ ok: true, folderId }`: a new Kakao Map list
+ * - `{ type: "magomap.addPlaces", folderId, places }` → `{ ok: true, added, skipped }`, or
+ *   `{ ok: false, error, added? }` (`added`: how many went in before it stopped)
+ *   The three writes also answer `{ ok: false, error: "invalid" }` for input they refuse.
  *
  * Only magomap's own origins are answered: the list in origins.ts, which the build also writes
  * into the built manifest's `externally_connectable`. Nothing read is ever logged.
  */
 import { DEV_ORIGINS, RELEASE_ORIGINS } from "./origins";
 import { type ReadResult, readInPage } from "./readInPage";
+import { type WriteError, type WritePlace, type WriteRequest, writeInPage } from "./writeList";
 
 /**
  * magomap's origins for this build (see origins.ts): production only in the release build,
@@ -34,8 +41,25 @@ const TAB_LOAD_TIMEOUT_MS = 30_000;
  */
 export const READ_TIMEOUT_MS = 5 * 60_000;
 
+/** A write is a handful of requests (reading the list, then pages of 20 places). */
+export const WRITE_TIMEOUT_MS = 2 * 60_000;
+/** Kakao Map list names, as magomap's own (`LIMITS.listName`). */
+const MAX_LIST_NAME = 100;
+/** Places per message; the page sends them to Kakao in smaller requests. */
+const MAX_PLACES = 100;
+/** Longest title or address, and the largest coordinate (WCONGNAMUL metres ×2.5, either sign). */
+const MAX_TEXT = 1000;
+const MAX_COORDINATE = 10_000_000;
+/** At most the folders magomap's own read accepts (`kakaoMapStartSchema`). */
+const MAX_FOLDERS = 2000;
+
 export type ReadAnswer = ReadResult | { ok: false; error: "busy" };
 export type PingAnswer = { ok: true; version: string };
+export type WriteAnswer =
+  | { ok: true; folders: unknown[] }
+  | { ok: true; folderId: number }
+  | { ok: true; added: number; skipped: number }
+  | { ok: false; error: WriteError | "busy" | "invalid"; added?: number };
 
 export interface TabInfo {
   id?: number;
@@ -50,7 +74,7 @@ export type TabUpdatedListener = (tabId: number, changeInfo: { status?: string }
 export type ExternalListener = (
   message: unknown,
   sender: { origin?: string; url?: string },
-  sendResponse: (response: PingAnswer | ReadAnswer) => void,
+  sendResponse: (response: PingAnswer | ReadAnswer | WriteAnswer) => void,
 ) => boolean | undefined;
 
 /** The part of the `chrome` API this worker uses; `chrome` itself satisfies it. */
@@ -72,15 +96,21 @@ export interface ExtensionApi {
   /** Absent in the tests' stub; `chrome` always has it. */
   action?: { onClicked: { addListener: (listener: () => void) => void } };
   scripting: {
-    executeScript: (injection: {
-      target: { tabId: number };
-      world: "MAIN";
-      func: typeof readInPage;
-    }) => Promise<{ result?: unknown }[]>;
+    executeScript: (
+      injection:
+        | { target: { tabId: number }; world: "MAIN"; func: typeof readInPage }
+        | {
+            target: { tabId: number };
+            world: "MAIN";
+            func: typeof writeInPage;
+            args: [WriteRequest];
+          },
+    ) => Promise<{ result?: unknown }[]>;
   };
 }
 
 const UNAVAILABLE: ReadAnswer = { ok: false, error: "kakao_unavailable" };
+const WRITE_UNAVAILABLE: WriteAnswer = { ok: false, error: "kakao_unavailable" };
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   return ALLOWED_ORIGINS.some((allowed) => allowed === origin);
@@ -152,7 +182,15 @@ function waitForLoad(api: ExtensionApi, tabId: number): Promise<void> {
   });
 }
 
-async function read(api: ExtensionApi): Promise<ReadAnswer> {
+/**
+ * Runs `run` against a signed-in map.kakao.com tab: the most recently used one, or a background
+ * tab opened for the job (and closed afterwards). Any failure answers `fallback`.
+ */
+async function inKakaoTab<T>(
+  api: ExtensionApi,
+  run: (tabId: number) => Promise<T>,
+  fallback: T,
+): Promise<T> {
   const tabs = await api.tabs.query({ url: KAKAO_MAP_TABS });
   let tab = tabs
     // A tab Memory Saver discarded doesn't load again until she opens it; skip it.
@@ -169,26 +207,123 @@ async function read(api: ExtensionApi): Promise<ReadAnswer> {
       openedTabId = tab.id;
     }
     const tabId = tab.id;
-    if (tabId === undefined) return UNAVAILABLE;
+    if (tabId === undefined) return fallback;
     if (tab.status !== "complete") await waitForLoad(api, tabId);
-
-    const [injection] = await withTimeout(
-      api.scripting.executeScript({ target: { tabId }, world: "MAIN", func: readInPage }),
-      READ_TIMEOUT_MS,
-    );
-    return isReadResult(injection?.result) ? injection.result : UNAVAILABLE;
+    return await run(tabId);
   } catch {
-    return UNAVAILABLE;
+    return fallback;
   } finally {
     if (openedTabId !== undefined) {
-      // The tab was only opened for this read; close it again.
+      // The tab was only opened for this job; close it again.
       await api.tabs.remove(openedTabId).catch(() => {});
     }
   }
 }
 
+function read(api: ExtensionApi): Promise<ReadAnswer> {
+  return inKakaoTab(
+    api,
+    async (tabId) => {
+      const [injection] = await withTimeout(
+        api.scripting.executeScript({ target: { tabId }, world: "MAIN", func: readInPage }),
+        READ_TIMEOUT_MS,
+      );
+      return isReadResult(injection?.result) ? injection.result : UNAVAILABLE;
+    },
+    UNAVAILABLE,
+  );
+}
+
+const isCount = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && Number(value) >= 0;
+const isKakaoError = (value: unknown): value is WriteError =>
+  value === "kakao_signed_out" || value === "kakao_unavailable";
+
+/** What a write may ask for, or null when the message isn't a valid one. */
+function parseWrite(type: unknown, message: unknown): WriteRequest | null {
+  if (type === "magomap.account") return { op: "account" };
+  const m = isPlainObject(message) ? message : {};
+  if (type === "magomap.createList") {
+    const name = typeof m.name === "string" ? m.name.trim() : "";
+    return name !== "" && name.length <= MAX_LIST_NAME ? { op: "create", name } : null;
+  }
+  const folderId = m.folderId;
+  if (!Number.isSafeInteger(folderId) || Number(folderId) <= 0) return null;
+  const list = m.places;
+  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_PLACES) return null;
+  const places: WritePlace[] = [];
+  for (const raw of list) {
+    if (!isPlainObject(raw)) return null;
+    const { key, title, address, x, y, color } = raw;
+    // Kakao place ids have no leading zeros, so a key means the same number as its text.
+    if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
+    if (typeof title !== "string" || title === "" || title.length > MAX_TEXT) return null;
+    if (typeof address !== "string" || address.length > MAX_TEXT) return null;
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return null;
+    if (Math.abs(x as number) > MAX_COORDINATE || Math.abs(y as number) > MAX_COORDINATE) {
+      return null;
+    }
+    if (color !== undefined && (typeof color !== "string" || !/^\d{1,2}$/.test(color))) return null;
+    places.push({
+      key,
+      title,
+      address,
+      x: x as number,
+      y: y as number,
+      ...(color === undefined ? {} : { color }),
+    });
+  }
+  return { op: "add", folderId: folderId as number, places };
+}
+
+/** The page's answer to a write, rebuilt field by field, so nothing else it says gets out. */
+function writeAnswerOf(request: WriteRequest, value: unknown): WriteAnswer {
+  if (!isPlainObject(value)) return WRITE_UNAVAILABLE;
+  if (value.ok === false) {
+    if (!isKakaoError(value.error)) return WRITE_UNAVAILABLE;
+    return request.op === "add" && isCount(value.added)
+      ? { ok: false, error: value.error, added: value.added }
+      : { ok: false, error: value.error };
+  }
+  if (value.ok !== true) return WRITE_UNAVAILABLE;
+  if (request.op === "account") {
+    const folders = value.folders;
+    return Array.isArray(folders) && folders.length <= MAX_FOLDERS
+      ? { ok: true, folders }
+      : WRITE_UNAVAILABLE;
+  }
+  if (request.op === "create") {
+    const id = value.folderId;
+    return Number.isSafeInteger(id) && Number(id) > 0
+      ? { ok: true, folderId: id as number }
+      : WRITE_UNAVAILABLE;
+  }
+  return isCount(value.added) && isCount(value.skipped)
+    ? { ok: true, added: value.added, skipped: value.skipped }
+    : WRITE_UNAVAILABLE;
+}
+
+function write(api: ExtensionApi, request: WriteRequest): Promise<WriteAnswer> {
+  return inKakaoTab<WriteAnswer>(
+    api,
+    async (tabId) => {
+      const [injection] = await withTimeout(
+        api.scripting.executeScript({
+          target: { tabId },
+          world: "MAIN",
+          func: writeInPage,
+          args: [request],
+        }),
+        WRITE_TIMEOUT_MS,
+      );
+      return writeAnswerOf(request, injection?.result);
+    },
+    WRITE_UNAVAILABLE,
+  );
+}
+
 export function install(api: ExtensionApi): void {
-  let reading = false;
+  let working = false;
 
   // The button has no popup: a click takes her to where the sync is, magomap's Account page.
   api.action?.onClicked.addListener(() => {
@@ -204,21 +339,45 @@ export function install(api: ExtensionApi): void {
       sendResponse({ ok: true, version: api.runtime.getManifest().version });
       return false;
     }
-    if (type !== "magomap.read") return false;
+    // One job at a time, reads and writes alike: Kakao Map is one tab with one login.
+    const start = <T extends PingAnswer | ReadAnswer | WriteAnswer>(job: Promise<T>) => {
+      working = true;
+      job
+        .catch((): ReadAnswer | WriteAnswer => UNAVAILABLE)
+        .then((answer) => {
+          working = false;
+          sendResponse(answer);
+        });
+    };
 
-    if (reading) {
-      sendResponse({ ok: false, error: "busy" });
-      return false;
+    if (type === "magomap.read") {
+      if (working) {
+        sendResponse({ ok: false, error: "busy" });
+        return false;
+      }
+      start(read(api));
+      // Keeps the message channel open until sendResponse is called.
+      return true;
     }
-    reading = true;
-    read(api)
-      .catch((): ReadAnswer => UNAVAILABLE)
-      .then((answer) => {
-        reading = false;
-        sendResponse(answer);
-      });
-    // Keeps the message channel open until sendResponse is called.
-    return true;
+
+    if (
+      type === "magomap.account" ||
+      type === "magomap.createList" ||
+      type === "magomap.addPlaces"
+    ) {
+      const request = parseWrite(type, message);
+      if (!request) {
+        sendResponse({ ok: false, error: "invalid" });
+        return false;
+      }
+      if (working) {
+        sendResponse({ ok: false, error: "busy" });
+        return false;
+      }
+      start(write(api, request));
+      return true;
+    }
+    return false;
   });
 }
 

@@ -1,6 +1,6 @@
 # magomap extension
 
-A small Chrome/Brave desktop extension (Manifest V3) for magomap's **Sync from Kakao Map**. When magomap's Account page asks, it reads her Kakao Map lists inside a signed-in `map.kakao.com` tab and hands the records, trimmed to the fields magomap reads, to the page. It has no popup or screen of its own; all UI is in magomap.
+A small Chrome/Brave desktop extension (Manifest V3) for magomap's **Sync from Kakao Map**. When magomap asks, it reads her Kakao Map lists inside a signed-in `map.kakao.com` tab and hands the records, trimmed to the fields magomap reads, to the page; and, when she asks magomap to copy a list to Kakao Map, it creates that list and adds the places (see "Writing a list"). It has no popup or screen of its own; all UI is in magomap.
 
 - Permissions: `scripting`, and host access to `https://map.kakao.com/*` only. No `tabs` permission: the host permission is enough to find, open and close `map.kakao.com` tabs and see their url, status and last use.
 - Only magomap's own pages can talk to it (`externally_connectable`, and the same list checked against `sender.origin`). The **release build** allows only `https://magomap.jmn8718.workers.dev`. The **dev build** also allows `http://localhost:5173` and `http://localhost:8787`. Both lists come from `src/origins.ts`.
@@ -56,7 +56,33 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 - `favorites` holds every favourite of every non-deleted folder, likewise trimmed (a route's waypoints never leave the page), all pages in page order, keyed by `String(folderid)`; `counts[].itemCount` is the folder's full count across pages.
 - `kakao_signed_out`: Kakao Map isn't signed in in this browser (Kakao answers zero folders, an auth status, a redirect or an HTML page). Sign in at `map.kakao.com` and try again.
 - `kakao_unavailable`: Kakao failed (5xx, network, an unexpected answer) or the tab couldn't be read. Nothing partial is returned.
-- `busy`: a read is already running.
+- `busy`: a read or a write is already running (one job at a time).
+
+### Writing a list (for "Copy to Kakao Map")
+
+These write to **her own** Kakao Map, inside the `map.kakao.com` tab, with the requests the Kakao Map page sends (`docs/kakao-map-access.md`, section 7). magomap checks `magomap.account` against the account linked to her magomap account before any write.
+
+| Sent by the page                                                    | Answer                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ type: "magomap.account" }`                                       | `{ ok: true, folders }`: her `/folder/list` records, trimmed to the fields magomap reads. magomap decides whose account is signed in with the same rule as the sync (the domain's Kakao Map adapter), not the extension |
+| `{ type: "magomap.createList", name }` (1 to 100 characters)        | `{ ok: true, folderId }`                                                                                                                                                                                                |
+| `{ type: "magomap.addPlaces", folderId, places }` (1 to 100 places) | `{ ok: true, added, skipped }`; `skipped` places were already in the list (or were sent twice), so a retry adds nothing twice                                                                                           |
+
+- A place is `{ key, title, address, x, y, color? }`: Kakao's place id (digits), the two lines Kakao Map shows, and Kakao's own `x`/`y` (WCONGNAMUL, whole numbers). Nothing else is sent.
+- A failure is `{ ok: false, error }` with `kakao_signed_out`, `kakao_unavailable`, `busy`, or `invalid` (input refused before anything is sent). `addPlaces` failures may carry `added`: how many went in before it stopped. Without it, read the list again.
+- The page sends 20 places per request to Kakao Map. Kakao's own maximum isn't known, so that size is cautious.
+- A new list is created the way the page creates one (`status: "P"`, `icon: 10`). What `P` means for who can see the list isn't known: check a new list's visibility in Kakao Map.
+- A write stops by itself after 90 seconds (the worker waits 120), so a retry never runs beside one that is still going. If `createList` times out after Kakao has made the list, the answer has no `folderId` and a retry makes a second list: look for a list with the same name first.
+- Each write picks the most recently used `map.kakao.com` tab. Check `magomap.account` right before writing; Chrome doesn't run extensions in incognito windows unless she allows it for this one.
+
+### Real-browser check of the writes (owner)
+
+With Kakao Map signed in, on a throwaway list only (all four from the page's console, as for `ping`, with the extension id from step 4):
+
+1. `{ type: "magomap.account" }` answers `ok: true` with her folders (no title or place data beyond the trimmed fields).
+2. `{ type: "magomap.createList", name: "magomap test" }` answers `ok: true, folderId`; the list appears in Kakao Map. Check its visibility there.
+3. `{ type: "magomap.addPlaces", folderId, places: [{ key: "1063803587", title: "청라창해문화공원", address: "인천 서해구 청라동 155-19", x: 421032, y: 1120559 }] }` answers `added: 1`; send it again and it answers `added: 0, skipped: 1`.
+4. Try a larger `places` list (for example 30, then 100 places) to see that Kakao accepts the batches, then delete the test list in Kakao Map.
 
 ## Tests
 

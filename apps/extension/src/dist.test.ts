@@ -178,4 +178,53 @@ describe("the built extension", () => {
       favorites: { "0": [{ seq: 1, lat: 33.4, lon: 126.9 }] },
     });
   });
+
+  it("release: the shipped writeInPage is self-contained and writes", async () => {
+    const { worker } = release();
+    const start = worker.indexOf("// src/writeList.ts");
+    const end = worker.indexOf("// src/", start + 1);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const moduleText = end > start ? worker.slice(start, end) : worker.slice(start);
+    expect(moduleText).toContain("async function writeInPage(");
+    const shipped = new Function(`${moduleText}\nreturn writeInPage;`)() as (
+      request: unknown,
+    ) => Promise<unknown>;
+    // Serialised once more, exactly as Chrome does, so only the function's own text is left.
+    const injected = new Function(`return (${shipped.toString()});`)() as typeof shipped;
+
+    const seen: { path: string; method: string; body?: string }[] = [];
+    vi.stubGlobal("window", { location: { origin: "https://map.kakao.com" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        seen.push({
+          path: new URL(input).pathname,
+          method: init?.method ?? "GET",
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
+        return new Response(
+          JSON.stringify({ status: { code: "SUCCESS" }, req: { folderid: 25038639 } }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    expect(await injected({ op: "create", name: "제주 (복사본)" })).toEqual({
+      ok: true,
+      folderId: 25038639,
+    });
+    expect(seen).toEqual([
+      {
+        path: "/folder/add",
+        method: "POST",
+        body: JSON.stringify({
+          title: "제주 (복사본)",
+          memo: "",
+          out_link: "",
+          icon: 10,
+          status: "P",
+        }),
+      },
+    ]);
+  });
 });
