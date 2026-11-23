@@ -185,7 +185,32 @@
     "removedSuffix": "(Removed from Kakao)",
     "newListName": "New list name",
     "createAndAdd": "Create and add",
-    "inAllLists": "It's already in all your lists."
+    "inAllLists": "It's already in all your lists.",
+    "color": {
+      "change": "Change colour in {{name}}",
+      "in": "Colour in {{name}}",
+      "saving": "Saving…",
+      "needsExtension": "Changing a Kakao list's colours needs the magomap extension in this browser.",
+      "names": {
+        "red": "Red",
+        "orange": "Orange",
+        "yellow": "Yellow",
+        "green": "Green",
+        "blue": "Blue",
+        "purple": "Purple",
+        "pink": "Pink"
+      },
+      "errExtension": "The magomap extension didn't answer. Check that it's on, then try again.",
+      "errAccount": "Kakao Map is signed in to a different Kakao Map account than the one linked to magomap. Nothing was changed.",
+      "errUnconfirmed": "Nothing is linked to magomap yet. Run Sync from Kakao Map in Account first.",
+      "errSignedOut": "Kakao Map isn't signed in. Sign in on map.kakao.com, then try again.",
+      "errNotFound": "This place isn't in that Kakao Map list any more. Sync from Kakao Map to update.",
+      "errNotOwner": "Only the list's owner can change its colours.",
+      "errBusy": "The extension is busy with something else. Try again in a moment.",
+      "errOffline": "You're offline. Nothing was changed.",
+      "errServer": "Kakao Map has the new colour, but magomap couldn't save it here yet. Sync from Kakao Map to bring it in.",
+      "errUnavailable": "Kakao Map didn't accept the change. Nothing was changed; try again."
+    }
   },
   "kakaoMap": {
     "title": "Sync from Kakao Map",

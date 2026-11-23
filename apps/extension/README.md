@@ -83,6 +83,7 @@ With Kakao Map signed in, on a throwaway list only (all four from the page's con
 1. `{ type: "magomap.account" }` answers `ok: true` with her folders (no title or place data beyond the trimmed fields).
 2. `{ type: "magomap.createList", name: "magomap test" }` answers `ok: true, folderId`; the list appears in Kakao Map. Check its visibility there.
 3. `{ type: "magomap.addPlaces", folderId, places: [{ key: "1063803587", title: "청라창해문화공원", address: "인천 서해구 청라동 155-19", x: 421032, y: 1120559 }] }` answers `added: 1`; send it again and it answers `added: 0, skipped: 1`.
+4. Change one of those places' colour in Kakao Map: `{ type: "magomap.setColor", folderId, key: "1063803587", color: "05" }` answers `{ ok: true }`, and the place shows blue in Kakao Map.
 4. Try a larger `places` list (for example 30, then 100 places) to see that Kakao accepts the batches, then delete the test list in Kakao Map.
 
 ## Tests

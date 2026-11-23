@@ -331,6 +331,22 @@ export function duplicateList(sourceListId: string, name: string): Promise<strin
   });
 }
 
+/** Sets the Kakao colour code of an own-list item (a copy keeps Kakao's colours; here it is changed). */
+export function setOwnItemColor(itemId: string, color: string): Promise<void> {
+  return tx(async (db) => {
+    const existing = await db.list_items.get(itemId);
+    const list = existing ? await db.lists.get(existing.listId) : undefined;
+    if (!existing || !list || list.provider !== null) throw new Error("Not an own list item");
+    if (!knownColorCode(color)) throw new Error("Not a Kakao colour");
+    const row: ListItemRow = {
+      ...existing,
+      itemColor: color,
+      updatedAt: stamp(existing.updatedAt),
+    };
+    await upsert(db, "list_items", row);
+  });
+}
+
 export function editList(id: string, patch: Partial<Pick<ListRow, "name" | "color">>) {
   return tx(async (db) => {
     const existing = await db.lists.get(id);

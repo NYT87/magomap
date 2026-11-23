@@ -1841,3 +1841,50 @@ a {
 .mm-panel__header .mm-update {
   width: 100%;
 }
+
+/* ---------- Colour picker (a place's colour in one list) ---------- */
+
+.mm-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.mm-color-picker__option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+
+.mm-color-picker__dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.mm-color-picker__option:has(input:checked) .mm-color-picker__dot {
+  border-color: var(--color-text);
+  box-shadow: 0 0 0 2px var(--color-surface) inset;
+}
+
+.mm-color-picker__option:has(input:focus-visible) {
+  outline: 2px solid var(--color-pine);
+  outline-offset: -2px;
+  border-radius: 50%;
+}
+
+.mm-color-picker__status {
+  flex-basis: 100%;
+  margin: 0;
+  min-height: 1em;
+}

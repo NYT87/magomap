@@ -111,7 +111,7 @@ async function placesOf(sourceListId: string): Promise<{ places: SendPlace[]; le
 }
 
 /** Whether the Kakao Map account signed in on the page is the one linked to his magomap account. */
-async function checkAccount(): Promise<void> {
+export async function checkKakaoAccount(): Promise<void> {
   const answer = await ask({ type: "magomap.account" }, ACCOUNT_WAIT_MS);
   if (answer.ok !== true || !Array.isArray(answer.folders))
     throw new KakaoCopyError(failureOf(answer));
@@ -145,7 +145,7 @@ export async function duplicateToKakao(input: {
   working = true;
   try {
     const { places, leftOut } = await placesOf(input.sourceListId);
-    await checkAccount();
+    await checkKakaoAccount();
     let folderId = input.resume?.folderId;
     if (folderId === undefined) {
       const made = await ask(

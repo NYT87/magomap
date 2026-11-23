@@ -185,7 +185,32 @@
     "removedSuffix": "(카카오에서 삭제됨)",
     "newListName": "새 리스트 이름",
     "createAndAdd": "만들고 추가",
-    "inAllLists": "내 리스트에 모두 들어 있어요."
+    "inAllLists": "내 리스트에 모두 들어 있어요.",
+    "color": {
+      "change": "{{name}}의 색 바꾸기",
+      "in": "{{name}}의 색",
+      "saving": "저장 중…",
+      "needsExtension": "카카오 리스트의 색을 바꾸려면 이 브라우저에 magomap 확장 프로그램이 필요해요.",
+      "names": {
+        "red": "빨강",
+        "orange": "주황",
+        "yellow": "노랑",
+        "green": "초록",
+        "blue": "파랑",
+        "purple": "보라",
+        "pink": "분홍"
+      },
+      "errExtension": "magomap 확장 프로그램이 응답하지 않아요. 켜져 있는지 확인하고 다시 시도하세요.",
+      "errAccount": "카카오맵에 로그인된 계정이 magomap에 연결된 계정과 달라요. 바뀐 것은 없어요.",
+      "errUnconfirmed": "아직 magomap에 연결된 카카오맵 계정이 없어요. 계정에서 ‘카카오맵에서 동기화’를 먼저 하세요.",
+      "errSignedOut": "카카오맵에 로그인되어 있지 않아요. map.kakao.com에서 로그인한 뒤 다시 시도하세요.",
+      "errNotFound": "이 장소는 더 이상 그 카카오맵 리스트에 없어요. ‘카카오맵에서 동기화’로 갱신하세요.",
+      "errNotOwner": "리스트의 주인만 색을 바꿀 수 있어요.",
+      "errBusy": "확장 프로그램이 다른 작업 중이에요. 잠시 뒤 다시 시도하세요.",
+      "errOffline": "오프라인이에요. 바뀐 것은 없어요.",
+      "errServer": "카카오맵에는 새 색이 적용됐지만 magomap에는 아직 저장하지 못했어요. ‘카카오맵에서 동기화’로 가져오세요.",
+      "errUnavailable": "카카오맵이 변경을 받아들이지 않았어요. 바뀐 것은 없어요. 다시 시도하세요."
+    }
   },
   "kakaoMap": {
     "title": "카카오맵에서 동기화",
