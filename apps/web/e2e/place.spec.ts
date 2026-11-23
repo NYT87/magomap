@@ -12,7 +12,7 @@ test("a long list name and a long note stay inside their Kakao note card", async
   await devLogin(context, "222");
   await importFromKakao(page);
   await page.goto(`/places/${BADA}`);
-  await expect(page.getByRole("heading", { name: "Kakao notes" })).toBeVisible();
+  await expect(page.locator(".mm-kakao-note").first()).toBeVisible();
   // Give the place's Kakao list a long unbroken name and its note a long link, straight in
   // the local database.
   await page.evaluate(
@@ -52,7 +52,8 @@ test("a long list name and a long note stay inside their Kakao note card", async
   await page.setViewportSize({ width: 360, height: 780 });
   await page.reload();
   const card = page.locator(".mm-kakao-note").first();
-  await expect(card).toContainText(LONG_NAME);
+  // The list's name sits in the chip above its note, in the same entry.
+  await expect(page.locator(".mm-membership").first()).toContainText(LONG_NAME);
   await expect(card).toContainText(LONG_NOTE);
   const overflow = await card.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);

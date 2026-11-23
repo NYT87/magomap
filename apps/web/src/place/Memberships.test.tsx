@@ -18,11 +18,11 @@ describe("Memberships", () => {
     await seed(db);
     const user = userEvent.setup();
     render(<Memberships placeId={PLACE.id} />);
-    // The list's chip (its name also appears on the Kakao note card it's attributed to).
     expect(
       await screen.findByText("제주 카페", { selector: ".mm-chip__name" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("창가 자리")).toBeInTheDocument();
+    // The same note in two lists shows under each of them.
+    expect(screen.getAllByText("창가 자리")).toHaveLength(2);
     expect(screen.getByText("Removed from Kakao")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove from 제주 카페/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove from 아내의 맛집/ })).toBeNull();
@@ -44,47 +44,51 @@ describe("Memberships", () => {
     expect(options).not.toContain("아내의 맛집");
   });
 
-  it("shows Kakao notes apart from the chips", async () => {
+  it("shows each Kakao note under its own list, with no separate section", async () => {
     const db = openUserDb(`members${n}`);
     await seed(db);
     render(<Memberships placeId={PLACE.id} />);
-    const chip = (await screen.findAllByRole("listitem")).find((li) =>
+    const entry = (await screen.findAllByRole("listitem")).find((li) =>
       li.textContent?.includes("제주 카페"),
     );
-    expect(chip).toBeDefined();
-    expect(chip?.textContent).not.toContain("창가 자리");
-    expect(screen.getByRole("heading", { level: 3, name: "Kakao notes" })).toBeInTheDocument();
-    // What a screen reader announces for each note: every list it comes from.
-    expect(
-      screen.getByRole("figure", { name: "Kakao note: 제주 카페 · 가을 산책" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("figure", { name: "Kakao note: 아내의 맛집 (Removed from Kakao)" }),
-    ).toBeInTheDocument();
-    const notes = screen.getAllByText("창가 자리");
-    expect(notes).toHaveLength(1);
-    expect(notes[0]?.closest("[aria-label]")?.getAttribute("aria-label")).toMatch(/^Kakao note/);
-    expect(screen.getAllByText("Change it in Kakao Map.").length).toBeGreaterThan(0);
+    expect(entry?.textContent).toContain("창가 자리");
+    expect(screen.queryByRole("heading", { level: 3, name: "Kakao notes" })).toBeNull();
+    // What a screen reader announces for each note: the list it belongs to.
+    expect(screen.getByRole("figure", { name: "Kakao note: 제주 카페" })).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "Kakao note: 가을 산책" })).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "Kakao note: 아내의 맛집" })).toBeInTheDocument();
   });
 
-  it("names every list a shared note comes from", async () => {
+  it("names a list once: the list's name isn't repeated above its note", async () => {
     const db = openUserDb(`members${n}`);
     await seed(db);
     render(<Memberships placeId={PLACE.id} />);
-    const card = (await screen.findByText("창가 자리")).closest("figure");
-    expect(card?.querySelector("figcaption")?.textContent).toContain("제주 카페");
-    expect(card?.querySelector("figcaption")?.textContent).toContain("가을 산책");
+    await screen.findByText("제주 카페", { selector: ".mm-chip__name" });
+    expect(screen.getAllByText("제주 카페")).toHaveLength(1);
+    expect(screen.getAllByText("가을 산책")).toHaveLength(1);
+  });
+
+  it("says 'Change it in Kakao Map' only under notes of lists she owns", async () => {
+    const db = openUserDb(`members${n}`);
+    await seed(db);
+    render(<Memberships placeId={PLACE.id} />);
+    const owned = await screen.findByRole("figure", { name: "Kakao note: 제주 카페" });
+    expect(owned.textContent).toContain("Change it in Kakao Map.");
+    // 아내의 맛집 is a list she follows: only its owner can change the note.
+    const followed = screen.getByRole("figure", { name: "Kakao note: 아내의 맛집" });
+    expect(followed.textContent).toContain(LONG_NOTE);
+    expect(followed.textContent).not.toContain("Change it in Kakao Map.");
   });
 
   it("keeps a note from a list removed from Kakao, labelled", async () => {
     const db = openUserDb(`members${n}`);
     await seed(db);
     render(<Memberships placeId={PLACE.id} />);
-    const card = (await screen.findByText(LONG_NOTE)).closest("figure");
-    expect(card?.querySelector("figcaption")?.textContent).toContain("(Removed from Kakao)");
+    const entry = (await screen.findByText(LONG_NOTE)).closest("li");
+    expect(entry?.textContent).toContain("Removed from Kakao");
   });
 
-  it("no notes, no heading", async () => {
+  it("no notes, no note cards", async () => {
     const db = openUserDb(`members${n}`);
     await seed(db);
     await db.list_items.toCollection().modify({ providerNote: null });
@@ -92,6 +96,6 @@ describe("Memberships", () => {
     expect(
       await screen.findByText("제주 카페", { selector: ".mm-chip__name" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Kakao notes" })).toBeNull();
+    expect(screen.queryAllByRole("figure")).toHaveLength(0);
   });
 });
