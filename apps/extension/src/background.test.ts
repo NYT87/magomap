@@ -459,6 +459,48 @@ describe("writing to Kakao Map", () => {
     });
   });
 
+  it("setNote sends the list, the place key and the note to the page, empty allowed", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true }) });
+    expect(
+      await stub.send({
+        type: "magomap.setNote",
+        folderId: 7,
+        key: "1063803587",
+        note: "맛있다\n또 가자",
+        x: 1,
+      }),
+    ).toEqual({ ok: true });
+    expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
+      func: writeInPage,
+      args: [{ op: "note", folderId: 7, key: "1063803587", note: "맛있다\n또 가자" }],
+    });
+    expect(
+      await stub.send({ type: "magomap.setNote", folderId: 7, key: "1063803587", note: "" }),
+    ).toEqual({ ok: true });
+    expect(stub.executeScript.mock.calls[1]?.[0]).toMatchObject({
+      args: [{ op: "note", folderId: 7, key: "1063803587", note: "" }],
+    });
+  });
+
+  it("setNote passes not_found through and refuses bad input without touching Kakao Map", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: false, error: "not_found" }) });
+    expect(
+      await stub.send({ type: "magomap.setNote", folderId: 7, key: "1063803587", note: "x" }),
+    ).toEqual({ ok: false, error: "not_found" });
+    stub.executeScript.mockClear();
+    const bad: unknown[] = [
+      { type: "magomap.setNote", folderId: 0, key: "1", note: "x" },
+      { type: "magomap.setNote", folderId: 7, key: "01", note: "x" },
+      { type: "magomap.setNote", folderId: 7, key: "1" },
+      { type: "magomap.setNote", folderId: 7, key: "1", note: 5 },
+      { type: "magomap.setNote", folderId: 7, key: "1", note: "가".repeat(5001) },
+    ];
+    for (const message of bad) {
+      expect(await stub.send(message)).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(stub.executeScript).not.toHaveBeenCalled();
+  });
+
   it("setColor passes not_found through and refuses bad input without touching Kakao Map", async () => {
     const stub = makeStub({ tabs: tab, write: async () => ({ ok: false, error: "not_found" }) });
     expect(

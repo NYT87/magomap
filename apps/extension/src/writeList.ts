@@ -34,7 +34,8 @@ export type WriteRequest =
   | { op: "account" }
   | { op: "create"; name: string }
   | { op: "add"; folderId: number; places: WritePlace[] }
-  | { op: "color"; folderId: number; key: string; color: string };
+  | { op: "color"; folderId: number; key: string; color: string }
+  | { op: "note"; folderId: number; key: string; note: string };
 
 export type WriteError = "kakao_signed_out" | "kakao_unavailable" | "not_found";
 
@@ -222,8 +223,8 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       return { ok: true, folderId };
     }
 
-    if (request.op === "color") {
-      // Read fresh, then send the favourite back as the page does: only the colour differs.
+    if (request.op === "color" || request.op === "note") {
+      // Read fresh, then send the favourite back as the page does: only one field differs.
       const found = (await favoritesIn(request.folderId)).find(
         (f) => f.key !== undefined && String(f.key) === request.key,
       );
@@ -236,14 +237,16 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       if (memo !== undefined && memo !== null && typeof memo !== "string") {
         throw new Failure(UNAVAILABLE);
       }
+      const colour = request.op === "color" ? request.color : found.color;
+      if (typeof colour !== "string") throw new Failure(UNAVAILABLE);
       const answer = await send("/favorite/update", {
         datas: [
           {
             seq,
             display1,
             display2,
-            color: request.color,
-            memo: memo ?? "",
+            color: colour,
+            memo: request.op === "note" ? request.note : (memo ?? ""),
           },
         ],
       });
@@ -252,11 +255,18 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
         (r) => isRecord(r) && isRecord(r.status) && r.status.code === "SUCCESS",
       );
       if (!succeeded(answer) || !done) throw new Failure(UNAVAILABLE);
+      // Kakao may store line breaks or edge spaces its own way: compare without them.
+      const plain = (text: unknown) =>
+        typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
+      const matches = (again: Record<string, unknown>) =>
+        request.op === "color"
+          ? String(again.color) === request.color
+          : plain(again.memo) === plain(request.note);
       // Verify by reading it again, a few short tries (the page's own list can lag a moment).
       for (let attempt = 0; attempt < 3; attempt += 1) {
         if (attempt > 0) await pause(300);
         const again = (await favoritesIn(request.folderId)).find((f) => f.seq === seq);
-        if (again && String(again.color) === request.color) return { ok: true };
+        if (again && matches(again)) return { ok: true };
       }
       throw new Failure(UNAVAILABLE);
     }
