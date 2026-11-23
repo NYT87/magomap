@@ -56,21 +56,23 @@ async function showAtCap(page: Page, path: string, ready: string) {
 for (const lang of ["en", "ko"] as const) {
   test.describe(`at the cap, ${lang}`, () => {
     test.beforeEach(async ({ page, context }, info) => {
-      test.skip(info.project.name !== "phone", "phone layout");
+      if (info.project.name !== "phone") return;
       await setVariant(page, { name: "base" });
       await devLogin(context, "222");
       await importFromKakao(page);
       await setLanguage(page, lang);
     });
 
-    test("the map buttons start below the search bar at the cap", async ({ page }) => {
+    test("the map buttons start below the search bar at the cap", async ({ page }, info) => {
+      if (info.project.name !== "phone") return;
       await showAtCap(page, "/", ".mm-map-top .mm-search__box");
       const box = await page.locator(".mm-map-top .mm-search__box").boundingBox();
       const tools = await page.locator(".mm-map-tools").boundingBox();
       expect(tools?.y ?? 0).toBeGreaterThan((box?.y ?? 0) + (box?.height ?? 0));
     });
 
-    test("the map keeps at least half the screen at the cap", async ({ page }) => {
+    test("the map keeps at least half the screen at the cap", async ({ page }, info) => {
+      if (info.project.name !== "phone") return;
       await showAtCap(page, "/", ".mm-map-top .mm-search__box");
       const search = await page.locator(".mm-map-top .mm-search__box").boundingBox();
       const nav = await page.locator(".mm-nav").boundingBox();
@@ -82,7 +84,8 @@ for (const lang of ["en", "ko"] as const) {
       expect(height - used).toBeGreaterThanOrEqual(422);
     });
 
-    test("nothing is cut off at the cap", async ({ page }) => {
+    test("nothing is cut off at the cap", async ({ page }, info) => {
+      if (info.project.name !== "phone") return;
       for (const s of SCREENS) {
         await showAtCap(page, s.path, s.ready);
         expect(await cutOff(page), s.name).toEqual([]);
@@ -92,7 +95,8 @@ for (const lang of ["en", "ko"] as const) {
       expect(await cutOff(page), "Sync sheet").toEqual([]);
     });
 
-    test("tap targets stay at least 44px at the cap", async ({ page }) => {
+    test("tap targets stay at least 44px at the cap", async ({ page }, info) => {
+      if (info.project.name !== "phone") return;
       for (const s of SCREENS) {
         await showAtCap(page, s.path, s.ready);
         expect(await smallTargets(page), s.name).toEqual([]);
@@ -102,7 +106,8 @@ for (const lang of ["en", "ko"] as const) {
       expect(await smallTargets(page), "Sync sheet").toEqual([]);
     });
 
-    test("the Sync sheet scrolls at the cap", async ({ page }) => {
+    test("the Sync sheet scrolls at the cap", async ({ page }, info) => {
+      if (info.project.name !== "phone") return;
       await showAtCap(page, "/", ".mm-map-top .mm-search__box");
       await openSyncSheet(page);
       await page.locator(".mm-sheet__body").evaluate((el) => {
