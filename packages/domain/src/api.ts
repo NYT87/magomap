@@ -89,7 +89,9 @@ export type ApiErrorCode =
   | "kakao_account_unconfirmed"
   | "kakao_account_mismatch"
   | "kakao_account_taken"
-  | "kakao_account_unclear";
+  | "kakao_account_unclear"
+  | "not_owner"
+  | "owner_unknown";
 
 /** The Kakao Map account a read came from, as a 409 names it: never the full account id. */
 export interface KakaoMapAccountHint {

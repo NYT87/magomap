@@ -359,6 +359,67 @@ describe("checking the account before a copy to Kakao Map", () => {
   });
 });
 
+describe("changing a Kakao colour from magomap", () => {
+  const COLORS = "/api/kakao-colors";
+  const itemOf = (folderid: number, key: string) =>
+    env.DB.prepare(
+      "SELECT i.id AS item, i.list_id AS list, i.provider_color AS color, i.seq AS seq FROM list_items i WHERE i.list_id IN (SELECT id FROM lists WHERE external_id = ?) AND i.external_id IS NOT NULL ORDER BY i.position LIMIT 1 OFFSET ?",
+    )
+      .bind(String(folderid), key === "first" ? 0 : 1)
+      .first<{ item: string; list: string; color: string | null; seq: number }>();
+
+  async function owned(name: string, folderid: number, account: string) {
+    const cookie = await devLogin(name);
+    await upload(cookie, smallRead(account, folderid), account);
+    const row = await itemOf(folderid, "first");
+    if (!row) throw new Error("no item");
+    return { cookie, ...row };
+  }
+
+  it("records the owner's colour, once the extension has changed it in Kakao Map", async () => {
+    const { cookie, item, list, seq } = await owned("km-col-owner", 34001, "u1-col-aaaa");
+    const res = await call(COLORS, post(cookie, { listId: list, itemId: item, color: "05" }), DEV);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ updated: true });
+    const after = await itemOf(34001, "first");
+    expect(after?.color).toBe("05");
+    expect(Number(after?.seq)).toBeGreaterThan(Number(seq));
+  });
+
+  it("refuses someone who doesn't own the list, writing nothing", async () => {
+    const { item, list } = await owned("km-col-own2", 34101, "u1-col-bbbb");
+    const other = await devLogin("km-col-other");
+    await upload(other, smallRead("u1-col-cccc", 34102), "u1-col-cccc");
+    const res = await call(COLORS, post(other, { listId: list, itemId: item, color: "05" }), DEV);
+    expect([403, 404]).toContain(res.status);
+    expect((await itemOf(34101, "first"))?.color).toBe("01");
+  });
+
+  it("is 409 kakao_account_unconfirmed with no Kakao Map account bound", async () => {
+    const cookie = await devLogin("km-col-unbound");
+    const res = await call(COLORS, post(cookie, { listId: "l", itemId: "i", color: "05" }), DEV);
+    expect([404, 409]).toContain(res.status);
+  });
+
+  it("refuses a colour that isn't a known code, and a malformed body", async () => {
+    const { cookie, item, list } = await owned("km-col-bad", 34201, "u1-col-dddd");
+    const bad = await call(COLORS, post(cookie, { listId: list, itemId: item, color: "99" }), DEV);
+    expect(bad.status).toBe(400);
+    const malformed = await call(COLORS, post(cookie, { listId: list }), DEV);
+    expect(malformed.status).toBe(400);
+    expect((await itemOf(34201, "first"))?.color).toBe("01");
+  });
+
+  it("refuses someone who isn't allowed to write", async () => {
+    const { cookie, item, list } = await owned("km-col-denied", 34301, "u1-col-eeee");
+    const res = await call(COLORS, post(cookie, { listId: list, itemId: item, color: "05" }), {
+      ALLOWED_KAKAO_USER_IDS: "someone-else",
+    });
+    expect(res.status).toBe(403);
+    expect((await itemOf(34301, "first"))?.color).toBe("01");
+  });
+});
+
 describe("signed out", () => {
   it("a signed-out read (zero folders) gives 422 kakao_signed_out", async () => {
     const cookie = await devLogin("km-signed-out");

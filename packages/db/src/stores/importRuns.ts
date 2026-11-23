@@ -757,7 +757,12 @@ async function decideChunk(
         added_at: member?.added_at ?? now,
         external_id: item.externalId,
         provider_note: item.providerNote ?? null,
-        provider_color: item.providerColor ?? null,
+        // A colour the owner set from magomap after this read was taken is newer than the read.
+        provider_color:
+          member?.color_edited_at != null && Number(member.color_edited_at) > snapshotAt
+            ? member.provider_color
+            : (item.providerColor ?? null),
+        color_edited_at: member?.color_edited_at ?? null,
         removed_at_provider: null,
         provider_snapshot_at: snapshotAt,
         created_at: member?.created_at ?? now,
