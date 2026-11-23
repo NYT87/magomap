@@ -624,23 +624,40 @@ export function decodeCursor(value: string | null): Cursor {
   }
 }
 
-/** Which rows of each table user U may see. */
+/**
+ * Which rows of each table user U may see. Membership is tested per row (EXISTS) rather than
+ * by building the user's whole place set first (`id IN (SELECT …)`): the pull's cursor bounds
+ * the rows looked at, so a pull with nothing new reads next to nothing. Building the set read
+ * every one of the user's places and list items for each table, on every pull (issue #36).
+ * Columns are qualified with the table's name, so the subqueries' own columns can't shadow them.
+ */
 function scope(table: SyncTable, userId: string) {
   const myLists = sql`SELECT list_id FROM user_lists WHERE user_id = ${userId} AND removed_at IS NULL AND deleted_at IS NULL`;
-  const myPlaces = sql`SELECT place_id FROM user_places WHERE user_id = ${userId} UNION SELECT place_id FROM list_items WHERE list_id IN (${myLists})`;
+  const sees = (placeId: ReturnType<typeof sql.ref>) =>
+    sql<boolean>`(EXISTS (SELECT 1 FROM user_places WHERE user_id = ${userId} AND place_id = ${placeId}) OR EXISTS (SELECT 1 FROM list_items WHERE place_id = ${placeId} AND list_id IN (${myLists})))`;
   switch (table) {
     case "places":
-      return sql<boolean>`id IN (${myPlaces})`;
+      return sees(sql.ref("places.id"));
     case "place_sources":
+      return sees(sql.ref("place_sources.place_id"));
     case "place_locations":
-      return sql<boolean>`place_id IN (${myPlaces})`;
+      return sees(sql.ref("place_locations.place_id"));
     case "lists":
-      return sql<boolean>`id IN (${myLists})`;
+      return sql<boolean>`EXISTS (SELECT 1 FROM user_lists WHERE user_id = ${userId} AND list_id = lists.id AND removed_at IS NULL AND deleted_at IS NULL)`;
     case "list_items":
-      return sql<boolean>`list_id IN (${myLists})`;
+      return sql<boolean>`EXISTS (SELECT 1 FROM user_lists WHERE user_id = ${userId} AND list_id = list_items.list_id AND removed_at IS NULL AND deleted_at IS NULL)`;
     default:
       return sql<boolean>`user_id = ${userId}`;
   }
+}
+
+/**
+ * One page of `table` after the cursor position (seq, id), within the user's scope. The
+ * position is a row-value comparison, which the (seq, id) indexes use as the start of a range;
+ * `seq > ? OR (seq = ? AND id > ?)` means the same but starts the walk at the first row.
+ */
+export function pullPage(table: SyncTable, userId: string, seq: number, id: string, limit: number) {
+  return sql<Row>`SELECT * FROM ${sql.table(table)} WHERE ${scope(table, userId)} AND (seq, id) > (${seq}, ${id}) ORDER BY seq, id LIMIT ${limit}`;
 }
 
 /** Rows changed after `cursor` within the user's scope, each table paged by keyset (seq, id). */
@@ -656,15 +673,9 @@ export async function pull(
   let hasMore = false;
   for (const table of SYNC_TABLES) {
     const [seq, id] = position[table] ?? [-1, ""];
-    const page = await db.kysely
-      .selectFrom(table as keyof Database)
-      .selectAll()
-      .where(scope(table, userId))
-      .where(sql<boolean>`(seq > ${seq} OR (seq = ${seq} AND id > ${id}))`)
-      .orderBy("seq" as never)
-      .orderBy("id" as never)
-      .limit(limitPerTable + 1)
-      .execute();
+    const { rows: page } = await pullPage(table, userId, seq, id, limitPerTable + 1).execute(
+      db.kysely,
+    );
     if (page.length > limitPerTable) hasMore = true;
     const taken = page.slice(0, limitPerTable) as Row[];
     for (const r of taken) rows.push({ table, row: toAnyRow(table, r) as AnyRow });
