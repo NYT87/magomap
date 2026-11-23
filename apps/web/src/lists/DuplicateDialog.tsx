@@ -1,10 +1,12 @@
 import type { ListRow } from "@magomap/domain";
 import { LIMITS } from "@magomap/domain/limits";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { duplicateList } from "../data/writes";
+import { detectExtension } from "../import/kakaoMap";
+import { duplicateToKakao, KakaoCopyError, type KakaoCopyResult } from "./duplicateToKakao";
 
 /** "<name> (copy)", with the name clipped so the whole fits the list name limit. */
 function defaultCopyName(t: (key: string, o: { name: string }) => string, name: string): string {
@@ -17,6 +19,24 @@ function defaultCopyName(t: (key: string, o: { name: string }) => string, name: 
   return full;
 }
 
+/** Where a copy to Kakao Map stands. */
+type KakaoState =
+  | { kind: "idle" }
+  | { kind: "copying" }
+  | { kind: "done"; result: KakaoCopyResult }
+  | { kind: "failed"; code: string; folderId?: number; added?: number };
+
+const errorKey = (code: string) =>
+  ({
+    extension_missing: "lists.duplicate.errExtension",
+    account_mismatch: "lists.duplicate.errAccount",
+    account_unconfirmed: "lists.duplicate.errUnconfirmed",
+    kakao_signed_out: "lists.duplicate.errSignedOut",
+    busy: "lists.duplicate.errBusy",
+    offline: "lists.duplicate.errOffline",
+    partial: "lists.duplicate.errPartial",
+  })[code] ?? "lists.duplicate.errUnavailable";
+
 /** Names a copy of `list` and makes it as a new own list in magomap, then opens it. */
 export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () => void }) {
   const { t } = useTranslation();
@@ -28,6 +48,59 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
   const working = useRef(false);
   const nameId = useId();
   const blank = !name.trim();
+  const isKakao = list.provider === "kakao";
+  const [extension, setExtension] = useState<"checking" | "ready" | "missing">("checking");
+  const [kakao, setKakao] = useState<KakaoState>({ kind: "idle" });
+  const kakaoWorking = useRef(false);
+  // The Kakao list a stopped copy made: kept until a copy finishes, so every retry fills it.
+  const resumeFolder = useRef<number | undefined>(undefined);
+  const copying = kakao.kind === "copying";
+
+  // Copying to Kakao Map is offered only where the extension answers.
+  useEffect(() => {
+    if (!isKakao) return;
+    let live = true;
+    void detectExtension().then((state) => {
+      if (live) setExtension(state);
+    });
+    return () => {
+      live = false;
+    };
+  }, [isKakao]);
+
+  const copyToKakao = () => {
+    if (kakaoWorking.current || working.current || blank) return;
+    kakaoWorking.current = true;
+    const resume = resumeFolder.current;
+    setKakao({ kind: "copying" });
+    duplicateToKakao({
+      sourceListId: list.id,
+      name,
+      ...(resume === undefined ? {} : { resume: { folderId: resume } }),
+    }).then(
+      (result) => {
+        kakaoWorking.current = false;
+        resumeFolder.current = undefined;
+        setKakao({ kind: "done", result });
+      },
+      (error) => {
+        kakaoWorking.current = false;
+        if (error instanceof KakaoCopyError && error.folderId !== undefined) {
+          resumeFolder.current = error.folderId;
+        }
+        setKakao(
+          error instanceof KakaoCopyError
+            ? {
+                kind: "failed",
+                code: error.code,
+                ...(error.folderId === undefined ? {} : { folderId: error.folderId }),
+                ...(error.added === undefined ? {} : { added: error.added }),
+              }
+            : { kind: "failed", code: "kakao_unavailable" },
+        );
+      },
+    );
+  };
 
   const copy = () => {
     if (working.current || blank) return;
@@ -53,19 +126,42 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
       role="dialog"
       onCancel={onClose}
       actions={
-        <>
-          <button type="button" className="mm-button mm-button--secondary" onClick={onClose}>
-            {t("lists.duplicate.cancel")}
+        kakao.kind === "done" ? (
+          <button type="button" className="mm-button mm-button--primary" onClick={onClose}>
+            {t("lists.duplicate.close")}
           </button>
-          <button
-            type="button"
-            className="mm-button mm-button--primary"
-            disabled={blank || busy}
-            onClick={copy}
-          >
-            {t("lists.duplicate.copyHere")}
-          </button>
-        </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="mm-button mm-button--secondary"
+              disabled={copying}
+              onClick={onClose}
+            >
+              {t("lists.duplicate.cancel")}
+            </button>
+            {isKakao && extension === "ready" && (
+              <button
+                type="button"
+                className="mm-button mm-button--primary"
+                disabled={blank || busy || copying}
+                onClick={copyToKakao}
+              >
+                {resumeFolder.current !== undefined
+                  ? t("lists.duplicate.tryAgain")
+                  : t("lists.duplicate.copyKakao")}
+              </button>
+            )}
+            <button
+              type="button"
+              className="mm-button mm-button--primary"
+              disabled={blank || busy || copying}
+              onClick={copy}
+            >
+              {t("lists.duplicate.copyHere")}
+            </button>
+          </>
+        )
       }
     >
       <div className="mm-stack">
@@ -77,6 +173,7 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
           className="mm-input"
           value={name}
           maxLength={LIMITS.listName}
+          disabled={copying || kakao.kind === "done"}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -85,6 +182,28 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
             }
           }}
         />
+        {isKakao && extension === "missing" && (
+          <p className="mm-muted">{t("lists.duplicate.needsExtension")}</p>
+        )}
+        <p role="status" className="mm-muted">
+          {copying ? t("lists.duplicate.copying") : ""}
+        </p>
+        {kakao.kind === "done" && (
+          <div role="status" className="mm-stack">
+            <p>{t("lists.duplicate.resultAdded", { count: kakao.result.added })}</p>
+            {kakao.result.leftOut > 0 && (
+              <p className="mm-muted">
+                {t("lists.duplicate.resultLeftOut", { count: kakao.result.leftOut })}
+              </p>
+            )}
+            {!kakao.result.synced && <p>{t("lists.duplicate.resultNotSynced")}</p>}
+          </div>
+        )}
+        {kakao.kind === "failed" && (
+          <p role="alert" className="mm-error">
+            {t(errorKey(kakao.code), { count: kakao.added ?? 0 })}
+          </p>
+        )}
         {failed && (
           <p role="alert" className="mm-error">
             {t("lists.duplicate.failed")}

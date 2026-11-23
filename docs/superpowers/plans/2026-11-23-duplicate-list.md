@@ -21,6 +21,7 @@
 - **Account check before any Kakao write:** the Kakao Map account signed in on the page must equal the account linked to his magomap account; otherwise stop with nothing written.
 - **Kakao writes only inside a `map.kakao.com` tab**, sending what Kakao Map's own page sends (the captured requests in `docs/kakao-map-access.md`); each injected function is self-contained (`world: "MAIN"`), like `readInPage`.
 - **A retry fills the same Kakao list** (the created list's id is kept); a double confirmation makes one list.
+- **Colour edit (Task 5):** on a Kakao list he owns, **Kakao Map first**: the extension changes the favourite's colour in the `map.kakao.com` tab and reads it back; only when that succeeded does magomap record it (the server, then the local row). Any failure before that leaves magomap unchanged. On his own (non-Kakao) lists there is no Kakao side, so the colour is just saved locally and synced. Not offered on a list that isn't his, or without the extension on a Kakao list. Only the 7 Kakao colours (`KAKAO_PLACE_COLORS`).
 - **Strings** in `apps/web/src/i18n/en.json` and `ko.json` under `lists.duplicate.*`; both themes; 44 px targets.
 - **Gate:** `TEST_DATABASE_URL=postgres://magomap:magomap@localhost:5432/magomap_test ./scripts/gate.sh <task base>` → `GATE: PASS`. No `@ts-ignore`, `biome-ignore`, `.skip`/`.only` or `as any`; never delete or weaken tests.
 - **Commits:** on branch `feat/duplicate-list`, ending with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`; lands by PR (`main` only takes PRs). Tasks 3 and 4 may land in a later PR than Task 1.
@@ -32,6 +33,8 @@
 3. **His wife's list:** the Kakao copy is created on **his** account and nothing is written to hers. (Tasks 3, 4.)
 4. **A different Kakao account signed in:** nothing is written; a clear message. (Tasks 3, 4.)
 5. **A failure midway through adding places, then a retry:** the same Kakao list is filled, with no duplicate places. (Tasks 3, 4.)
+6. **Kakao refuses or can't be reached when a colour is changed:** the colour in magomap stays as it was and he sees why; never "changed" in magomap but not in Kakao. (Task 5.)
+7. **A colour change on a list that isn't his (his wife's):** not offered; if forced, the server writes nothing. (Task 5.)
 
 ## Reviewers
 
@@ -41,6 +44,7 @@
 | 2 Owner gate | (the owner) |
 | 3 Extension writes | code, security |
 | 4 Kakao copy in the app | code, ux |
+| 5 Edit a place's colour | code, security, ux, ui, a11y |
 
 When the docs disagree with the plan, the docs win for **how** to call an API; the builder says so in the commit body and keeps the plan's **behaviour**. If the behaviour can't be done as planned, stop and ask.
 
@@ -120,3 +124,27 @@ This is the owner's step; the build pauses and says exactly this:
 - [ ] **Step 3: Implement** `askExtension` (rename `send`'s body, keep behaviour), `duplicateToKakao` and the dialog's second button; strings `lists.duplicate.*` for the Kakao action, progress, result, and each `KakaoCopyError` code in both languages.
 - [ ] **Step 4: Run** `pnpm --filter @magomap/web exec vitest run`, `pnpm --filter @magomap/web typecheck` → PASS.
 - [ ] **Step 5: Commit** `feat(web): copy a Kakao list to Kakao Map`. Save screenshots for the UX review.
+
+### Task 5: Change a place's colour from the app, Kakao Map first
+
+*Waits for Tasks 3 and 4's `askExtension`. It has an owner gate (Step 1) and a migration (Step 2).*
+
+**Files:**
+- Modify: `docs/kakao-map-access.md` ("Changing a favourite's colour"), `apps/extension/src/writeList.ts` (or a sibling `writeFavorite.ts`), `apps/extension/src/background.ts`, `apps/extension/README.md`, `packages/db/migrations/{sqlite,postgres}/0005_color_edits.sql` (`list_items.color_edited_at` nullable INTEGER/BIGINT), `packages/db/src/schema.ts`, `columnTypes.ts`, `packages/db/src/stores/importRuns.ts` (the colour decision), `packages/db/src/stores/` (a `recordKakaoColorEdit`), `apps/api/src/import/` (the route, mounted in `apps/api/src/index.ts`), `packages/domain/src/api.ts`, `apps/web/src/data/writes.ts`, `apps/web/src/place/Memberships.tsx`, a small `place/ColorPicker.tsx`, the i18n files.
+- Create: `apps/web/src/place/setPlaceColor.ts`
+- Test: `apps/extension/src/writeList.test.ts`, `packages/db/src/stores/importRuns.test.ts` and a store test (both dialects), `apps/api/test/kakaoColor.test.ts`, `apps/web/src/place/setPlaceColor.test.ts`, `Memberships.test.tsx`
+
+**Interfaces:**
+- Consumes: `askExtension` and the account rule (Task 4), `KAKAO_PLACE_COLORS`, `kakaoMapAccountOf`; the list's recorded Kakao owner id (`list.providerOwnerId`) and `place_sources` for the place's Kakao key.
+- Produces:
+  - Extension message `magomap.setColor` `{ folderId: number; key: string; color: string }` → `{ ok: true }` or `{ ok: false, error: "kakao_signed_out" | "kakao_unavailable" | "not_found" }`. In the page: read the list's favourites fresh (all pages), find the favourite by its place key, send `POST /favorite/update` with `{ datas: [{ seq, display1, display2, color, memo }] }` changing **only** `color` (everything else exactly as just read), then read again until `color` matches (a few short retries). Same self-contained-function and deadline rules as `writeInPage`.
+  - `POST /api/kakao-colors` (requireUser, allowlisted) `{ listId: string; itemId: string; color: string /^\d{2}$/ }` → `200 { updated: true }`; `403 not_owner` (the list's recorded Kakao owner id isn't the caller's bound account; nothing written), `409 owner_unknown`, `409 kakao_account_unconfirmed`. It writes that item's `provider_color`, `color_edited_at = now` and its change sequence, one guarded write.
+  - Import rule: when an item's `color_edited_at` is newer than the run's `snapshot_at`, the import keeps its `provider_color` (as the Kakao-note edit rule does).
+  - `setPlaceColor(input: { itemId: string; color: string }): Promise<void>`: own list → one local update of `itemColor` through the outbox; Kakao list he owns → account check (as Task 4), `magomap.setColor`, then `POST /api/kakao-colors`, then the local `providerColor`. Throws `ColorError` with `code: "extension_missing" | "account_mismatch" | "kakao_signed_out" | "kakao_unavailable" | "not_owner" | "offline" | "server_failed"`; `server_failed` means Kakao has the new colour and magomap doesn't yet (the next Sync from Kakao Map brings it).
+
+- [ ] **Step 1: Owner gate.** The owner captures, on `map.kakao.com` signed in to his own account, the request that changes a saved place's colour (its URL, method, JSON body, response JSON; no cookies or headers). The builder records it in `docs/kakao-map-access.md`. The plan assumes `POST /favorite/update` as the note editing does (`2026-11-21-extension-editing-design.md`); if the colour goes through another request, the builder uses the captured one and says so in the commit body, and stops and asks if the page needs something it can't send.
+- [ ] **Step 2: Write the failing tests.** Extension: the order is read → update → read again; only `color` differs from what was read; a place not in the list → `not_found`, nothing sent; Kakao refusing or a read-back that never matches → `kakao_unavailable`; signed out → `kakao_signed_out`. Store/API (both dialects): the owner's edit is shared with followers' pulls; an older import keeps the edited colour and a newer one wins; a follower → `403 not_owner` with nothing written; no recorded owner → `409 owner_unknown`; one edit writes one list-item row plus the write claim; a colour that isn't two digits or isn't a known code is refused. Web: the order is account → extension → route → local; **if the extension fails, neither the route nor the local row is touched**; if the route fails after Kakao succeeded, `server_failed` and the local colour is unchanged; an own-list item makes no extension call; a list that isn't his makes no call at all. `Memberships.test.tsx`: the colour control shows on his own lists, and on a Kakao list he owns only when the extension answers (otherwise disabled with a line saying why); not shown on his wife's list; the saving state, success and each `ColorError` message; the map marker takes the new colour.
+- [ ] **Step 3: Run** the focused tests → FAIL.
+- [ ] **Step 4: Implement** as specified. The colour control is a row of the 7 colours as a labelled radio group (a `<fieldset>` with a visible or hidden legend, each colour named in both languages, not by colour alone), 44 px targets, both themes; strings under `place.color.*`.
+- [ ] **Step 5: Run** extension, db (SQLite and Postgres), api and web suites, `typecheck`, `pnpm exec biome check apps packages scripts` (read all of it) → PASS. Say in the PR that the migration adds only a nullable column.
+- [ ] **Step 6: Commit** `feat: change a place's colour from the app, Kakao Map first`. Save screenshots for the UX and UI reviews. The README's real-browser check gains one line: change a colour on a throwaway list and see it in Kakao Map.

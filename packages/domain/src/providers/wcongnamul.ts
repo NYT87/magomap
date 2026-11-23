@@ -27,6 +27,21 @@ export function wcongnamulToLatLng(x: unknown, y: unknown): LatLng | undefined {
   return { lat, lng };
 }
 
+/**
+ * A point's WCONGNAMUL x/y as `/favorite/add` takes them (whole numbers), or undefined when it
+ * isn't a finite point in Korea. The reverse of `wcongnamulToLatLng`.
+ */
+export function latLngToWcongnamul(
+  lat: unknown,
+  lng: unknown,
+): { x: number; y: number } | undefined {
+  if (typeof lat !== "number" || typeof lng !== "number") return undefined;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inKorea(lat, lng)) return undefined;
+  const [x, y] = toWgs84.inverse([lng, lat]) as [number, number];
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  return { x: Math.round(x * 2.5), y: Math.round(y * 2.5) };
+}
+
 /** A favourite's position: Kakao's own `lat`/`lon` when usable, else its converted `x`/`y`. */
 export function kakaoFavoritePoint(favorite: {
   lat?: unknown;

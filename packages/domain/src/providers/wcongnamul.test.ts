@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kakaoFavoritePoint, wcongnamulToLatLng } from "./wcongnamul";
+import { kakaoFavoritePoint, latLngToWcongnamul, wcongnamulToLatLng } from "./wcongnamul";
 import { OWNER_FIXTURES } from "./wcongnamul.fixtures";
 
 const close = (actual: number | undefined, expected: number, within: number) => {
@@ -66,5 +66,29 @@ describe("kakaoFavoritePoint", () => {
   it("is undefined with neither", () => {
     expect(kakaoFavoritePoint({})).toBeUndefined();
     expect(kakaoFavoritePoint({ lat: null, lon: null, x: 0, y: 0 })).toBeUndefined();
+  });
+});
+
+describe("latLngToWcongnamul", () => {
+  it("gives Kakao's own x/y back for the owner's fixtures, within a metre", () => {
+    for (const f of OWNER_FIXTURES) {
+      const p = latLngToWcongnamul(f.lat, f.lng);
+      expect(p).toBeDefined();
+      // One WCONGNAMUL unit is 0.4 m.
+      expect(Math.abs((p?.x as number) - f.x)).toBeLessThanOrEqual(3);
+      expect(Math.abs((p?.y as number) - f.y)).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("returns whole numbers, and keeps a negative y", () => {
+    const p = latLngToWcongnamul(33.37661909, 126.87684594);
+    expect(Number.isInteger(p?.x)).toBe(true);
+    expect(Number.isInteger(p?.y)).toBe(true);
+    expect((p?.y as number) < 0).toBe(true);
+  });
+
+  it("gives nothing for a point outside Korea or not finite", () => {
+    expect(latLngToWcongnamul(48.85, 2.35)).toBeUndefined();
+    expect(latLngToWcongnamul(Number.NaN, 127)).toBeUndefined();
   });
 });

@@ -9,7 +9,8 @@
     "./location": "./src/location.ts",
     "./limits": "./src/limits.ts",
     "./providers/kakao": "./src/providers/kakao.ts",
-    "./providers/kakaoMap": "./src/providers/kakaoMap.ts"
+    "./providers/kakaoMap": "./src/providers/kakaoMap.ts",
+    "./providers/wcongnamul": "./src/providers/wcongnamul.ts"
   },
   "scripts": {
     "test": "vitest run",

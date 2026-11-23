@@ -59,7 +59,10 @@ const runtime = (): ChromeRuntime | undefined => {
 };
 
 /** Sends one message to the extension; undefined when it isn't there or doesn't answer in time. */
-function send(message: { type: string }, timeoutMs: number): Promise<unknown> {
+export function askExtension(
+  message: { type: string; [k: string]: unknown },
+  timeoutMs: number,
+): Promise<unknown> {
   const r = runtime();
   if (!r) return Promise.resolve(undefined);
   return new Promise((resolve) => {
@@ -82,7 +85,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 /** Whether the magomap extension answers in this browser. */
 export async function detectExtension(): Promise<ExtensionState> {
-  const answer = await send({ type: "magomap.ping" }, PING_TIMEOUT_MS);
+  const answer = await askExtension({ type: "magomap.ping" }, PING_TIMEOUT_MS);
   return isRecord(answer) && answer.ok === true ? "ready" : "missing";
 }
 
@@ -93,7 +96,7 @@ interface Read {
 }
 
 async function readKakaoMap(): Promise<Read> {
-  const answer = await send({ type: "magomap.read" }, READ_TIMEOUT_MS);
+  const answer = await askExtension({ type: "magomap.read" }, READ_TIMEOUT_MS);
   if (isRecord(answer) && answer.ok === false) {
     const error = answer.error;
     if (error === "kakao_signed_out" || error === "busy") throw new KakaoMapSyncError(error);
