@@ -1083,9 +1083,22 @@ a {
 /* ---------- Place page ---------- */
 
 .mm-place__head {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+}
+
+/* The title leaves room for the Kakao Map icon in the corner. */
+.mm-place__head:has(.mm-place__kakao) .mm-screen__title {
+  padding-inline-end: 48px;
+}
+
+.mm-place__kakao {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  color: var(--color-pine);
 }
 
 .mm-place__address {

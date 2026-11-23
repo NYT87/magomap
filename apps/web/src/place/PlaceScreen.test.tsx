@@ -28,4 +28,29 @@ describe("PlaceScreen", () => {
     const order = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(order).toEqual([en.place.lists, en.place.diary, en.place.links]);
   });
+
+  it("opens Kakao Map from an icon in the header's corner, not a text button", async () => {
+    const db = openUserDb(`place-screen${n}`);
+    await seed(db);
+    await db.place_sources.put({
+      id: "s_kakao_27324155",
+      placeId: PLACE.id,
+      provider: "kakao",
+      externalId: "27324155",
+      createdAt: 0,
+      updatedAt: 0,
+      deletedAt: null,
+    });
+    render(
+      <MapStageProvider>
+        <PlaceScreen id={PLACE.id} />
+      </MapStageProvider>,
+    );
+    const link = await screen.findByRole("link", { name: en.place.openKakao });
+    expect(link.textContent).toBe("");
+    expect(link.querySelector("svg")).not.toBeNull();
+    expect(link.classList.contains("mm-place__kakao")).toBe(true);
+    expect(link.closest("header")).not.toBeNull();
+    expect(link).toHaveAttribute("title", en.place.openKakao);
+  });
 });
