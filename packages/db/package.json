@@ -12,6 +12,7 @@
     "./testing": "./src/testing/dbs.ts",
     "./stores/users": "./src/stores/users.ts",
     "./stores/sync": "./src/stores/sync.ts",
+    "./stores/export": "./src/stores/export.ts",
     "./stores/importRuns": "./src/stores/importRuns.ts",
     "./stores/kakaoMapAccounts": "./src/stores/kakaoMapAccounts.ts",
     "./stores/kakaoColors": "./src/stores/kakaoColors.ts"

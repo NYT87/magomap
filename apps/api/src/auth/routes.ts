@@ -1,3 +1,4 @@
+import { exportUserData } from "@magomap/db/stores/export";
 import {
   createSession,
   deleteAccount,
@@ -144,6 +145,16 @@ authRoutes.post("/auth/logout-all", requireUser, async (c) => {
   await deleteAllSessions(c.var.db, c.var.userId);
   clearSessionCookie(c);
   return c.body(null, 204);
+});
+
+/** Everything of the account's own, as a JSON file to keep (docs/deploy.md, "Exporting one user's data"). */
+authRoutes.get("/me/export", requireUser, async (c) => {
+  const now = Date.now();
+  const data = await exportUserData(c.var.db, c.var.userId, now);
+  const day = new Date(now).toISOString().slice(0, 10);
+  c.header("Content-Disposition", `attachment; filename="magomap-export-${day}.json"`);
+  c.header("Cache-Control", "no-store");
+  return c.body(JSON.stringify(data), 200, { "Content-Type": "application/json; charset=utf-8" });
 });
 
 authRoutes.delete("/account", requireUser, async (c) => {

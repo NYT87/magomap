@@ -181,6 +181,74 @@ forEachDialect("users store", (makeDb) => {
     expect(await db.kysely.selectFrom("places").selectAll().execute()).toHaveLength(1);
   });
 
+  it("deletes the account's links, tombstones and import runs, and none of the other's", async () => {
+    const db = await makeDb();
+    const me = await findOrCreateUserByIdentity(db, "kakao", "1", null, now);
+    const other = await findOrCreateUserByIdentity(db, "kakao", "2", null, now);
+    for (const { userId } of [me, other]) {
+      await db.kysely
+        .insertInto("links")
+        .values({
+          user_id: userId,
+          id: uid(`link-${userId}`),
+          place_id: "p_kakao_1",
+          url: "https://example.com",
+          title: null,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          client_updated_at: now,
+          seq: 1,
+        })
+        .execute();
+      await db.kysely
+        .insertInto("tombstones")
+        .values({ user_id: userId, table_name: "links", id: "gone", deleted_at: now })
+        .execute();
+      await db.kysely
+        .insertInto("import_runs")
+        .values({
+          user_id: userId,
+          id: `run-${userId}`,
+          provider: "kakao",
+          started_at: now,
+          finished_at: null,
+          status: "running",
+          complete: 0,
+          subscription_known: 0,
+          snapshot_at: now,
+          summary_json: null,
+          error: null,
+        })
+        .execute();
+      await db.kysely
+        .insertInto("import_run_lists")
+        .values({
+          user_id: userId,
+          run_id: `run-${userId}`,
+          external_id: "1",
+          position: 0,
+          name: "리스트",
+          description: null,
+          owner_name: null,
+          followed: 0,
+          item_count: 0,
+          pages_done: 0,
+          finished: 0,
+          provider_owner_id: null,
+        })
+        .execute();
+    }
+    await deleteAccount(db, me.userId);
+    for (const table of ["links", "tombstones", "import_runs", "import_run_lists"] as const) {
+      const rows = await db.kysely.selectFrom(table).select("user_id").execute();
+      expect(
+        rows.map((r) => r.user_id),
+        table,
+      ).toEqual([other.userId]);
+    }
+  });
+
   it("deletes the pages of an import the account had running", async () => {
     const db = await makeDb();
     const { userId } = await findOrCreateUserByIdentity(db, "kakao", "1", null, now);

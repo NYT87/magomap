@@ -78,6 +78,35 @@ describe("Account", () => {
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
   });
 
+  it("downloads the account's data for this account, and says when it fails", async () => {
+    await i18n.changeLanguage("en");
+    let exports = 0;
+    const fetchMock = vi.fn(async (path: string) =>
+      path === "/api/me/export"
+        ? new Response("{}", { status: ++exports === 1 ? 200 : 500 })
+        : new Response("{}"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const createUrl = vi.fn(() => "blob:x");
+    URL.createObjectURL = createUrl;
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderAccount();
+    const button = screen.getByRole("button", { name: "Download my data" });
+    await user.click(button);
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith("/api/me/export", {
+      credentials: "same-origin",
+      headers: { "x-magomap-user": "u1" },
+    });
+    await user.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The download didn’t work");
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it("deletes the account only after the shown word is typed", async () => {
     await i18n.changeLanguage("en");
     await makeDb();

@@ -142,6 +142,33 @@ export function Account({ me }: { me: Me }) {
     }
   };
 
+  // "Download my data": the server answers a JSON file, saved through a temporary link.
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState(false);
+  const exportHintId = useId();
+  const exportErrorId = useId();
+  const exportData = async () => {
+    setExportError(false);
+    setExporting(true);
+    try {
+      const res = await fetch("/api/me/export", {
+        credentials: "same-origin",
+        headers: { [ACCOUNT_HEADER]: me.userId },
+      });
+      if (!res.ok) throw new Error(`export ${res.status}`);
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `magomap-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError(true);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const deleteAccount = async () => {
     setError(null);
     setBusy(true);
@@ -298,6 +325,23 @@ export function Account({ me }: { me: Me }) {
       <AboutSection />
 
       <section className="mm-stack mm-account-actions">
+        <button
+          type="button"
+          className="mm-button mm-button--secondary mm-button--wide"
+          disabled={!online || exporting || busy}
+          aria-describedby={exportError ? exportErrorId : exportHintId}
+          onClick={() => void exportData()}
+        >
+          {t("account.export")}
+        </button>
+        <p className="mm-muted" id={exportHintId}>
+          {t("account.exportHint")}
+        </p>
+        {exportError && (
+          <p className="mm-error" role="alert" id={exportErrorId}>
+            {t("account.exportFailed")}
+          </p>
+        )}
         <label className="mm-check">
           <input
             type="checkbox"
