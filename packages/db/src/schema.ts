@@ -171,6 +171,8 @@ export interface ListItemsTable {
   provider_color: string | null;
   /** An own-list item's Kakao colour code, copied from the place it was copied from. */
   item_color: string | null;
+  /** When the owner last changed this item's colour from magomap; older reads keep that colour. */
+  color_edited_at: number | null;
   removed_at_provider: number | null;
   provider_snapshot_at: number | null;
   created_at: number;

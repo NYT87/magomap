@@ -8,6 +8,7 @@ import {
   runSnapshot,
   startImportRun,
 } from "@magomap/db/stores/importRuns";
+import { recordKakaoColorEdit } from "@magomap/db/stores/kakaoColors";
 import {
   bindKakaoMapAccount,
   boundKakaoMapAccount,
@@ -42,6 +43,7 @@ import { handled, kakaoLoginIdOf, PAGE } from "./routes";
 
 export const kakaoMapRoutes = new Hono<AppEnv>();
 kakaoMapRoutes.use("/import/kakao-map/*", requireUser);
+kakaoMapRoutes.use("/kakao-colors", requireUser);
 
 /** The largest request body an upload route reads (1 MiB). */
 export const MAX_UPLOAD_BYTES = 1024 * 1024;
@@ -264,6 +266,38 @@ kakaoMapRoutes.post("/import/kakao-map/account", (c) =>
     // No confirmation is ever passed, so nothing is bound here.
     await checkAccount(c, read.account, read.accountAlias, undefined, Date.now());
     return { ok: true };
+  }),
+);
+
+/**
+ * Records a Kakao colour the owner has just changed in Kakao Map (the extension did that first;
+ * magomap only follows). Only the list's Kakao owner may, and only allowlisted users write.
+ */
+const colorBody = z.object({
+  listId: z.string().min(1).max(200),
+  itemId: z.string().min(1).max(200),
+  color: z.string().regex(/^\d{2}$/),
+});
+kakaoMapRoutes.post("/kakao-colors", (c) =>
+  uploadHandled(c, async () => {
+    await uploader(c);
+    const body = colorBody.safeParse(await readJson(c));
+    if (!body.success) throw invalid();
+    const result = await recordKakaoColorEdit(c.var.db, c.var.userId, body.data, Date.now());
+    switch (result) {
+      case "updated":
+        return { updated: true };
+      case "invalid":
+        throw invalid();
+      case "not_found":
+        throw new Refusal(404, { error: "not_found" });
+      case "not_owner":
+        throw new Refusal(403, { error: "not_owner" });
+      case "owner_unknown":
+        throw new Refusal(409, { error: "owner_unknown" });
+      case "kakao_account_unconfirmed":
+        throw new Refusal(409, { error: "kakao_account_unconfirmed" });
+    }
   }),
 );
 

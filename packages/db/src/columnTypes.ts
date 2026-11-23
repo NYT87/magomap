@@ -153,6 +153,7 @@ export const COLUMN_TYPES: {
     provider_note: "text",
     provider_color: "text",
     item_color: "text",
+    color_edited_at: "bigint",
     removed_at_provider: "bigint",
     provider_snapshot_at: "bigint",
     created_at: "bigint",

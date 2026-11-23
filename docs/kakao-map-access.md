@@ -101,6 +101,19 @@ What the capture shows:
 - **Cleanup calls exist** (`/favorite/remove`, `/folder/delete`), which tests against a throwaway list can use.
 - A place that has no Kakao place key (a custom pin, an address favourite) has no `type: "place"` request in this capture, so it is left out of a copy.
 
+## 8. Changing a favourite's colour (2026-11-23)
+
+Captured from the owner's browser (a place's colour changed from the colour picker on `map.kakao.com`):
+
+| What | Request | Body | Answer |
+|---|---|---|---|
+| Update a favourite | `POST /favorite/update` | `{ "datas": [ { "seq": 1119211517, "display1": "<title>", "display2": "<address>", "color": "07", "memo": "racing cafe z" } ] }` | `status.code: "SUCCESS"`, `data[i].status.code`, `data[i].req` (the stored favourite: `seq`, `type`, `display1`, `display2`, `memo`, `color`), `data[i].last_updated_at` (`"2026-11-23 17:53:01"`) |
+
+- The favourite is named by its **`seq`** (not its place key), so a colour change reads the list first to find the `seq`.
+- The page sends **the whole editable record** (`display1`, `display2`, `memo`, `color`), not only the colour: a colour change must send the favourite's current `memo`, `display1` and `display2` back unchanged, or the note could be cleared.
+- It works the same for an `ADDRESS` favourite (the answer's `type` is `ADDRESS`).
+- Colour codes seen: `01`, `06`, `07`.
+
 ## Still open
 
 - Phone edits reaching the endpoint (step 4).

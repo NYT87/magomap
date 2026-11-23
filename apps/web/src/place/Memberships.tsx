@@ -1,11 +1,13 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus, X } from "lucide-react";
-import { type CSSProperties, useId, useRef, useState } from "react";
+import { Palette, Plus, X } from "lucide-react";
+import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { currentDb } from "../data/db";
 import { loadLibrary, sectionOf, usePlaceMemberships } from "../data/queries";
 import { addToList, createList, removeFromList } from "../data/writes";
+import { detectExtension } from "../import/kakaoMap";
 import { membershipColor } from "../map/markers";
+import { ColorPicker } from "./ColorPicker";
 import { kakaoNoteOf } from "./kakaoNotes";
 
 /** The lists this place is in. Kakao lists are read-only; own lists can be added to or left. */
@@ -19,6 +21,18 @@ export function Memberships({ placeId }: { placeId: string }) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, []);
   const [open, setOpen] = useState(false);
+  // The membership whose colour is being changed, and whether the extension (Kakao lists) answers.
+  const [coloring, setColoring] = useState<string | null>(null);
+  const [extension, setExtension] = useState<"checking" | "ready" | "missing">("checking");
+  useEffect(() => {
+    let live = true;
+    void detectExtension().then((state) => {
+      if (live) setExtension(state);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const [newName, setNewName] = useState("");
   const panelId = useId();
   const nameId = useId();
@@ -114,10 +128,19 @@ export function Memberships({ placeId }: { placeId: string }) {
         </fieldset>
       )}
       {memberships.length === 0 && <p className="mm-muted">{t("place.noLists")}</p>}
+      {extension === "missing" && memberships.some((m) => m.section === "provider") && (
+        <p className="mm-muted">{t("place.color.needsExtension")}</p>
+      )}
       <ul className="mm-memberships">
         {memberships.map(({ item, list, section }) => {
           const note = kakaoNoteOf(item);
           const color = membershipColor(item, list);
+          // His own lists, and Kakao lists he owns (changed in Kakao Map first, so it needs the extension).
+          const canColor =
+            item.removedAtProvider == null && (section === "mine" || section === "provider");
+          const colorReady = section === "mine" || extension === "ready";
+          const currentColor =
+            (section === "mine" ? item.itemColor : item.providerColor) ?? undefined;
           return (
             <li key={item.id} className="mm-membership">
               <div className="mm-chip" data-removed={item.removedAtProvider != null || undefined}>
@@ -128,6 +151,20 @@ export function Memberships({ placeId }: { placeId: string }) {
                     <span className="mm-chip__meta">{t("place.removedFromKakao")}</span>
                   )}
                 </span>
+                {canColor && (
+                  <button
+                    type="button"
+                    className="mm-icon-button"
+                    id={`color-button-${item.id}`}
+                    aria-label={t("place.color.change", { name: list.name })}
+                    title={t("place.color.change", { name: list.name })}
+                    aria-expanded={coloring === item.id}
+                    disabled={!colorReady}
+                    onClick={() => setColoring(coloring === item.id ? null : item.id)}
+                  >
+                    <Palette aria-hidden size={18} strokeWidth={1.75} />
+                  </button>
+                )}
                 {section === "mine" && (
                   <button
                     type="button"
@@ -139,6 +176,20 @@ export function Memberships({ placeId }: { placeId: string }) {
                   </button>
                 )}
               </div>
+              {canColor && coloring === item.id && (
+                <ColorPicker
+                  itemId={item.id}
+                  listName={list.name}
+                  current={currentColor}
+                  onDone={() => {
+                    setColoring(null);
+                    // The picker is gone: keep the keyboard user where they were.
+                    requestAnimationFrame(() =>
+                      document.getElementById(`color-button-${item.id}`)?.focus(),
+                    );
+                  }}
+                />
+              )}
               {note && (
                 <figure
                   className="mm-kakao-note"

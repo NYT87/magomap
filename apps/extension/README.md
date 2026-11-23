@@ -62,11 +62,12 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 
 These write to **her own** Kakao Map, inside the `map.kakao.com` tab, with the requests the Kakao Map page sends (`docs/kakao-map-access.md`, section 7). magomap checks `magomap.account` against the account linked to her magomap account before any write.
 
-| Sent by the page                                                    | Answer                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{ type: "magomap.account" }`                                       | `{ ok: true, folders }`: her `/folder/list` records, trimmed to the fields magomap reads. magomap decides whose account is signed in with the same rule as the sync (the domain's Kakao Map adapter), not the extension |
-| `{ type: "magomap.createList", name }` (1 to 100 characters)        | `{ ok: true, folderId }`                                                                                                                                                                                                |
-| `{ type: "magomap.addPlaces", folderId, places }` (1 to 100 places) | `{ ok: true, added, skipped }`; `skipped` places were already in the list (or were sent twice), so a retry adds nothing twice                                                                                           |
+| Sent by the page                                                          | Answer                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ type: "magomap.account" }`                                             | `{ ok: true, folders }`: her `/folder/list` records, trimmed to the fields magomap reads. magomap decides whose account is signed in with the same rule as the sync (the domain's Kakao Map adapter), not the extension |
+| `{ type: "magomap.createList", name }` (1 to 100 characters)              | `{ ok: true, folderId }`                                                                                                                                                                                                |
+| `{ type: "magomap.addPlaces", folderId, places }` (1 to 100 places)       | `{ ok: true, added, skipped }`; `skipped` places were already in the list (or were sent twice), so a retry adds nothing twice                                                                                           |
+| `{ type: "magomap.setColor", folderId, key, color }` (`color` two digits) | `{ ok: true }` once Kakao Map shows the new colour (the favourite is read fresh, sent back with only `color` changed, then read again), or `{ ok: false, error: "not_found" }` when the place isn't in that list        |
 
 - A place is `{ key, title, address, x, y, color? }`: Kakao's place id (digits), the two lines Kakao Map shows, and Kakao's own `x`/`y` (WCONGNAMUL, whole numbers). Nothing else is sent.
 - A failure is `{ ok: false, error }` with `kakao_signed_out`, `kakao_unavailable`, `busy`, or `invalid` (input refused before anything is sent). `addPlaces` failures may carry `added`: how many went in before it stopped. Without it, read the list again.
@@ -77,12 +78,13 @@ These write to **her own** Kakao Map, inside the `map.kakao.com` tab, with the r
 
 ### Real-browser check of the writes (owner)
 
-With Kakao Map signed in, on a throwaway list only (all four from the page's console, as for `ping`, with the extension id from step 4):
+With Kakao Map signed in, on a throwaway list only (all five from the page's console, as for `ping`, with the extension id from step 4):
 
 1. `{ type: "magomap.account" }` answers `ok: true` with her folders (no title or place data beyond the trimmed fields).
 2. `{ type: "magomap.createList", name: "magomap test" }` answers `ok: true, folderId`; the list appears in Kakao Map. Check its visibility there.
 3. `{ type: "magomap.addPlaces", folderId, places: [{ key: "1063803587", title: "청라창해문화공원", address: "인천 서해구 청라동 155-19", x: 421032, y: 1120559 }] }` answers `added: 1`; send it again and it answers `added: 0, skipped: 1`.
-4. Try a larger `places` list (for example 30, then 100 places) to see that Kakao accepts the batches, then delete the test list in Kakao Map.
+4. Change one of those places' colour in Kakao Map: `{ type: "magomap.setColor", folderId, key: "1063803587", color: "05" }` answers `{ ok: true }`, and the place shows blue in Kakao Map.
+5. Try a larger `places` list (for example 30, then 100 places) to see that Kakao accepts the batches, then delete the test list in Kakao Map.
 
 ## Tests
 
