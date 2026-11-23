@@ -13,9 +13,11 @@
  * - `{ type: "magomap.setColor", folderId, key, color }` → `{ ok: true }`: changes one place's colour in
  *   one of her lists (read fresh, sent back with only `color` changed, read again to verify), or
  *   `{ ok: false, error: "not_found" }` when the place isn't in that list
+ * - `{ type: "magomap.setNote", folderId, key, note }` → `{ ok: true }`: changes one place's Kakao
+ *   note (`note` may be empty, which clears it) the same way, `memo` the only field that changes
  * - `{ type: "magomap.addPlaces", folderId, places }` → `{ ok: true, added, skipped }`, or
  *   `{ ok: false, error, added? }` (`added`: how many went in before it stopped)
- *   The three writes also answer `{ ok: false, error: "invalid" }` for input they refuse.
+ *   The writes also answer `{ ok: false, error: "invalid" }` for input they refuse.
  *
  * Only magomap's own origins are answered: the list in origins.ts, which the build also writes
  * into the built manifest's `externally_connectable`. Nothing read is ever logged.
@@ -46,6 +48,8 @@ export const READ_TIMEOUT_MS = 5 * 60_000;
 
 /** A write is a handful of requests (reading the list, then pages of 20 places). */
 export const WRITE_TIMEOUT_MS = 2 * 60_000;
+/** Longest Kakao note, as magomap's own (`LIMITS.importText`). */
+const MAX_NOTE = 5_000;
 /** Kakao Map list names, as magomap's own (`LIMITS.listName`). */
 const MAX_LIST_NAME = 100;
 /** Places per message; the page sends them to Kakao in smaller requests. */
@@ -253,6 +257,13 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
   }
   const folderId = m.folderId;
   if (!Number.isSafeInteger(folderId) || Number(folderId) <= 0) return null;
+  if (type === "magomap.setNote") {
+    const { key, note } = m;
+    if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
+    // An empty note is allowed: it clears the note.
+    if (typeof note !== "string" || note.length > MAX_NOTE) return null;
+    return { op: "note", folderId: folderId as number, key, note };
+  }
   if (type === "magomap.setColor") {
     const { key, color } = m;
     if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
@@ -302,7 +313,7 @@ function writeAnswerOf(request: WriteRequest, value: unknown): WriteAnswer {
       ? { ok: true, folders }
       : WRITE_UNAVAILABLE;
   }
-  if (request.op === "color") return { ok: true };
+  if (request.op === "color" || request.op === "note") return { ok: true };
   if (request.op === "create") {
     const id = value.folderId;
     return Number.isSafeInteger(id) && Number(id) > 0
@@ -375,7 +386,8 @@ export function install(api: ExtensionApi): void {
       type === "magomap.account" ||
       type === "magomap.createList" ||
       type === "magomap.addPlaces" ||
-      type === "magomap.setColor"
+      type === "magomap.setColor" ||
+      type === "magomap.setNote"
     ) {
       const request = parseWrite(type, message);
       if (!request) {

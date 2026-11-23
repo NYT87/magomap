@@ -370,6 +370,111 @@ describe("writeInPage: color", () => {
   });
 });
 
+describe("writeInPage: note", () => {
+  const fav = (key: string, seq: number, memo: string) => ({
+    seq,
+    key,
+    type: "PLACE",
+    display1: `이름 ${key}`,
+    display2: `주소 ${key}`,
+    memo,
+    color: "02",
+  });
+  /** A list whose favourites live in `store`; /favorite/update changes `store`. */
+  const list = (store: ReturnType<typeof fav>[], accept = true) =>
+    serve({
+      "GET /favorite/mine/list": () => json({ favorites: store }),
+      "POST /favorite/update": (call) => {
+        const [d] = (call.body as { datas: { seq: number; memo: string }[] }).datas;
+        const f = store.find((x) => x.seq === d?.seq);
+        if (f && accept) f.memo = d?.memo ?? f.memo;
+        return json(ok({ data: [{ status: { code: "SUCCESS" } }] }));
+      },
+    });
+  const req = { op: "note", folderId: 5, key: "1002", note: "새 메모\n둘째 줄" } as const;
+
+  it("reads the list, sends the favourite back with only the memo changed, then reads again", async () => {
+    list([fav("1001", 11, "a"), fav("1002", 12, "옛 메모")]);
+    expect(await writeInPage(req)).toEqual({ ok: true });
+    const update = calls.find((c) => c.path === "/favorite/update");
+    expect(update?.method).toBe("POST");
+    expect(update?.headers).toEqual(PAGE_HEADERS);
+    expect(update?.body).toEqual({
+      datas: [
+        {
+          seq: 12,
+          display1: "이름 1002",
+          display2: "주소 1002",
+          color: "02",
+          memo: "새 메모\n둘째 줄",
+        },
+      ],
+    });
+    expect(calls.map((c) => c.path)).toEqual([
+      "/favorite/mine/list",
+      "/favorite/update",
+      "/favorite/mine/list",
+    ]);
+  });
+
+  it("can clear the note with an empty one", async () => {
+    list([fav("1002", 12, "옛 메모")]);
+    expect(await writeInPage({ ...req, note: "" })).toEqual({ ok: true });
+    const sent = calls.find((c) => c.path === "/favorite/update")?.body as
+      | { datas: { memo: string }[] }
+      | undefined;
+    expect(sent?.datas[0]?.memo).toBe("");
+  });
+
+  it("accepts a read-back where Kakao changed only line breaks or edge spaces", async () => {
+    serve({
+      "GET /favorite/mine/list": () =>
+        json({ favorites: [fav("1002", 12, "새 메모\r\n둘째 줄 ")] }),
+      "POST /favorite/update": () => json(ok({ data: [{ status: { code: "SUCCESS" } }] })),
+    });
+    expect(await writeInPage(req)).toEqual({ ok: true });
+  });
+
+  it("sends nothing when the title or address can't be read as text", async () => {
+    list([{ ...fav("1002", 12, "x"), display1: 5 as unknown as string }]);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+    list([{ ...fav("1002", 12, "x"), display2: null as unknown as string }]);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
+  it("sends nothing when the current note can't be read as text", async () => {
+    list([{ ...fav("1002", 12, "x"), memo: 5 as unknown as string }]);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
+  it("is not_found, sending nothing, when the place isn't in the list", async () => {
+    list([fav("1001", 11, "a")]);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "not_found" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
+  it("is unavailable when the read-back never shows the new note", async () => {
+    list([fav("1002", 12, "옛 메모")], false);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+  });
+
+  it("is unavailable when Kakao doesn't say SUCCESS to the update", async () => {
+    serve({
+      "GET /favorite/mine/list": () => json({ favorites: [fav("1002", 12, "x")] }),
+      "POST /favorite/update": () => json({ status: { code: "FAIL" } }),
+    });
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+  });
+
+  it("is signed out when the login is gone", async () => {
+    serve({ "GET /favorite/mine/list": () => new Response("", { status: 401 }) });
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_signed_out" });
+  });
+});
+
 describe("writeInPage: account", () => {
   const folders = (list: unknown[]) => json(ok({ folders: list }));
 

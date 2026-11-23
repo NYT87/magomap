@@ -1,5 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { Palette, Plus, X } from "lucide-react";
+import { Palette, Pencil, Plus, X } from "lucide-react";
 import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { currentDb } from "../data/db";
@@ -8,6 +8,7 @@ import { addToList, createList, removeFromList } from "../data/writes";
 import { detectExtension } from "../import/kakaoMap";
 import { membershipColor } from "../map/markers";
 import { ColorPicker } from "./ColorPicker";
+import { KakaoNoteEditor } from "./KakaoNoteEditor";
 import { kakaoNoteOf } from "./kakaoNotes";
 
 /** The lists this place is in. Kakao lists are read-only; own lists can be added to or left. */
@@ -23,6 +24,8 @@ export function Memberships({ placeId }: { placeId: string }) {
   const [open, setOpen] = useState(false);
   // The membership whose colour is being changed, and whether the extension (Kakao lists) answers.
   const [coloring, setColoring] = useState<string | null>(null);
+  // The membership whose Kakao note is being edited.
+  const [editingNote, setEditingNote] = useState<string | null>(null);
   const [extension, setExtension] = useState<"checking" | "ready" | "missing">("checking");
   useEffect(() => {
     let live = true;
@@ -141,6 +144,10 @@ export function Memberships({ placeId }: { placeId: string }) {
           const colorReady = section === "mine" || extension === "ready";
           const currentColor =
             (section === "mine" ? item.itemColor : item.providerColor) ?? undefined;
+          // The note of a Kakao list he owns: changed in Kakao Map first, so it needs the extension.
+          const isOwned = section === "provider" && item.removedAtProvider == null;
+          const noteReady = extension === "ready";
+          const canEditNote = isOwned && noteReady;
           return (
             <li key={item.id} className="mm-membership">
               <div className="mm-chip" data-removed={item.removedAtProvider != null || undefined}>
@@ -190,18 +197,49 @@ export function Memberships({ placeId }: { placeId: string }) {
                   }}
                 />
               )}
-              {note && (
-                <figure
-                  className="mm-kakao-note"
-                  aria-label={`${t("place.kakaoNote")}: ${list.name}`}
-                  style={{ "--note-color": color } as CSSProperties}
-                >
-                  <p className="mm-kakao-note__text">{note}</p>
-                  {/* Only the list's owner can change its note; a list she follows says nothing. */}
-                  {section === "provider" && (
-                    <p className="mm-muted mm-kakao-note__hint">{t("place.kakaoNoteReadOnly")}</p>
+              {editingNote === item.id && canEditNote ? (
+                <KakaoNoteEditor
+                  itemId={item.id}
+                  listName={list.name}
+                  current={item.providerNote?.trim() ?? ""}
+                  onDone={() => {
+                    setEditingNote(null);
+                    // The box is gone: keep the keyboard user where they were.
+                    requestAnimationFrame(() =>
+                      document.getElementById(`note-button-${item.id}`)?.focus(),
+                    );
+                  }}
+                />
+              ) : (
+                <>
+                  {note && (
+                    <figure
+                      className="mm-kakao-note"
+                      aria-label={`${t("place.kakaoNote")}: ${list.name}`}
+                      style={{ "--note-color": color } as CSSProperties}
+                    >
+                      <p className="mm-kakao-note__text">{note}</p>
+                      {/* Only the list's owner can change its note; a list she follows says nothing. */}
+                      {section === "provider" && !canEditNote && (
+                        <p className="mm-muted mm-kakao-note__hint">
+                          {t("place.kakaoNoteReadOnly")}
+                        </p>
+                      )}
+                    </figure>
                   )}
-                </figure>
+                  {canEditNote && (
+                    <button
+                      type="button"
+                      className="mm-button mm-button--secondary mm-note-edit"
+                      id={`note-button-${item.id}`}
+                      aria-label={t("place.kakaoNoteEdit.edit", { name: list.name })}
+                      onClick={() => setEditingNote(item.id)}
+                    >
+                      <Pencil aria-hidden size={16} strokeWidth={1.75} />
+                      {note ? t("place.kakaoNoteEdit.editShort") : t("place.kakaoNoteEdit.add")}
+                    </button>
+                  )}
+                </>
               )}
             </li>
           );
