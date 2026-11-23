@@ -7,8 +7,8 @@ Run this before the owner's wife starts using magomap (plan 03, Task 4). Each li
 - [ ] **Backups exist and a restore has been tried once.**
   - D1: Time Travel is on. Restore a copy to a scratch database and confirm a known diary entry is there.
   - Postgres: the provider's point-in-time recovery or daily dumps are on, and one restore has been tested.
-- [ ] **An export of all of one user's data** (places, notes, links, lists, locations) can be produced with one documented command. It is listed in `docs/deploy.md`.
-- [ ] **Account deletion** removes everything for that user, and nothing for the other account.
+- [x] **An export of all of one user's data** (places, notes, links, lists, locations) can be produced with one documented command. It is listed in `docs/deploy.md`.
+- [x] **Account deletion** removes everything for that user, and nothing for the other account.
 
 ## It works for real
 

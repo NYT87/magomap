@@ -121,6 +121,22 @@ describe("session and account", () => {
     expect((await call("/api/me", { headers: { cookie: b } })).status).toBe(401);
   });
 
+  it("exports the account's data as a download, only for a signed-in account", async () => {
+    expect((await call("/api/me/export")).status).toBe(401);
+    const cookie = await devLogin("333");
+    const res = await call("/api/me/export", { headers: { cookie } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toMatch(
+      /^attachment; filename="magomap-export-\d{4}-\d{2}-\d{2}\.json"$/,
+    );
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = (await res.json()) as { format: string; version: number };
+    expect(body).toMatchObject({ format: "magomap-export", version: 1 });
+    // A page showing another account is refused, like every account request.
+    const wrong = await call("/api/me/export", { headers: { cookie, "x-magomap-user": "nobody" } });
+    expect(wrong.status).toBe(409);
+  });
+
   it("deletes the account", async () => {
     const cookie = await devLogin("222");
     expect((await call("/api/account", { method: "DELETE", headers: { cookie } })).status).toBe(

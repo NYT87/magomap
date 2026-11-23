@@ -159,6 +159,16 @@ Account → "Sync from Kakao Map" reads her Kakao Map lists through the magomap 
 - **The extension:** released under its own Release Please component (tags `extension-v…`, see "The extension component" above), as `magomap-extension.zip` on the GitHub release, attached automatically (see "Releasing the extension" above). To install it on her computer: unzip it, open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, **Load unpacked** the folder, and check the id is `eccgkehfioodkgllihgbgkgfcifmghif`. The release build only answers `https://magomap.jmn8718.workers.dev`; a different domain needs its origin in `apps/extension/src/origins.ts`. Details in [apps/extension/README.md](../apps/extension/README.md).
 - **The extension id** is fixed by the key in `apps/extension/manifest.json`, and the web app uses it by default. `VITE_MAGOMAP_EXTENSION_ID` (build time, `apps/web/.env.example`) overrides it, only for a build with another key.
 
+## Exporting one user's data
+
+Each user exports their own data: **Account → Download my data** (the web app calls `GET /api/me/export` with their session, so it works on both databases and needs nothing from the operator). It saves `magomap-export-YYYY-MM-DD.json`:
+
+- `mine`: their saved places, notes, links, own lists with items, and list memberships.
+- `shared`: the places (with sources and locations) and followed Kakao lists they reach through those, kept apart because other people can see them too.
+- Never in it: another user's notes, links or saved places, sessions, and server-only columns (`provider_owner_id`, `color_edited_at`). Deleted rows are left out.
+
+The export is built in memory from user-scoped queries read 500 rows at a time (no whole-table scans, so D1 rows read stay proportional to the account), then sent as one response. An account of a few thousand places is far inside the Worker's limits. There is no operator-side command: nobody but the account's owner can export it, as no one else has its session. Account deletion (**Account → Delete account**) is covered by tests for both databases (`packages/db/src/stores/users.test.ts`).
+
 ## Daily clean-up
 
 Each Worker has a **Cron Trigger** (`[env.<name>.triggers]` in `apps/api/wrangler.toml`, 03:17 UTC daily) that runs `scheduled` in `apps/api/src/scheduled.ts`. It closes import runs that have been `running` for more than 7 days (as `superseded`) and deletes their pages and lists, so an import someone stopped halfway doesn't leave rows behind. A closed run refuses further pages, so their next import starts fresh. The log line "Closed N abandoned import run(s)." shows in the Worker's logs. The trigger is registered by a deploy; Cron Triggers run on the Free plan.
