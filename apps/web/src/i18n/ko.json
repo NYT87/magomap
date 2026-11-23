@@ -232,7 +232,13 @@
       "errOffline": "오프라인이에요. 바뀐 것은 없어요.",
       "errTooLong": "메모가 너무 길어요. 줄여서 다시 시도하세요.",
       "errServer": "카카오맵에는 새 메모가 저장됐지만 magomap에는 아직 저장하지 못했어요. ‘카카오맵에서 동기화’로 가져오세요.",
-      "errUnavailable": "카카오맵이 변경을 받아들이지 않았어요. 바뀐 것은 없어요. 다시 시도하세요."
+      "errUnavailable": "카카오맵이 변경을 받아들이지 않았어요. 바뀐 것은 없어요. 다시 시도하세요.",
+      "changedTitle": "마지막 동기화 이후 카카오맵에서 이 메모가 바뀌었어요.",
+      "changedNow": "카카오맵의 현재 메모: ",
+      "changedNowEmpty": "카카오맵에는 지금 이 장소의 메모가 없어요.",
+      "changedWarning": "저장하면 바뀐 메모를 내 메모로 덮어써요.",
+      "overwrite": "바뀐 메모 덮어쓰기",
+      "keepEditing": "계속 수정"
     }
   },
   "kakaoMap": {

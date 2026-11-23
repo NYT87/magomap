@@ -1920,3 +1920,23 @@ a {
   margin: 0;
   min-height: 1em;
 }
+
+.mm-note-editor__warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  border-color: var(--color-clay);
+}
+
+.mm-note-editor__warning p {
+  margin: 0;
+}
+
+.mm-note-editor__warning-title {
+  font-weight: 600;
+}
+
+.mm-note-editor__theirs {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

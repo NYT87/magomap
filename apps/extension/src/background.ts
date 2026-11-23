@@ -67,7 +67,7 @@ export type WriteAnswer =
   | { ok: true; folderId: number }
   | { ok: true; added: number; skipped: number }
   | { ok: true }
-  | { ok: false; error: WriteError | "busy" | "invalid"; added?: number };
+  | { ok: false; error: WriteError | "busy" | "invalid"; added?: number; current?: string };
 
 export interface TabInfo {
   id?: number;
@@ -245,7 +245,10 @@ function read(api: ExtensionApi): Promise<ReadAnswer> {
 const isCount = (value: unknown): value is number =>
   Number.isSafeInteger(value) && Number(value) >= 0;
 const isKakaoError = (value: unknown): value is WriteError =>
-  value === "kakao_signed_out" || value === "kakao_unavailable" || value === "not_found";
+  value === "kakao_signed_out" ||
+  value === "kakao_unavailable" ||
+  value === "not_found" ||
+  value === "note_changed";
 
 /** What a write may ask for, or null when the message isn't a valid one. */
 function parseWrite(type: unknown, message: unknown): WriteRequest | null {
@@ -262,7 +265,19 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
     if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
     // An empty note is allowed: it clears the note.
     if (typeof note !== "string" || note.length > MAX_NOTE) return null;
-    return { op: "note", folderId: folderId as number, key, note };
+    const { expected, overwrite } = m;
+    if (expected !== undefined && (typeof expected !== "string" || expected.length > MAX_NOTE)) {
+      return null;
+    }
+    if (overwrite !== undefined && typeof overwrite !== "boolean") return null;
+    return {
+      op: "note",
+      folderId: folderId as number,
+      key,
+      note,
+      ...(expected === undefined ? {} : { expected }),
+      ...(overwrite === undefined ? {} : { overwrite }),
+    };
   }
   if (type === "magomap.setColor") {
     const { key, color } = m;
@@ -302,6 +317,14 @@ function writeAnswerOf(request: WriteRequest, value: unknown): WriteAnswer {
   if (!isPlainObject(value)) return WRITE_UNAVAILABLE;
   if (value.ok === false) {
     if (!isKakaoError(value.error)) return WRITE_UNAVAILABLE;
+    // Kakao's note, handed back when it was changed since magomap last knew it (bounded).
+    if (request.op === "note" && value.error === "note_changed") {
+      return {
+        ok: false,
+        error: "note_changed",
+        current: typeof value.current === "string" ? value.current.slice(0, MAX_NOTE) : "",
+      };
+    }
     return request.op === "add" && isCount(value.added)
       ? { ok: false, error: value.error, added: value.added }
       : { ok: false, error: value.error };

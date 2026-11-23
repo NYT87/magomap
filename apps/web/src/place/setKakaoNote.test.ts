@@ -14,7 +14,7 @@ vi.mock("../import/runImport", async (orig) => {
   return { ...actual, post: (a: string, p: string, b?: unknown) => post(a, p, b) };
 });
 const { openUserDb } = await import("../data/db");
-const { NoteError, setKakaoNote } = await import("./setKakaoNote");
+const { NoteChangedError, NoteError, setKakaoNote } = await import("./setKakaoNote");
 
 let n = 0;
 let db: ReturnType<typeof openUserDb>;
@@ -113,6 +113,41 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     expect((await db.list_items.get("ik"))?.providerNote).toBe("새 메모\n둘째 줄");
     // It is Kakao's data: nothing is queued to push.
     expect(await db.outbox.count()).toBe(0);
+  });
+
+  it("sends the note magomap knew, so the extension can see it was changed meanwhile", async () => {
+    await seedKakao();
+    await setKakaoNote({ itemId: "ik", note: "새 메모" });
+    expect(ask.mock.calls.find(([m]) => m.type === "magomap.setNote")?.[0]).toMatchObject({
+      expected: "옛 메모",
+    });
+    expect(ask.mock.calls.find(([m]) => m.type === "magomap.setNote")?.[0]).not.toHaveProperty(
+      "overwrite",
+    );
+  });
+
+  it("when Kakao's note changed meanwhile, throws with Kakao's note and changes nothing", async () => {
+    await seedKakao();
+    ask.mockImplementation(async (m) =>
+      m.type === "magomap.account"
+        ? { ok: true, folders: [] }
+        : { ok: false, error: "note_changed", current: "아내가 바꾼 메모" },
+    );
+    const failure = await setKakaoNote({ itemId: "ik", note: "새 메모" }).catch((e) => e);
+    expect(failure).toBeInstanceOf(NoteChangedError);
+    expect(failure).toMatchObject({ code: "note_changed", current: "아내가 바꾼 메모" });
+    expect(post.mock.calls.map((c) => c[1])).toEqual(["/api/import/kakao-map/account"]);
+    expect((await db.list_items.get("ik"))?.providerNote).toBe("옛 메모");
+  });
+
+  it("overwrites after he confirmed: the message says so and the note is saved", async () => {
+    await seedKakao();
+    await setKakaoNote({ itemId: "ik", note: "새 메모", overwrite: true });
+    expect(ask.mock.calls.find(([m]) => m.type === "magomap.setNote")?.[0]).toMatchObject({
+      expected: "옛 메모",
+      overwrite: true,
+    });
+    expect((await db.list_items.get("ik"))?.providerNote).toBe("새 메모");
   });
 
   it("an empty note clears it, in Kakao Map, on the server and here", async () => {
