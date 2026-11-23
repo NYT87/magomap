@@ -189,3 +189,20 @@ forEachDialect("pull scope", (makeDb) => {
     await expect(pull(db, A, bad)).resolves.toBeTruthy();
   });
 });
+
+forEachDialect("pull asOf", (makeDb) => {
+  it("says how far the server's changes had gone when the pull began", async () => {
+    const db = await setup(makeDb);
+    const changeSeq = async () =>
+      Number(
+        (await db.kysely.selectFrom("sync_state").select("change_seq").executeTakeFirstOrThrow())
+          .change_seq,
+      );
+    const before = (await pull(db, A, null)).asOf;
+    expect(before).toBe(await changeSeq());
+    await push(db, A, [up("places", searchedPlace("1"))], T0);
+    const after = (await pull(db, A, null)).asOf;
+    expect(after).toBe(await changeSeq());
+    expect(after).toBeGreaterThan(before ?? 0);
+  });
+});

@@ -237,6 +237,9 @@ export async function pullAll(
   // everything (it committed a page fetched without a cursor).
   let fullPass = false;
   let restarted = false;
+  // The server's change count when the download of everything began (its first page's `asOf`).
+  // A list granted after that has shared rows older than the positions the download has passed.
+  let passAsOf: number | undefined;
   for (;;) {
     const { cursor, gen } = await db.transaction("r", db.meta, async () => ({
       cursor: (await db.meta.get("cursor"))?.value,
@@ -268,7 +271,9 @@ export async function pullAll(
         for (const { table, row } of page.rows as { table: SyncTable; row: AnyRow }[]) {
           // A local change still on its way wins over what the server had.
           if (pending.has(`${table}:${row.id}`)) continue;
-          if (!restarted && !fullPass && q !== "" && !restart) {
+          const grantedLate =
+            passAsOf !== undefined && table === "user_lists" && (row.seq ?? 0) > passAsOf;
+          if (((!restarted && !fullPass && q !== "") || grantedLate) && !restart) {
             restart = await gainsAccess(db, table, row);
           }
           await db.table(table).put(row);
@@ -291,12 +296,18 @@ export async function pullAll(
       // at most once: the restarting page stores the list row.
       fullPass = false;
       restarted = false;
+      passAsOf = undefined;
       continue;
     }
-    if (q === "") fullPass = true;
+    if (q === "") {
+      fullPass = true;
+      passAsOf = page.asOf;
+    }
     if (restart) {
       restarted = true;
       fullPass = true;
+      // The restart's own first page says where the new pass began.
+      passAsOf = undefined;
       continue;
     }
     if (!page.hasMore) return pulled;

@@ -667,6 +667,13 @@ export async function pull(
   cursor: string | null,
   limitPerTable: number = LIMITS.pullPageRows,
 ): Promise<PullResponse> {
+  // Read before any table: a change committed before this has its rows visible to the reads below.
+  const state = await db.kysely
+    .selectFrom("sync_state")
+    .select("change_seq")
+    .where("id", "=", 1)
+    .executeTakeFirstOrThrow();
+  const asOf = Number(state.change_seq);
   const position = decodeCursor(cursor);
   const next: Cursor = { ...position };
   const rows: PullResponse["rows"] = [];
@@ -682,5 +689,5 @@ export async function pull(
     const lastRow = taken.at(-1);
     if (lastRow) next[table] = [Number(lastRow.seq), lastRow.id];
   }
-  return { rows, cursor: encodeCursor(next), hasMore };
+  return { rows, cursor: encodeCursor(next), hasMore, asOf };
 }
