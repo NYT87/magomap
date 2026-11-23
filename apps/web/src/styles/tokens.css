@@ -156,3 +156,20 @@
     --kakao-note-lighten: var(--dark-kakao-note-lighten);
   }
 }
+
+/* Text: one capped base (the device's text size, at most twice the normal size) and a scale from it. */
+:root {
+  --text-base: min(1rem, 32px);
+  --text-2xs: calc(var(--text-base) * 0.6875);
+  --text-xs: calc(var(--text-base) * 0.75);
+  --text-sm: calc(var(--text-base) * 0.8125);
+  --text-md: calc(var(--text-base) * 0.875);
+  --text-ms: calc(var(--text-base) * 0.9375);
+  --text-base-size: calc(var(--text-base) * 1);
+  --text-lg: calc(var(--text-base) * 1.0625);
+  --text-xl: calc(var(--text-base) * 1.125);
+  --text-2xl: calc(var(--text-base) * 1.25);
+  --text-3xl: calc(var(--text-base) * 1.375);
+  --text-4xl: calc(var(--text-base) * 1.5);
+  --text-5xl: calc(var(--text-base) * 1.625);
+}

@@ -38,3 +38,17 @@ export async function importFromKakao(page: Page) {
 }
 
 export const BADA = "p_kakao_27324155"; // 바다정원 카페, favourite 9001 in 제주 카페, with a kakao-list note
+
+/** Sets the page's root font size, as the device's text size would. */
+export async function setRootSize(page: Page, px: number) {
+  await page.evaluate((size) => {
+    document.documentElement.style.fontSize = `${size}px`;
+  }, px);
+}
+
+/** Stores the app's language choice (read at start-up), before the next page load. */
+export async function setLanguage(page: Page, lang: "en" | "ko") {
+  await page.addInitScript((value) => {
+    localStorage.setItem("mm.lang", value);
+  }, lang);
+}
