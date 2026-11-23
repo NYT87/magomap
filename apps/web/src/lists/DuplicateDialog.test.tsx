@@ -1,4 +1,5 @@
 import type { ListRow } from "@magomap/domain";
+import { LIMITS } from "@magomap/domain/limits";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,6 +54,25 @@ describe("DuplicateDialog", () => {
     await i18n.changeLanguage("ko");
     await open();
     expect(await screen.findByRole("textbox")).toHaveValue("제주 카페 (복사본)");
+  });
+
+  it("fits the default name inside the list name limit when the source name is long", async () => {
+    const user = userEvent.setup();
+    const long = { ...source, name: "카".repeat(150) };
+    const db = openUserDb(`dup-dialog${n}`);
+    await db.lists.put(long);
+    const onClose = vi.fn();
+    render(
+      <Router hook={memoryLocation({ path: "/lists/l_kakao_1" }).hook}>
+        <DuplicateDialog list={long} onClose={onClose} />
+      </Router>,
+    );
+    const name = (await screen.findByRole("textbox", { name: "Name" })) as HTMLInputElement;
+    expect(name.value.length).toBeLessThanOrEqual(LIMITS.listName);
+    expect(name.value.endsWith(" (copy)")).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Copy in magomap" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect((await db.lists.toArray()).filter((l) => l.id !== long.id)).toHaveLength(1);
   });
 
   it("disables 'Copy in magomap' for a blank name", async () => {

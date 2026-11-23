@@ -52,6 +52,8 @@ export function ListScreen({ id }: { id: string }) {
             <button
               type="button"
               className="mm-button mm-button--secondary"
+              // A Kakao list whose places are still arriving would copy only what is here so far.
+              disabled={list.provider != null && arrival != null}
               onClick={() => setDuplicating(true)}
             >
               {t("lists.duplicate.open")}

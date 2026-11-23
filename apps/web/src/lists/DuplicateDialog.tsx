@@ -6,11 +6,22 @@ import { useLocation } from "wouter";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { duplicateList } from "../data/writes";
 
+/** "<name> (copy)", with the name clipped so the whole fits the list name limit. */
+function defaultCopyName(t: (key: string, o: { name: string }) => string, name: string): string {
+  const chars = [...name];
+  let full = t("lists.duplicate.defaultName", { name });
+  while (full.length > LIMITS.listName && chars.length > 0) {
+    chars.pop();
+    full = t("lists.duplicate.defaultName", { name: chars.join("") });
+  }
+  return full;
+}
+
 /** Names a copy of `list` and makes it as a new own list in magomap, then opens it. */
 export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () => void }) {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
-  const [name, setName] = useState(t("lists.duplicate.defaultName", { name: list.name }));
+  const [name, setName] = useState(() => defaultCopyName(t, list.name));
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   // A second tap before the first finishes must not make a second list.

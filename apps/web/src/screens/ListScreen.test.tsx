@@ -104,4 +104,20 @@ describe("ListScreen", () => {
     expect(screen.queryByRole("button", { name: "Duplicate" })).toBeNull();
     saved.unmount();
   });
+
+  it("doesn't offer Duplicate for a Kakao list whose places are still arriving", async () => {
+    await i18n.changeLanguage("en");
+    const db = openUserDb("list-screen-duplicate-arriving");
+    await db.lists.put(kakaoList);
+    await db.user_lists.put(access);
+    for (const arrival of ["downloading", "waiting", "unknown"] as const) {
+      sync.arrival = arrival;
+      const view = render(<ListScreen id="l_kakao_1" />);
+      expect(await screen.findByRole("button", { name: "Duplicate" })).toBeDisabled();
+      view.unmount();
+    }
+    sync.arrival = null;
+    render(<ListScreen id="l_kakao_1" />);
+    expect(await screen.findByRole("button", { name: "Duplicate" })).toBeEnabled();
+  });
 });
