@@ -62,10 +62,10 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 
 These write to **her own** Kakao Map, inside the `map.kakao.com` tab, with the requests the Kakao Map page sends (`docs/kakao-map-access.md`, section 7). magomap checks `magomap.account` against the account linked to her magomap account before any write.
 
-| Sent by the page | Answer |
-| ---------------- | ------ |
-| `{ type: "magomap.account" }` | `{ ok: true, kakaoMapUserId }`: the owner of the folders she doesn't merely follow |
-| `{ type: "magomap.createList", name }` (1 to 100 characters) | `{ ok: true, folderId }` |
+| Sent by the page                                                    | Answer                                                                                                   |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `{ type: "magomap.account" }`                                       | `{ ok: true, kakaoMapUserId }`: the owner of the folders she doesn't merely follow                       |
+| `{ type: "magomap.createList", name }` (1 to 100 characters)        | `{ ok: true, folderId }`                                                                                 |
 | `{ type: "magomap.addPlaces", folderId, places }` (1 to 100 places) | `{ ok: true, added, skipped }`; `skipped` places were already in the list, so a retry adds nothing twice |
 
 - A place is `{ key, title, address, x, y, color? }`: Kakao's place id (digits), the two lines Kakao Map shows, and Kakao's own `x`/`y` (WCONGNAMUL, whole numbers). Nothing else is sent.

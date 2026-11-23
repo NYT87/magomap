@@ -433,8 +433,10 @@ describe("writing to Kakao Map", () => {
     expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
       args: [{ op: "add", folderId: 25038639, places: [{ ...goodPlace, color: "06" }] }],
     });
-    const sent = (stub.executeScript.mock.calls[0]?.[0] as { args: [{ places: object[] }] }).args[0]
-      .places[0];
+    const injection = stub.executeScript.mock.calls[0]?.[0] as {
+      args: [{ places: object[] }];
+    };
+    const sent = injection.args[0].places[0];
     expect(Object.keys(sent as object).sort()).toEqual([
       "address",
       "color",
