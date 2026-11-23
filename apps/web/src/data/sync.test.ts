@@ -733,6 +733,57 @@ describe("sync", () => {
     expect(await db.meta.get("cursorGen")).toBeUndefined();
   });
 
+  // Issue #21: a list granted after a download of everything began has shared rows older than the
+  // positions the download has passed, so it needs a restart; one granted before it began doesn't.
+  it("a download of everything restarts for a list granted after it began", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: true, asOf: 10 },
+      // Granted at seq 11, after the pass began at 10.
+      {
+        rows: [pulled("user_lists", { ...access("l_kakao_2"), seq: 11 })],
+        cursor: "f2",
+        hasMore: true,
+        asOf: 11,
+      },
+      // The restart: from scratch, and this pass began at 11.
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "g1", hasMore: true, asOf: 11 },
+      {
+        rows: [pulled("user_lists", { ...access("l_kakao_2"), seq: 11 })],
+        cursor: "g2",
+        hasMore: false,
+        asOf: 11,
+      },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual([
+      "/api/sync/pull",
+      "/api/sync/pull?cursor=f1",
+      "/api/sync/pull",
+      "/api/sync/pull?cursor=g1",
+    ]);
+    expect((await db.meta.get("cursor"))?.value).toBe("g2");
+    expect(await db.meta.get("fullPull")).toBeUndefined();
+  });
+
+  it("a download of everything doesn't restart for a list granted before it began", async () => {
+    const db = open();
+    const { pullAll } = await import("./sync");
+    server.pullPages = [
+      { rows: [pulled("user_lists", access("l_kakao_1"))], cursor: "f1", hasMore: true, asOf: 10 },
+      {
+        rows: [pulled("user_lists", { ...access("l_kakao_2"), seq: 9 })],
+        cursor: "f2",
+        hasMore: false,
+        asOf: 10,
+      },
+    ];
+    await pullAll(db);
+    expect(server.pulls).toEqual(["/api/sync/pull", "/api/sync/pull?cursor=f1"]);
+    expect((await db.meta.get("cursorGen"))?.value).toBeUndefined();
+  });
+
   it("restarts for a new list after another tab overtook its download of everything", async () => {
     const db = open();
     const { pullAll } = await import("./sync");

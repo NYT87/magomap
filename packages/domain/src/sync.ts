@@ -163,6 +163,12 @@ export interface PullResponse {
   rows: { table: SyncTable; row: AnyRow }[];
   cursor: string;
   hasMore: boolean;
+  /**
+   * How far the server's changes had gone (`sync_state.change_seq`) when this pull began. A row
+   * with a larger `seq` was written after that. The device uses it to tell a list granted after
+   * its download began from one that was already the user's.
+   */
+  asOf?: number;
 }
 
 /** The exact text the server signs for a search result, so a pushed place can prove it came from search. */
