@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/NYT87/magomap/compare/extension-v0.1.1...extension-v0.1.2) (2026-11-22)
+
+
+### Features
+
+* **extension:** magomap icon, and a click opens the Account page ([31afac2](https://github.com/NYT87/magomap/commit/31afac2e4f27c7b5a1a341a344ecf92e79399d14))
+
 ## [0.1.1](https://github.com/NYT87/magomap/compare/extension-v0.1.0...extension-v0.1.1) (2026-11-21)
 
 
