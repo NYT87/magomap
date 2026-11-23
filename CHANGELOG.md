@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.1.5](https://github.com/NYT87/magomap/compare/magomap-v0.1.4...magomap-v0.1.5) (2026-11-23)
+
+
+### Features
+
+* a copy of a Kakao list keeps each place's colour ([7170283](https://github.com/NYT87/magomap/commit/71702839722988eb1da557e196a447712364e956))
+* a copy of a Kakao list keeps each place's colour ([cc3e4a8](https://github.com/NYT87/magomap/commit/cc3e4a8c4e3996cb309853edb14c1247d5a09c65))
+* change a place's colour from the app, Kakao Map first ([69f4388](https://github.com/NYT87/magomap/commit/69f438860805e5b463d643a708d91bdb689dd974))
+* edit a Kakao note from the place screen, Kakao Map first ([8742804](https://github.com/NYT87/magomap/commit/87428047aef2171af0065e4f23a972d80e5947c0))
+* edit a Kakao note from the place screen, Kakao Map first ([1222868](https://github.com/NYT87/magomap/commit/1222868a8b0571209fdc2f2c585bff35d18db638))
+* export all of one user's data (Account → Download my data) ([b3bb0bd](https://github.com/NYT87/magomap/commit/b3bb0bdb69b563774da52f99221205cd20ec3e3a))
+* export all of one user's data (GET /api/me/export, Account download) ([e19ab23](https://github.com/NYT87/magomap/commit/e19ab236c4d40e20d492cb55bb6ae2a7608b49ef))
+* **extension:** create a Kakao Map list and add places to it ([a0343b6](https://github.com/NYT87/magomap/commit/a0343b6f8683b3c8a55454e2a8d5da0821cf0026))
+* record a Kakao colour the owner changed from magomap ([9223380](https://github.com/NYT87/magomap/commit/9223380820dd5f577c04c2674e0110e0db1642e2))
+* record a Kakao note the owner changed from magomap ([6fb41fd](https://github.com/NYT87/magomap/commit/6fb41fde1d7052a02496d3415604c874ffb20e2b))
+* warn before overwriting a Kakao note changed in Kakao Map ([9fbe1f3](https://github.com/NYT87/magomap/commit/9fbe1f3c261ddb744fad68b6595f3d7022a2341f))
+* warn before overwriting a Kakao note that was changed in Kakao Map ([3ad081a](https://github.com/NYT87/magomap/commit/3ad081a5c057a7eda8fc40a887293012ee6d387b))
+* **web:** an add icon in the Lists section opens the lists to add the place to ([35b78a2](https://github.com/NYT87/magomap/commit/35b78a21eac0d49311fb90294892d96d50d6150e))
+* **web:** an add icon in the Lists section opens the lists to add the place to ([c56ca01](https://github.com/NYT87/magomap/commit/c56ca01fc402d819d0ec731591d7210f1475dfc9))
+* **web:** change a place's colour from the app, Kakao Map first ([60ce2ec](https://github.com/NYT87/magomap/commit/60ce2ec283c30a0bd593d13fefd9efdca53e604a))
+* **web:** copy a Kakao list to Kakao Map ([2588a99](https://github.com/NYT87/magomap/commit/2588a995758cd38ab90f5e7d857760d6c1ad71b1))
+* **web:** copy a Kakao list to Kakao Map ([d2a1d1e](https://github.com/NYT87/magomap/commit/d2a1d1e4d7763bb7278a5162116bddff08baf9a9))
+* **web:** duplicate a list in magomap ([f4f786a](https://github.com/NYT87/magomap/commit/f4f786abc933ba7603ac7bb9755497d007f0f375))
+* **web:** duplicate a list in magomap ([92975b1](https://github.com/NYT87/magomap/commit/92975b13d55743dba416d559b9b971308465670f))
+* **web:** text follows the device's text size, capped at twice the normal size ([0660e37](https://github.com/NYT87/magomap/commit/0660e37fb3a65a7f75ce97ce44fc060eb6422dbd))
+* **web:** text follows the device's text size, capped at twice the normal size ([ecc6260](https://github.com/NYT87/magomap/commit/ecc62603ea859abdd7a2e934341625e19f117b7a))
+
+
+### Bug Fixes
+
+* **extension:** the app decides whose account it is; a write stops before the worker gives up ([aedae71](https://github.com/NYT87/magomap/commit/aedae71f2e4208589261179e592825bb3b4afc5d))
+* picking a colour needs a click, and a note that can't be read is never cleared ([4934d4e](https://github.com/NYT87/magomap/commit/4934d4e30217fe057d4623bc14ff35fd970914b9))
+* **web:** a copy can't start while the list is downloading, and a long name still fits ([5848b7f](https://github.com/NYT87/magomap/commit/5848b7fa4f494e058ae79ac442a3772879ac7eef))
+* **web:** a Kakao note sits under its own list, and only an owner is told where to change it ([1e6e3d9](https://github.com/NYT87/magomap/commit/1e6e3d99f219f8bac0277b7e939f8395c68952f0))
+* **web:** a Kakao note sits under its own list, and only an owner is told where to change it ([1a97c01](https://github.com/NYT87/magomap/commit/1a97c01fd4369d322e033481e560e70835125089))
+* **web:** a place's Kakao colour wins on the map over an own list's ([2817b73](https://github.com/NYT87/magomap/commit/2817b73028afcf84530c5eeea68786c16659effd))
+* **web:** a place's Kakao colour wins on the map over an own list's ([4bf5c90](https://github.com/NYT87/magomap/commit/4bf5c907569380e2e590a7f9d701f6fa19378eb4))
+* **web:** a retry after a failed retry still fills the same Kakao list ([e1597b6](https://github.com/NYT87/magomap/commit/e1597b68ad6472e4f4c85e8d4cbf9e225c3a06a2))
+* **web:** layouts stretch with larger text ([3922b2d](https://github.com/NYT87/magomap/commit/3922b2de8321e7fbdc9296674bf3d3889c7b197a))
+* **web:** Open in Kakao Map is an icon in the place header's corner ([47d4f40](https://github.com/NYT87/magomap/commit/47d4f406740314d7885c80fbd3748590d7659513))
+* **web:** Open in Kakao Map is an icon in the place header's corner ([ee0ce72](https://github.com/NYT87/magomap/commit/ee0ce72b8fd09dd2ca294070c8e9cb850d0a610c))
+* **web:** opening a saved place centres it without changing the zoom ([e656643](https://github.com/NYT87/magomap/commit/e65664318381eb87f67a000bdde29e96205be2c3))
+* **web:** opening a saved place centres it without changing the zoom ([70712aa](https://github.com/NYT87/magomap/commit/70712aa046b5d2c249af1c0354c94ebd53121f74))
+* **web:** the add-to-list panel is a fieldset, as the lint rule asks ([a2780a5](https://github.com/NYT87/magomap/commit/a2780a5f60bbd12982ba47cc7d96a80bce2442e7))
+
 ## [0.1.4](https://github.com/NYT87/magomap/compare/magomap-v0.1.3...magomap-v0.1.4) (2026-11-23)
 
 
