@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.4](https://github.com/NYT87/magomap/compare/magomap-v0.1.3...magomap-v0.1.4) (2026-11-23)
+
+
+### Features
+
+* **api:** a daily clean-up closes import runs abandoned for a week ([8907c3a](https://github.com/NYT87/magomap/commit/8907c3a9d63d10de183f7f278152d9467f4455fb))
+* **api:** a daily clean-up closes import runs abandoned for a week ([a5c0b47](https://github.com/NYT87/magomap/commit/a5c0b476cef7e28e6e0d197bd8584705595c15d9)), closes [#20](https://github.com/NYT87/magomap/issues/20)
+
+
+### Bug Fixes
+
+* **db:** a sync pull reads only what is new, not the user's whole place set ([fcdc00f](https://github.com/NYT87/magomap/commit/fcdc00fba212eefcf398f0eb8c5a2e0f2add761f))
+* **db:** a sync pull reads only what is new, not the user's whole place set ([a66fe29](https://github.com/NYT87/magomap/commit/a66fe29614393ece39892a1d396728540e4aa0c2)), closes [#36](https://github.com/NYT87/magomap/issues/36)
+* **sync:** a list granted during a full download restarts it once ([246ca0e](https://github.com/NYT87/magomap/commit/246ca0e8cc1104d0d99aefbd1a4627c2d57c9f4b))
+* **sync:** a list granted during a full download restarts it once ([bdb53bc](https://github.com/NYT87/magomap/commit/bdb53bcab803edd8e7fa6c022c03f48dbe6e737c)), closes [#21](https://github.com/NYT87/magomap/issues/21)
+
 ## [0.1.3](https://github.com/NYT87/magomap/compare/magomap-v0.1.2...magomap-v0.1.3) (2026-11-21)
 
 
