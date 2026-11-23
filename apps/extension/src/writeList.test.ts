@@ -428,7 +428,8 @@ describe("writeInPage: note", () => {
 
   it("accepts a read-back where Kakao changed only line breaks or edge spaces", async () => {
     serve({
-      "GET /favorite/mine/list": () => json({ favorites: [fav("1002", 12, "새 메모\r\n둘째 줄 ")] }),
+      "GET /favorite/mine/list": () =>
+        json({ favorites: [fav("1002", 12, "새 메모\r\n둘째 줄 ")] }),
       "POST /favorite/update": () => json(ok({ data: [{ status: { code: "SUCCESS" } }] })),
     });
     expect(await writeInPage(req)).toEqual({ ok: true });

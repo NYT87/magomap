@@ -420,6 +420,74 @@ describe("changing a Kakao colour from magomap", () => {
   });
 });
 
+describe("changing a Kakao note from magomap", () => {
+  const NOTES = "/api/kakao-notes";
+  const itemOf = (folderid: number) =>
+    env.DB.prepare(
+      "SELECT i.id AS item, i.list_id AS list, i.provider_note AS note, i.seq AS seq FROM list_items i WHERE i.list_id IN (SELECT id FROM lists WHERE external_id = ?) AND i.external_id IS NOT NULL ORDER BY i.position LIMIT 1",
+    )
+      .bind(String(folderid))
+      .first<{ item: string; list: string; note: string | null; seq: number }>();
+
+  async function owned(name: string, folderid: number, account: string) {
+    const cookie = await devLogin(name);
+    await upload(cookie, smallRead(account, folderid), account);
+    const row = await itemOf(folderid);
+    if (!row) throw new Error("no item");
+    return { cookie, ...row };
+  }
+
+  it("records the owner's note, and an empty one clears it", async () => {
+    const { cookie, item, list, seq } = await owned("km-note-owner", 35001, "u1-note-aaaa");
+    const res = await call(
+      NOTES,
+      post(cookie, { listId: list, itemId: item, note: "새 메모" }),
+      DEV,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ updated: true });
+    const after = await itemOf(35001);
+    expect(after?.note).toBe("새 메모");
+    expect(Number(after?.seq)).toBeGreaterThan(Number(seq));
+    const cleared = await call(NOTES, post(cookie, { listId: list, itemId: item, note: "" }), DEV);
+    expect(cleared.status).toBe(200);
+    expect((await itemOf(35001))?.note ?? "").toBe("");
+  });
+
+  it("refuses someone who doesn't own the list, writing nothing", async () => {
+    const { item, list } = await owned("km-note-own2", 35101, "u1-note-bbbb");
+    const before = (await itemOf(35101))?.note;
+    const other = await devLogin("km-note-other");
+    await upload(other, smallRead("u1-note-cccc", 35102), "u1-note-cccc");
+    const res = await call(NOTES, post(other, { listId: list, itemId: item, note: "x" }), DEV);
+    expect([403, 404]).toContain(res.status);
+    expect((await itemOf(35101))?.note).toBe(before);
+  });
+
+  it("refuses a too-long note and a malformed body", async () => {
+    const { cookie, item, list } = await owned("km-note-bad", 35201, "u1-note-dddd");
+    const before = (await itemOf(35201))?.note;
+    const long = await call(
+      NOTES,
+      post(cookie, { listId: list, itemId: item, note: "가".repeat(5001) }),
+      DEV,
+    );
+    expect(long.status).toBe(400);
+    expect((await call(NOTES, post(cookie, { listId: list, itemId: item }), DEV)).status).toBe(400);
+    expect((await itemOf(35201))?.note).toBe(before);
+  });
+
+  it("refuses someone who isn't allowed to write", async () => {
+    const { cookie, item, list } = await owned("km-note-denied", 35301, "u1-note-eeee");
+    const before = (await itemOf(35301))?.note;
+    const res = await call(NOTES, post(cookie, { listId: list, itemId: item, note: "x" }), {
+      ALLOWED_KAKAO_USER_IDS: "someone-else",
+    });
+    expect(res.status).toBe(403);
+    expect((await itemOf(35301))?.note).toBe(before);
+  });
+});
+
 describe("signed out", () => {
   it("a signed-out read (zero folders) gives 422 kakao_signed_out", async () => {
     const cookie = await devLogin("km-signed-out");

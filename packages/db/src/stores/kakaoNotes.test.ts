@@ -3,8 +3,8 @@ import { LIMITS } from "@magomap/domain/limits";
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
-import { recordKakaoNoteEdit } from "./kakaoNotes";
 import { bindKakaoMapAccount } from "./kakaoMapAccounts";
+import { recordKakaoNoteEdit } from "./kakaoNotes";
 import { addUser, importSnapshot, T0 } from "./testkit";
 
 const WIFE = "wife";
@@ -54,7 +54,12 @@ forEachDialect("a Kakao note edit", (makeDb) => {
   it("records the owner's note, shared with everyone who has the list, with a new seq", async () => {
     const { db, listId, itemId } = await setup(makeDb);
     const before = await read(db, itemId);
-    const result = await recordKakaoNoteEdit(db, WIFE, { listId, itemId, note: "새 메모" }, T0 + 5000);
+    const result = await recordKakaoNoteEdit(
+      db,
+      WIFE,
+      { listId, itemId, note: "새 메모" },
+      T0 + 5000,
+    );
     expect(result).toBe("updated");
     const after = await read(db, itemId);
     expect(after.provider_note).toBe("새 메모");
@@ -90,18 +95,18 @@ forEachDialect("a Kakao note edit", (makeDb) => {
   it("is refused when the list has no recorded owner", async () => {
     const { db, listId, itemId } = await setup(makeDb);
     await db.kysely.updateTable("lists").set({ provider_owner_id: null }).execute();
-    expect(await recordKakaoNoteEdit(db, WIFE, { listId, itemId, note: "새 메모" }, T0 + 5000)).toBe(
-      "owner_unknown",
-    );
+    expect(
+      await recordKakaoNoteEdit(db, WIFE, { listId, itemId, note: "새 메모" }, T0 + 5000),
+    ).toBe("owner_unknown");
     expect((await read(db, itemId)).provider_note).toBe("옛 메모");
   });
 
   it("is refused when no Kakao Map account is bound", async () => {
     const { db, listId, itemId } = await setup(makeDb);
     await db.kysely.deleteFrom("kakao_map_accounts").where("user_id", "=", WIFE).execute();
-    expect(await recordKakaoNoteEdit(db, WIFE, { listId, itemId, note: "새 메모" }, T0 + 5000)).toBe(
-      "kakao_account_unconfirmed",
-    );
+    expect(
+      await recordKakaoNoteEdit(db, WIFE, { listId, itemId, note: "새 메모" }, T0 + 5000),
+    ).toBe("kakao_account_unconfirmed");
   });
 
   it("is not found for an item of another list or one that doesn't exist", async () => {

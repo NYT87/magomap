@@ -1891,3 +1891,32 @@ a {
   margin: 0;
   min-height: 1em;
 }
+
+/* ---------- Kakao note editor (a place's Kakao note in one list) ---------- */
+
+.mm-note-edit {
+  align-self: flex-start;
+}
+
+.mm-note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.mm-note-editor__box {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.mm-note-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.mm-note-editor__status {
+  margin: 0;
+  min-height: 1em;
+}

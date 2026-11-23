@@ -17,6 +17,7 @@ import {
   kakaoMapAccountHolder,
   kakaoMapAccountsNamed,
 } from "@magomap/db/stores/kakaoMapAccounts";
+import { recordKakaoNoteEdit } from "@magomap/db/stores/kakaoNotes";
 import {
   type ApiErrorCode,
   type ImportListSummary,
@@ -44,6 +45,7 @@ import { handled, kakaoLoginIdOf, PAGE } from "./routes";
 export const kakaoMapRoutes = new Hono<AppEnv>();
 kakaoMapRoutes.use("/import/kakao-map/*", requireUser);
 kakaoMapRoutes.use("/kakao-colors", requireUser);
+kakaoMapRoutes.use("/kakao-notes", requireUser);
 
 /** The largest request body an upload route reads (1 MiB). */
 export const MAX_UPLOAD_BYTES = 1024 * 1024;
@@ -284,6 +286,38 @@ kakaoMapRoutes.post("/kakao-colors", (c) =>
     const body = colorBody.safeParse(await readJson(c));
     if (!body.success) throw invalid();
     const result = await recordKakaoColorEdit(c.var.db, c.var.userId, body.data, Date.now());
+    switch (result) {
+      case "updated":
+        return { updated: true };
+      case "invalid":
+        throw invalid();
+      case "not_found":
+        throw new Refusal(404, { error: "not_found" });
+      case "not_owner":
+        throw new Refusal(403, { error: "not_owner" });
+      case "owner_unknown":
+        throw new Refusal(409, { error: "owner_unknown" });
+      case "kakao_account_unconfirmed":
+        throw new Refusal(409, { error: "kakao_account_unconfirmed" });
+    }
+  }),
+);
+
+/**
+ * Records a Kakao note the owner has just saved in Kakao Map (the extension did that first;
+ * magomap only follows). Only the list's Kakao owner may. An empty note clears it.
+ */
+const noteBody = z.object({
+  listId: z.string().min(1).max(200),
+  itemId: z.string().min(1).max(200),
+  note: z.string().max(LIMITS.importText),
+});
+kakaoMapRoutes.post("/kakao-notes", (c) =>
+  uploadHandled(c, async () => {
+    await uploader(c);
+    const body = noteBody.safeParse(await readJson(c));
+    if (!body.success) throw invalid();
+    const result = await recordKakaoNoteEdit(c.var.db, c.var.userId, body.data, Date.now());
     switch (result) {
       case "updated":
         return { updated: true };
