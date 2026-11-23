@@ -130,6 +130,31 @@ describe("DuplicateDialog: Copy to Kakao Map", () => {
     });
   });
 
+  it("keeps filling the same list when a retry fails before adding anything", async () => {
+    detect.mockResolvedValue("ready");
+    copy.mockRejectedValueOnce(new KakaoCopyError("partial", 9, 53));
+    copy.mockRejectedValueOnce(new KakaoCopyError("offline"));
+    copy.mockResolvedValueOnce({ folderId: 9, added: 7, skipped: 53, leftOut: 0, synced: true });
+    const user = userEvent.setup();
+    await open(kakao);
+    await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await screen.findByText(/offline/i);
+    await user.click(screen.getByRole("button", { name: /Try again|Copy to Kakao Map/ }));
+    await waitFor(() => expect(copy).toHaveBeenCalledTimes(3));
+    expect(copy.mock.calls[2]?.[0]).toMatchObject({ resume: { folderId: 9 } });
+  });
+
+  it("can't be cancelled while a copy is running", async () => {
+    detect.mockResolvedValue("ready");
+    copy.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    await open(kakao);
+    await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(await screen.findByText("Copying to Kakao Map…")).toBeInTheDocument();
+  });
+
   it("doesn't start a second copy while one is running", async () => {
     detect.mockResolvedValue("ready");
     let finish: (v: unknown) => void = () => undefined;

@@ -10,6 +10,7 @@ import { codeOf, post } from "../import/runImport";
 export type KakaoCopyCode =
   | "extension_missing"
   | "account_mismatch"
+  | "account_unconfirmed"
   | "kakao_signed_out"
   | "kakao_unavailable"
   | "busy"
@@ -101,7 +102,7 @@ async function placesOf(sourceListId: string): Promise<{ places: SendPlace[]; le
     places.push({
       key,
       title,
-      address: place.roadAddress ?? place.address ?? "",
+      address: place.roadAddress?.trim() || place.address?.trim() || "",
       ...point,
       ...(color && /^\d{2}$/.test(color) ? { color } : {}),
     });
@@ -120,8 +121,12 @@ async function checkAccount(): Promise<void> {
     const code = codeOf(error);
     if (code === "offline") throw new KakaoCopyError("offline");
     if (code === "kakao_signed_out") throw new KakaoCopyError("kakao_signed_out");
-    // Another or an unconfirmed account, one that belongs to someone else, or one that can't be told.
-    throw new KakaoCopyError("account_mismatch");
+    if (code === "kakao_account_unconfirmed") throw new KakaoCopyError("account_unconfirmed");
+    if (code === "kakao_account_mismatch" || code === "kakao_account_taken") {
+      throw new KakaoCopyError("account_mismatch");
+    }
+    // Anything else (an expired magomap session, a server error): nothing was written.
+    throw new KakaoCopyError("kakao_unavailable");
   }
 }
 

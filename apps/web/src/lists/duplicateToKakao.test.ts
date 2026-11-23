@@ -166,6 +166,29 @@ describe("duplicateToKakao", () => {
     expect(types()).toEqual(["magomap.account"]);
   });
 
+  it("tells an unlinked account and a server failure apart from a different account", async () => {
+    await seed();
+    behaves();
+    post.mockRejectedValueOnce(new ApiError(409, { error: "kakao_account_unconfirmed" }));
+    await expect(duplicateToKakao({ sourceListId: "L", name: "x" })).rejects.toMatchObject({
+      code: "account_unconfirmed",
+    });
+    post.mockRejectedValueOnce(new ApiError(500, {}));
+    await expect(duplicateToKakao({ sourceListId: "L", name: "x" })).rejects.toMatchObject({
+      code: "kakao_unavailable",
+    });
+  });
+
+  it("sends the address when the road address is empty", async () => {
+    await seed();
+    await db.places.update("a", { roadAddress: "" });
+    behaves();
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    const sent = ask.mock.calls.find(([m]) => m.type === "magomap.addPlaces")?.[0];
+    const places = (sent?.places ?? []) as { address: string }[];
+    expect(places[0]?.address).toBe("지번 a");
+  });
+
   it("says so when the extension isn't there", async () => {
     await seed();
     ask.mockResolvedValue(undefined);
