@@ -159,6 +159,10 @@ Account → "Sync from Kakao Map" reads her Kakao Map lists through the magomap 
 - **The extension:** released under its own Release Please component (tags `extension-v…`, see "The extension component" above), as `magomap-extension.zip` on the GitHub release, attached automatically (see "Releasing the extension" above). To install it on her computer: unzip it, open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, **Load unpacked** the folder, and check the id is `eccgkehfioodkgllihgbgkgfcifmghif`. The release build only answers `https://magomap.jmn8718.workers.dev`; a different domain needs its origin in `apps/extension/src/origins.ts`. Details in [apps/extension/README.md](../apps/extension/README.md).
 - **The extension id** is fixed by the key in `apps/extension/manifest.json`, and the web app uses it by default. `VITE_MAGOMAP_EXTENSION_ID` (build time, `apps/web/.env.example`) overrides it, only for a build with another key.
 
+## Daily clean-up
+
+Each Worker has a **Cron Trigger** (`[env.<name>.triggers]` in `apps/api/wrangler.toml`, 03:17 UTC daily) that runs `scheduled` in `apps/api/src/scheduled.ts`. It closes import runs that have been `running` for more than 7 days (as `superseded`) and deletes their pages and lists, so an import someone stopped halfway doesn't leave rows behind. A closed run refuses further pages, so their next import starts fresh. The log line "Closed N abandoned import run(s)." shows in the Worker's logs. The trigger is registered by a deploy; Cron Triggers run on the Free plan.
+
 ## Workers plan
 
 Every request is designed to fit the **Free** plan's limits:

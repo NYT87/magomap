@@ -370,6 +370,46 @@ export async function startImportRun(
   );
 }
 
+/** A run still `running` this long after it started was abandoned (an import takes minutes). */
+export const ABANDONED_IMPORT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Closes the import runs that started more than `idleMs` ago and never finished, as
+ * `superseded`, and deletes their pages and lists (the seen-item ids a finish step would use).
+ * Closing is what makes deleting safe: a closed run refuses further pages (RunClosedError),
+ * so a later visit starts a fresh import. Deleting the pages of a run that could still finish
+ * would make its finish step treat every unseen item as removed at kakao-list. All in one
+ * atomic batch. Not synced data, so no change_seq. Returns how many runs were closed.
+ */
+export async function closeAbandonedImportRuns(
+  db: Db,
+  now: number,
+  idleMs: number = ABANDONED_IMPORT_MS,
+): Promise<number> {
+  const stale = () =>
+    db.kysely
+      .selectFrom("import_runs")
+      .select(["user_id", "id"])
+      .where("status", "=", "running")
+      .where("started_at", "<", now - idleMs);
+  const staleIds = (table: "import_run_pages" | "import_run_lists") =>
+    db.kysely
+      .deleteFrom(table)
+      .where(
+        sql<boolean>`(${sql.ref(`${table}.user_id`)}, ${sql.ref(`${table}.run_id`)}) IN (${stale()})`,
+      );
+  const results = await db.atomic([
+    staleIds("import_run_pages"),
+    staleIds("import_run_lists"),
+    db.kysely
+      .updateTable("import_runs")
+      .set({ status: "superseded", finished_at: now })
+      .where("status", "=", "running")
+      .where("started_at", "<", now - idleMs),
+  ]);
+  return Number(results[2]?.numAffectedRows ?? 0n);
+}
+
 /**
  * Imports page `pageIndex` (≤ 500 items) of one of the run's lists. Pages arrive in order;
  * a retried page is applied again (the writes are idempotent).

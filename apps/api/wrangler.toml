@@ -18,6 +18,11 @@ name = "SEARCH_LIMITER"
 namespace_id = "1001"
 simple = { limit = 60, period = 60 }
 
+# Daily clean-up at 03:17 UTC: closes import runs abandoned for a week (src/scheduled.ts)
+# https://developers.cloudflare.com/workers/configuration/cron-triggers/
+[env.d1.triggers]
+crons = ["17 3 * * *"]
+
 [env.d1.vars]
 DB_DRIVER = "d1"
 KAKAO_REDIRECT_URI = "https://magomap.jmn8718.workers.dev/api/auth/kakao/callback"
@@ -42,6 +47,11 @@ observability = { enabled = true }
 name = "SEARCH_LIMITER"
 namespace_id = "1001"
 simple = { limit = 60, period = 60 }
+
+# Daily clean-up at 03:17 UTC: closes import runs abandoned for a week (src/scheduled.ts)
+# https://developers.cloudflare.com/workers/configuration/cron-triggers/
+[env.postgres.triggers]
+crons = ["17 3 * * *"]
 
 [env.postgres.vars]
 DB_DRIVER = "postgres"
