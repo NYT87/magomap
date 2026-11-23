@@ -9,9 +9,11 @@ import {
   type ReadAnswer,
   type TabInfo,
   type TabUpdatedListener,
+  WRITE_TIMEOUT_MS,
 } from "./background";
 import { allowedOrigins } from "./origins";
 import { readInPage } from "./readInPage";
+import { writeInPage } from "./writeList";
 
 const MAGOMAP = "https://magomap.jmn8718.workers.dev";
 
@@ -37,15 +39,20 @@ function makeStub(options: {
   tabs?: TabInfo[];
   created?: TabInfo;
   read?: () => Promise<unknown>;
+  /** Answers an injected `writeInPage`, given the request it was called with. */
+  write?: (request: unknown) => Promise<unknown>;
   getStatus?: string;
 }): Stub {
   let listener: ExternalListener | undefined;
   let clicked: (() => void) | undefined;
   const updatedListeners = new Set<TabUpdatedListener>();
 
-  const executeScript = vi.fn(async () => [
-    { frameId: 0, result: options.read ? await options.read() : okRead },
-  ]);
+  const executeScript = vi.fn(async (injection: { func: unknown; args?: unknown[] }) => {
+    if (injection.func === writeInPage) {
+      return [{ frameId: 0, result: await options.write?.(injection.args?.[0]) }];
+    }
+    return [{ frameId: 0, result: options.read ? await options.read() : okRead }];
+  });
   const query = vi.fn(async () => options.tabs ?? []);
   const create = vi.fn(async () => options.created ?? { id: 99, status: "loading" });
   const remove = vi.fn(async () => {});
@@ -373,6 +380,220 @@ describe("background", () => {
           error: "kakao_unavailable",
         });
       });
+    }
+  });
+});
+
+describe("writing to Kakao Map", () => {
+  const tab = [{ id: 1, status: "complete", lastAccessed: 1 }];
+  const goodPlace = {
+    key: "1063803587",
+    title: "청라창해문화공원",
+    address: "인천 서해구 청라동 155-19",
+    x: 421032,
+    y: 1120559,
+  };
+
+  it("account asks the page who is signed in, in the page's own world", async () => {
+    const stub = makeStub({
+      tabs: tab,
+      write: async () => ({ ok: true, kakaoMapUserId: "772826870" }),
+    });
+    expect(await stub.send({ type: "magomap.account" })).toEqual({
+      ok: true,
+      kakaoMapUserId: "772826870",
+    });
+    expect(stub.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 1 },
+      world: "MAIN",
+      func: writeInPage,
+      args: [{ op: "account" }],
+    });
+  });
+
+  it("createList sends the name to the page and answers with the new list's id", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true, folderId: 25038639 }) });
+    expect(await stub.send({ type: "magomap.createList", name: "제주 (복사본)" })).toEqual({
+      ok: true,
+      folderId: 25038639,
+    });
+    expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
+      args: [{ op: "create", name: "제주 (복사본)" }],
+    });
+  });
+
+  it("addPlaces sends only the fields a place needs", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true, added: 1, skipped: 0 }) });
+    const answer = await stub.send({
+      type: "magomap.addPlaces",
+      folderId: 25038639,
+      places: [{ ...goodPlace, color: "06", secret: "never sent", memo: "also never" }],
+    });
+    expect(answer).toEqual({ ok: true, added: 1, skipped: 0 });
+    expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
+      args: [{ op: "add", folderId: 25038639, places: [{ ...goodPlace, color: "06" }] }],
+    });
+    const sent = (stub.executeScript.mock.calls[0]?.[0] as { args: [{ places: object[] }] }).args[0]
+      .places[0];
+    expect(Object.keys(sent as object).sort()).toEqual([
+      "address",
+      "color",
+      "key",
+      "title",
+      "x",
+      "y",
+    ]);
+  });
+
+  it("refuses bad input as invalid, without touching Kakao Map", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true, folderId: 1 }) });
+    const bad: unknown[] = [
+      { type: "magomap.createList" },
+      { type: "magomap.createList", name: "" },
+      { type: "magomap.createList", name: "   " },
+      { type: "magomap.createList", name: "x".repeat(101) },
+      { type: "magomap.createList", name: 5 },
+      { type: "magomap.addPlaces", folderId: 0, places: [goodPlace] },
+      { type: "magomap.addPlaces", folderId: 1.5, places: [goodPlace] },
+      { type: "magomap.addPlaces", folderId: "7", places: [goodPlace] },
+      { type: "magomap.addPlaces", folderId: 7, places: [] },
+      { type: "magomap.addPlaces", folderId: 7, places: "nope" },
+      {
+        type: "magomap.addPlaces",
+        folderId: 7,
+        places: Array.from({ length: 101 }, () => goodPlace),
+      },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, key: "12ab" }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, key: "" }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, title: "" }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, x: Number.NaN }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, y: "1" }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [{ ...goodPlace, color: 3 }] },
+      { type: "magomap.addPlaces", folderId: 7, places: [null] },
+    ];
+    for (const message of bad) {
+      expect(await stub.send(message)).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(stub.executeScript).not.toHaveBeenCalled();
+    expect(stub.query).not.toHaveBeenCalled();
+  });
+
+  it("answers magomap's origin only", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true, folderId: 1 }) });
+    for (const message of [
+      { type: "magomap.account" },
+      { type: "magomap.createList", name: "x" },
+      { type: "magomap.addPlaces", folderId: 7, places: [goodPlace] },
+    ]) {
+      expect(await stub.send(message, "https://evil.example")).toBeUndefined();
+    }
+    expect(stub.executeScript).not.toHaveBeenCalled();
+  });
+
+  it("a write and a read never run together: the second answers busy", async () => {
+    let finish: (value: unknown) => void = () => {};
+    const stub = makeStub({
+      tabs: tab,
+      write: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    const first = stub.send({ type: "magomap.createList", name: "x" });
+    await vi.waitFor(() => expect(stub.executeScript).toHaveBeenCalled());
+    expect(await stub.send({ type: "magomap.read" })).toEqual({ ok: false, error: "busy" });
+    expect(await stub.send({ type: "magomap.account" })).toEqual({ ok: false, error: "busy" });
+    finish({ ok: true, folderId: 3 });
+    expect(await first).toEqual({ ok: true, folderId: 3 });
+    expect(await stub.send({ type: "magomap.read" })).toEqual(okRead);
+  });
+
+  it("a failed injection is kakao_unavailable", async () => {
+    const stub = makeStub({ tabs: tab, write: () => Promise.reject(new Error("no access")) });
+    expect(await stub.send({ type: "magomap.account" })).toEqual({
+      ok: false,
+      error: "kakao_unavailable",
+    });
+    expect(await stub.send({ type: "magomap.createList", name: "x" })).toEqual({
+      ok: false,
+      error: "kakao_unavailable",
+    });
+  });
+
+  it("an answer of the wrong shape is kakao_unavailable", async () => {
+    for (const wrong of [
+      undefined,
+      null,
+      "ok",
+      { ok: true },
+      { ok: true, folderId: "7" },
+      { ok: true, kakaoMapUserId: 5 },
+      { ok: false, error: "weird" },
+    ]) {
+      const stub = makeStub({ tabs: tab, write: async () => wrong });
+      expect(await stub.send({ type: "magomap.createList", name: "x" })).toEqual({
+        ok: false,
+        error: "kakao_unavailable",
+      });
+    }
+    // The page's own failure passes through, with how far an add got.
+    const failed = makeStub({
+      tabs: tab,
+      write: async () => ({ ok: false, error: "kakao_unavailable", added: 20 }),
+    });
+    expect(
+      await failed.send({ type: "magomap.addPlaces", folderId: 7, places: [goodPlace] }),
+    ).toEqual({
+      ok: false,
+      error: "kakao_unavailable",
+      added: 20,
+    });
+    const signedOut = makeStub({
+      tabs: tab,
+      write: async () => ({ ok: false, error: "kakao_signed_out" }),
+    });
+    expect(await signedOut.send({ type: "magomap.account" })).toEqual({
+      ok: false,
+      error: "kakao_signed_out",
+    });
+  });
+
+  it("opens a background tab when none is open, and closes it again", async () => {
+    const stub = makeStub({
+      tabs: [],
+      created: { id: 42, status: "complete" },
+      write: async () => ({ ok: true, kakaoMapUserId: "1" }),
+    });
+    expect(await stub.send({ type: "magomap.account" })).toEqual({ ok: true, kakaoMapUserId: "1" });
+    expect(stub.create).toHaveBeenCalledWith({ url: "https://map.kakao.com/", active: false });
+    expect(stub.remove).toHaveBeenCalledWith(42);
+  });
+
+  it("a stuck write times out, and the next one isn't busy", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const stub = makeStub({
+        tabs: tab,
+        write: () => {
+          calls += 1;
+          return calls === 1 ? new Promise(() => {}) : Promise.resolve({ ok: true, folderId: 9 });
+        },
+      });
+      const stuck = stub.send({ type: "magomap.createList", name: "x" });
+      await vi.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS - 1);
+      expect(await stub.send({ type: "magomap.createList", name: "y" })).toEqual({
+        ok: false,
+        error: "busy",
+      });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await stuck).toEqual({ ok: false, error: "kakao_unavailable" });
+      expect(await stub.send({ type: "magomap.createList", name: "z" })).toEqual({
+        ok: true,
+        folderId: 9,
+      });
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

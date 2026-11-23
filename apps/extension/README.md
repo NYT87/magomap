@@ -56,7 +56,22 @@ Both builds write `dist/` and have the same id. For local development (magomap o
 - `favorites` holds every favourite of every non-deleted folder, likewise trimmed (a route's waypoints never leave the page), all pages in page order, keyed by `String(folderid)`; `counts[].itemCount` is the folder's full count across pages.
 - `kakao_signed_out`: Kakao Map isn't signed in in this browser (Kakao answers zero folders, an auth status, a redirect or an HTML page). Sign in at `map.kakao.com` and try again.
 - `kakao_unavailable`: Kakao failed (5xx, network, an unexpected answer) or the tab couldn't be read. Nothing partial is returned.
-- `busy`: a read is already running.
+- `busy`: a read or a write is already running (one job at a time).
+
+### Writing a list (for "Copy to Kakao Map")
+
+These write to **her own** Kakao Map, inside the `map.kakao.com` tab, with the requests the Kakao Map page sends (`docs/kakao-map-access.md`, section 7). magomap checks `magomap.account` against the account linked to her magomap account before any write.
+
+| Sent by the page | Answer |
+| ---------------- | ------ |
+| `{ type: "magomap.account" }` | `{ ok: true, kakaoMapUserId }`: the owner of the folders she doesn't merely follow |
+| `{ type: "magomap.createList", name }` (1 to 100 characters) | `{ ok: true, folderId }` |
+| `{ type: "magomap.addPlaces", folderId, places }` (1 to 100 places) | `{ ok: true, added, skipped }`; `skipped` places were already in the list, so a retry adds nothing twice |
+
+- A place is `{ key, title, address, x, y, color? }`: Kakao's place id (digits), the two lines Kakao Map shows, and Kakao's own `x`/`y` (WCONGNAMUL, whole numbers). Nothing else is sent.
+- A failure is `{ ok: false, error }` with `kakao_signed_out`, `kakao_unavailable`, `busy`, or `invalid` (input refused before anything is sent). `addPlaces` failures may carry `added`: how many went in before it stopped. Without it, read the list again.
+- The page sends 20 places per request to Kakao Map. Kakao's own maximum isn't known, so that size is cautious.
+- A new list is created the way the page creates one (`status: "P"`, `icon: 10`).
 
 ## Tests
 
