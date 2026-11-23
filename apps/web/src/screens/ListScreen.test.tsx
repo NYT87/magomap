@@ -79,4 +79,29 @@ describe("ListScreen", () => {
     expect(screen.queryByText(/download/i)).toBeNull();
     sync.arrival = null;
   });
+
+  it("offers Duplicate on an own list, a Kakao list he owns and one he follows, not on Saved", async () => {
+    await i18n.changeLanguage("en");
+    sync.arrival = null;
+    const db = openUserDb("list-screen-duplicate");
+    await db.lists.bulkPut([
+      { ...kakaoList, id: "own", provider: null, externalId: null, name: "빵 지도" },
+      { ...kakaoList, id: "mine_kakao", name: "내 카페" },
+      kakaoList,
+    ]);
+    await db.user_lists.bulkPut([
+      { ...access, id: "ul_own", listId: "own", role: "owner" },
+      { ...access, id: "ul_mine_kakao", listId: "mine_kakao", role: "owner" },
+      access,
+    ]);
+    for (const id of ["own", "mine_kakao", "l_kakao_1"]) {
+      const view = render(<ListScreen id={id} />);
+      expect(await screen.findByRole("button", { name: "Duplicate" })).toBeInTheDocument();
+      view.unmount();
+    }
+    const saved = render(<ListScreen id="__saved" />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByRole("button", { name: "Duplicate" })).toBeNull();
+    saved.unmount();
+  });
 });

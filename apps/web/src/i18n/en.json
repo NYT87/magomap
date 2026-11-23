@@ -297,6 +297,15 @@
       "moss": "Moss",
       "slate": "Slate",
       "rose": "Rose"
+    },
+    "duplicate": {
+      "open": "Duplicate",
+      "title": "Duplicate “{{name}}”",
+      "name": "Name",
+      "defaultName": "{{name}} (copy)",
+      "copyHere": "Copy in magomap",
+      "cancel": "Cancel",
+      "failed": "Couldn't copy this list. Try again."
     }
   },
   "sync": {
