@@ -14,7 +14,8 @@
     "./stores/sync": "./src/stores/sync.ts",
     "./stores/importRuns": "./src/stores/importRuns.ts",
     "./stores/kakaoMapAccounts": "./src/stores/kakaoMapAccounts.ts",
-    "./stores/kakaoColors": "./src/stores/kakaoColors.ts"
+    "./stores/kakaoColors": "./src/stores/kakaoColors.ts",
+    "./stores/kakaoNotes": "./src/stores/kakaoNotes.ts"
   },
   "scripts": {
     "test": "vitest run",

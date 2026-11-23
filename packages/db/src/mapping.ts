@@ -14,10 +14,10 @@ const BOOLEAN_COLUMNS: Partial<Record<SyncTable, readonly string[]>> = {
   visit_notes: ["edited_by_user"],
 };
 
-/** Columns kept on the server: never sent to clients (a list's provider owner account, when a colour was last edited here). */
+/** Columns kept on the server: never sent to clients (a list's provider owner account, when a colour or note was last edited here). */
 const SERVER_ONLY_COLUMNS: Partial<Record<SyncTable, readonly string[]>> = {
   lists: ["provider_owner_id"],
-  list_items: ["color_edited_at"],
+  list_items: ["color_edited_at", "note_edited_at"],
 };
 
 const toSnake = (key: string) => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);

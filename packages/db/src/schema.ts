@@ -173,6 +173,8 @@ export interface ListItemsTable {
   item_color: string | null;
   /** When the owner last changed this item's colour from magomap; older reads keep that colour. */
   color_edited_at: number | null;
+  /** When the owner last changed this item's Kakao note from magomap; older reads keep that note. */
+  note_edited_at: number | null;
   removed_at_provider: number | null;
   provider_snapshot_at: number | null;
   created_at: number;
