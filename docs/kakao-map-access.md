@@ -80,6 +80,27 @@ Read in each account's own signed-in tab with a console snippet (no cookie copie
 - **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, and must cope if its favourites can't be read. While kakao-list runs beside the direct sync, its fallback name (`Folder <id>`) is kept so both sources name the list the same way.
 - **Favourites come in pages of 500.** `/favorite/mine/list?folderid=X` (and `/favorite/list`) return `{ favorites: [...up to 500], next_id }`; Kakao Map's own page then asks for `...&next_id=<next_id>` until there is no `next_id`. Her folder `2869579` ("Seúl 0") has more than 500, and a place on its second page (돌솥추어탕) never reached kakao-list or magomap, because both read only the first page. A reader must follow `next_id` (correcting an earlier note that a list holds at most 500 places).
 
+## 7. Writing a list (2026-11-23)
+
+Captured from Kakao Map's own page in the owner's browser (a sanitized HAR: no cookies or tokens), while creating a list, adding one place to it, removing the place and deleting the list. Each call is a same-origin `POST` from the page with `content-type: application/json` and `x-requested-with: XMLHttpRequest`, and the signed-in cookie. **No gate token** is involved (the gate token is only for `/api/v1/mapsearch/*`). Every answer is `200` with `{ "status": { "code": "SUCCESS" }, … }`. A write from the extension must run inside a `map.kakao.com` tab, as the reads do.
+
+| Step | Request | Body | Answer |
+|---|---|---|---|
+| Create a list | `POST /folder/add` | `{ "title": "test-list", "memo": "test list har", "out_link": "", "icon": 10, "status": "P" }` | `req.folderid` (a number, e.g. `25038639`), `req.map_user_id`, `req.status`, `req.title`, `req.memo`, `req.icon` |
+| Add places | `POST /favorite/add` | `{ "datas": [ { "type": "place", "key": 1063803587, "display1": "청라창해문화공원", "display2": "인천 서해구 청라동 155-19", "x": 421032, "y": 1120559, "color": "03", "memo": "", "folderid": 25038639 } ] }` | `data[i].status.code` per place, `data[i].req.seq` (the new favourite's `seq`), echoing `type: "PLACE"`, `key` as a string, `x`, `y`, `color`, `folderid` |
+| Remove a place | `POST /favorite/remove` | `{ "seqs": [1234147931] }` | `data[i].req.seq`, and the removed favourite |
+| Delete a list | `POST /folder/delete` | `{ "folderids": [25038639] }` | `data[i].req.folderid` |
+| Read a list back | `GET /favorite/mine/list?folderid=<id>` | | `{ favorites: [...] }`, as in section 6 |
+
+What the capture shows:
+- **A list is identified by `req.folderid`** in the create answer. `status: "P"` and `icon: 10` are what the page sent for a new list; `memo` and `out_link` may be empty.
+- **`/favorite/add` takes an array** (`datas`), so several places can go in one request. Only single places were captured, so the largest batch Kakao accepts is **not known**: the extension must test it on a throwaway list before choosing a page size, and fall back to smaller batches.
+- **A place is added by its Kakao place key** (`key`, the same id as `p_kakao_<key>`), with the title (`display1`), the address (`display2`) and Kakao's own coordinates (`x`, `y`). `color` is the Kakao colour code: the page sent `03` and `06` for two adds (the first is the default). `memo` is the note and may be empty. `type` is lowercase in the request (`"place"`) and uppercase in the answer.
+- **`x` and `y` are WCONGNAMUL** (section 5), and magomap stores WGS84. The conversion reproduces the capture exactly: lat `37.53297188`, lon `126.64262495` → x `421032`, y `1120559` (proj4 forward on the section 5 definition, times 2.5, rounded).
+- **Adding the same place twice** was not captured. The extension reads the list first and adds only the keys that aren't there.
+- **Cleanup calls exist** (`/favorite/remove`, `/folder/delete`), which tests against a throwaway list can use.
+- A place that has no Kakao place key (a custom pin, an address favourite) has no `type: "place"` request in this capture, so it is left out of a copy.
+
 ## Still open
 
 - Phone edits reaching the endpoint (step 4).
