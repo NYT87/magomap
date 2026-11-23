@@ -10,6 +10,9 @@
  * - `{ type: "magomap.account" }` → `{ ok: true, folders }`: her folder records, so magomap can
  *   tell whose Kakao Map is signed in (it applies the sync's own rule)
  * - `{ type: "magomap.createList", name }` → `{ ok: true, folderId }`: a new Kakao Map list
+ * - `{ type: "magomap.setColor", folderId, key, color }` → `{ ok: true }`: changes one place's colour in
+ *   one of her lists (read fresh, sent back with only `color` changed, read again to verify), or
+ *   `{ ok: false, error: "not_found" }` when the place isn't in that list
  * - `{ type: "magomap.addPlaces", folderId, places }` → `{ ok: true, added, skipped }`, or
  *   `{ ok: false, error, added? }` (`added`: how many went in before it stopped)
  *   The three writes also answer `{ ok: false, error: "invalid" }` for input they refuse.
@@ -59,6 +62,7 @@ export type WriteAnswer =
   | { ok: true; folders: unknown[] }
   | { ok: true; folderId: number }
   | { ok: true; added: number; skipped: number }
+  | { ok: true }
   | { ok: false; error: WriteError | "busy" | "invalid"; added?: number };
 
 export interface TabInfo {
@@ -237,7 +241,7 @@ function read(api: ExtensionApi): Promise<ReadAnswer> {
 const isCount = (value: unknown): value is number =>
   Number.isSafeInteger(value) && Number(value) >= 0;
 const isKakaoError = (value: unknown): value is WriteError =>
-  value === "kakao_signed_out" || value === "kakao_unavailable";
+  value === "kakao_signed_out" || value === "kakao_unavailable" || value === "not_found";
 
 /** What a write may ask for, or null when the message isn't a valid one. */
 function parseWrite(type: unknown, message: unknown): WriteRequest | null {
@@ -249,6 +253,12 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
   }
   const folderId = m.folderId;
   if (!Number.isSafeInteger(folderId) || Number(folderId) <= 0) return null;
+  if (type === "magomap.setColor") {
+    const { key, color } = m;
+    if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
+    if (typeof color !== "string" || !/^\d{2}$/.test(color)) return null;
+    return { op: "color", folderId: folderId as number, key, color };
+  }
   const list = m.places;
   if (!Array.isArray(list) || list.length === 0 || list.length > MAX_PLACES) return null;
   const places: WritePlace[] = [];
@@ -292,6 +302,7 @@ function writeAnswerOf(request: WriteRequest, value: unknown): WriteAnswer {
       ? { ok: true, folders }
       : WRITE_UNAVAILABLE;
   }
+  if (request.op === "color") return { ok: true };
   if (request.op === "create") {
     const id = value.folderId;
     return Number.isSafeInteger(id) && Number(id) > 0
@@ -363,7 +374,8 @@ export function install(api: ExtensionApi): void {
     if (
       type === "magomap.account" ||
       type === "magomap.createList" ||
-      type === "magomap.addPlaces"
+      type === "magomap.addPlaces" ||
+      type === "magomap.setColor"
     ) {
       const request = parseWrite(type, message);
       if (!request) {

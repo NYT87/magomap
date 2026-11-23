@@ -442,6 +442,42 @@ describe("writing to Kakao Map", () => {
     ]);
   });
 
+  it("setColor sends the list, the place key and the colour to the page and answers ok", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true }) });
+    expect(
+      await stub.send({
+        type: "magomap.setColor",
+        folderId: 7,
+        key: "1063803587",
+        color: "05",
+        x: 1,
+      }),
+    ).toEqual({ ok: true });
+    expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
+      func: writeInPage,
+      args: [{ op: "color", folderId: 7, key: "1063803587", color: "05" }],
+    });
+  });
+
+  it("setColor passes not_found through and refuses bad input without touching Kakao Map", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: false, error: "not_found" }) });
+    expect(
+      await stub.send({ type: "magomap.setColor", folderId: 7, key: "1063803587", color: "05" }),
+    ).toEqual({ ok: false, error: "not_found" });
+    stub.executeScript.mockClear();
+    const bad: unknown[] = [
+      { type: "magomap.setColor", folderId: 0, key: "1", color: "05" },
+      { type: "magomap.setColor", folderId: 7, key: "01", color: "05" },
+      { type: "magomap.setColor", folderId: 7, key: "1", color: "5" },
+      { type: "magomap.setColor", folderId: 7, key: "1", color: "0a" },
+      { type: "magomap.setColor", folderId: 7, key: "1" },
+    ];
+    for (const message of bad) {
+      expect(await stub.send(message)).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(stub.executeScript).not.toHaveBeenCalled();
+  });
+
   it("refuses bad input as invalid, without touching Kakao Map", async () => {
     const stub = makeStub({ tabs: tab, write: async () => ({ ok: true, folderId: 1 }) });
     const bad: unknown[] = [

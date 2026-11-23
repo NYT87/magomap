@@ -33,9 +33,10 @@ export interface WritePlace {
 export type WriteRequest =
   | { op: "account" }
   | { op: "create"; name: string }
-  | { op: "add"; folderId: number; places: WritePlace[] };
+  | { op: "add"; folderId: number; places: WritePlace[] }
+  | { op: "color"; folderId: number; key: string; color: string };
 
-export type WriteError = "kakao_signed_out" | "kakao_unavailable";
+export type WriteError = "kakao_signed_out" | "kakao_unavailable" | "not_found";
 
 /**
  * How long the page keeps working on one write before it stops by itself. It is less than the
@@ -48,11 +49,13 @@ export type WriteResult =
   | { ok: true; folders: unknown[] }
   | { ok: true; folderId: number }
   | { ok: true; added: number; skipped: number }
+  | { ok: true }
   | { ok: false; error: WriteError; added?: number };
 
 export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
   const SIGNED_OUT = "kakao_signed_out";
   const UNAVAILABLE = "kakao_unavailable";
+  const NOT_FOUND = "not_found";
   /** Per request, body included. A hung request must not hold the write forever. */
   const REQUEST_TIMEOUT_MS = 30_000;
   /** The whole write; the same value as WRITE_DEADLINE_MS (module values aren't reachable here). */
@@ -81,8 +84,8 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
   const NEW_LIST = { memo: "", out_link: "", icon: 10, status: "P" };
 
   class Failure extends Error {
-    reason: typeof SIGNED_OUT | typeof UNAVAILABLE;
-    constructor(reason: typeof SIGNED_OUT | typeof UNAVAILABLE) {
+    reason: typeof SIGNED_OUT | typeof UNAVAILABLE | typeof NOT_FOUND;
+    constructor(reason: typeof SIGNED_OUT | typeof UNAVAILABLE | typeof NOT_FOUND) {
       super(reason);
       this.reason = reason;
     }
@@ -152,9 +155,9 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
   const succeeded = (answer: Record<string, unknown>) =>
     isRecord(answer.status) && answer.status.code === "SUCCESS";
 
-  /** The keys of the places a list already holds, every page of it. */
-  const keysIn = async (folderId: number): Promise<Set<string>> => {
-    const keys = new Set<string>();
+  /** Every favourite of a list, every page of it. */
+  const favoritesIn = async (folderId: number): Promise<Record<string, unknown>[]> => {
+    const all: Record<string, unknown>[] = [];
     const seen = new Set<string>();
     let nextId: string | undefined;
     for (let page = 1; page <= MAX_PAGES; page += 1) {
@@ -165,19 +168,30 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       const answer = await send(path);
       if (!Array.isArray(answer.favorites)) throw new Failure(UNAVAILABLE);
       for (const favorite of answer.favorites) {
-        if (isRecord(favorite) && favorite.key !== undefined) keys.add(String(favorite.key));
+        if (isRecord(favorite)) all.push(favorite);
       }
       const raw = answer.next_id;
       const more =
         (typeof raw === "number" && Number.isFinite(raw) && raw !== 0) ||
         (typeof raw === "string" && raw !== "" && raw !== "0");
-      if (!more) return keys;
+      if (!more) return all;
       nextId = String(raw);
       if (seen.has(nextId)) throw new Failure(UNAVAILABLE);
       seen.add(nextId);
     }
     throw new Failure(UNAVAILABLE);
   };
+
+  /** The keys of the places a list already holds. */
+  const keysIn = async (folderId: number): Promise<Set<string>> => {
+    const keys = new Set<string>();
+    for (const favorite of await favoritesIn(folderId)) {
+      if (favorite.key !== undefined) keys.add(String(favorite.key));
+    }
+    return keys;
+  };
+
+  const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
   let added = 0;
   try {
@@ -206,6 +220,41 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       }
       if (folderId <= 0) throw new Failure(UNAVAILABLE);
       return { ok: true, folderId };
+    }
+
+    if (request.op === "color") {
+      // Read fresh, then send the favourite back as the page does: only the colour differs.
+      const found = (await favoritesIn(request.folderId)).find(
+        (f) => f.key !== undefined && String(f.key) === request.key,
+      );
+      if (!found) throw new Failure(NOT_FOUND);
+      const { seq, display1, display2, memo } = found;
+      if (typeof seq !== "number" || typeof display1 !== "string" || typeof display2 !== "string") {
+        throw new Failure(UNAVAILABLE);
+      }
+      const answer = await send("/favorite/update", {
+        datas: [
+          {
+            seq,
+            display1,
+            display2,
+            color: request.color,
+            memo: typeof memo === "string" ? memo : "",
+          },
+        ],
+      });
+      const results = Array.isArray(answer.data) ? answer.data : [];
+      const done = results.some(
+        (r) => isRecord(r) && isRecord(r.status) && r.status.code === "SUCCESS",
+      );
+      if (!succeeded(answer) || !done) throw new Failure(UNAVAILABLE);
+      // Verify by reading it again, a few short tries (the page's own list can lag a moment).
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (attempt > 0) await pause(300);
+        const again = (await favoritesIn(request.folderId)).find((f) => f.seq === seq);
+        if (again && String(again.color) === request.color) return { ok: true };
+      }
+      throw new Failure(UNAVAILABLE);
     }
 
     // Add: only what the list doesn't hold yet, so running it again adds nothing.

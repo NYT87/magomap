@@ -270,6 +270,89 @@ describe("writeInPage: add", () => {
   });
 });
 
+describe("writeInPage: color", () => {
+  const fav = (key: string, seq: number, color: string) => ({
+    seq,
+    key,
+    type: "PLACE",
+    display1: `이름 ${key}`,
+    display2: `주소 ${key}`,
+    memo: `메모 ${key}`,
+    color,
+  });
+  /** A list whose favourites live in `store`; /favorite/update changes `store`. */
+  const list = (store: ReturnType<typeof fav>[], accept = true) =>
+    serve({
+      "GET /favorite/mine/list": () => json({ favorites: store }),
+      "POST /favorite/update": (call) => {
+        const [d] = (call.body as { datas: { seq: number; color: string }[] }).datas;
+        const f = store.find((x) => x.seq === d?.seq);
+        if (f && accept) f.color = d?.color ?? f.color;
+        return json(ok({ data: [{ status: { code: "SUCCESS" } }] }));
+      },
+    });
+  const req = { op: "color", folderId: 5, key: "1002", color: "04" } as const;
+
+  it("reads the list, sends the favourite back with only the colour changed, then reads again", async () => {
+    list([fav("1001", 11, "01"), fav("1002", 12, "02")]);
+    expect(await writeInPage(req)).toEqual({ ok: true });
+    const update = calls.find((c) => c.path === "/favorite/update");
+    expect(update?.method).toBe("POST");
+    expect(update?.headers).toEqual(PAGE_HEADERS);
+    expect(update?.body).toEqual({
+      datas: [
+        { seq: 12, display1: "이름 1002", display2: "주소 1002", memo: "메모 1002", color: "04" },
+      ],
+    });
+    expect(calls.map((c) => c.path)).toEqual([
+      "/favorite/mine/list",
+      "/favorite/update",
+      "/favorite/mine/list",
+    ]);
+  });
+
+  it("finds the favourite on a later page of the list", async () => {
+    serve({
+      "GET /favorite/mine/list": (call) =>
+        call.query.includes("next_id")
+          ? json({ favorites: [fav("1002", 12, "02")] })
+          : json({ favorites: [fav("1001", 11, "01")], next_id: "9" }),
+      "POST /favorite/update": () => json(ok({ data: [{ status: { code: "SUCCESS" } }] })),
+    });
+    const r = await writeInPage(req);
+    // The fake never changes the colour, so the read-back fails, but the update was for seq 12.
+    const sent = calls.find((c) => c.path === "/favorite/update")?.body as
+      | { datas: { seq: number }[] }
+      | undefined;
+    expect(sent?.datas[0]?.seq).toBe(12);
+    expect(r.ok).toBe(false);
+  });
+
+  it("is not_found, sending nothing, when the place isn't in the list", async () => {
+    list([fav("1001", 11, "01")]);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "not_found" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
+  it("is unavailable when the read-back never shows the new colour", async () => {
+    list([fav("1002", 12, "02")], false);
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+  });
+
+  it("is unavailable when Kakao doesn't say SUCCESS to the update", async () => {
+    serve({
+      "GET /favorite/mine/list": () => json({ favorites: [fav("1002", 12, "02")] }),
+      "POST /favorite/update": () => json({ status: { code: "FAIL" } }),
+    });
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_unavailable" });
+  });
+
+  it("is signed out when the login is gone", async () => {
+    serve({ "GET /favorite/mine/list": () => new Response("", { status: 401 }) });
+    expect(await writeInPage(req)).toEqual({ ok: false, error: "kakao_signed_out" });
+  });
+});
+
 describe("writeInPage: account", () => {
   const folders = (list: unknown[]) => json(ok({ folders: list }));
 
