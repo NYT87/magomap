@@ -31,6 +31,8 @@ Production changes **only when a release is made**. Pushing to `main` deploys no
 
 **Releasing the extension:** automatic. When merging a release PR creates an `extension-v…` release, the Release workflow's `extension-bundle` job (no secrets) runs the extension's tests and builds the release zip from that release's commit, and `extension-upload` attaches it to the release as `magomap-extension.zip` (replacing one already there). If it ever fails, re-run those jobs, or do it by hand:
 
+**The release PR is made last.** The extension release is a draft until `extension-upload` publishes it, and a draft has no git tag yet. So the `release-please` job only creates releases (`skip-github-pull-request`), and the `release-pr` job makes or updates the next release PR after `extension-upload` has finished (`skip-github-release`). Before this, Release Please opened a stray "release extension X+1" PR that re-listed the changes just released (PR #56); if one ever appears again, close it without merging. If `extension-upload` fails, no release PR is made until the next push to `main`: fix the upload (re-run it), then re-run the `release-pr` job.
+
 ```bash
 git checkout extension-vX.Y.Z
 pnpm install --frozen-lockfile

@@ -5,7 +5,8 @@ name: Release
 # A manual run (workflow_dispatch) redeploys an existing release tag, for retrying a failed deploy.
 #
 # Jobs, each with only the access it needs:
-#   release-please     creates the release PR and the release   contents + pull-requests write
+#   release-please     creates the releases (not the PR)         contents + pull-requests write
+#   release-pr          creates/updates the release PR, last      contents + pull-requests write
 #   verify-release-pr  starts CI on the release PR               actions write
 #   resolve            checks which release to deploy            contents read
 #   build              runs the checks and builds the web app    contents read, no secrets
@@ -58,13 +59,40 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          # The release PR is made by the `release-pr` job below, after the extension release is
+          # published: a draft release has no git tag yet, so a PR made in this step would not
+          # see it and would list the same changes again under a new version.
+          skip-github-pull-request: true
+
+  # Creates or updates the next release PR once the releases above exist as tags. It waits for
+  # the extension upload job (which publishes the draft extension release, creating its tag), so
+  # Release Please sees the version that was just released. Skipped, not failed, when no
+  # extension release was made. If that upload failed, no PR is made until the next push to main.
+  release-pr:
+    needs: [release-please, extension-upload]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' &&
+        needs.release-please.result == 'success' &&
+        (needs.extension-upload.result == 'success' || needs.extension-upload.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Pinned to the commit SHA of releases at least 14 days old.
+      - name: Create or update the release PR
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
 
   # PRs opened with GITHUB_TOKEN don't trigger workflows, so CI is dispatched on the release PR's
   # branch. A job of its own, so the third-party Release Please action never holds `actions: write`.
   # Skipped when a release was just created, so it can never hold back that release's deploy.
   verify-release-pr:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created != 'true' }}
+    needs: [release-please, release-pr]
+    if: ${{ !cancelled() && needs.release-pr.result == 'success' && needs.release-please.outputs.release_created != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
