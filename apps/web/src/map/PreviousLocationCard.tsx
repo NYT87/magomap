@@ -2,8 +2,9 @@ import type { PlaceLocationRow, PlaceRow } from "@magomap/domain";
 import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { formatDate } from "../i18n";
+import { switchesPlace } from "../layout/placeRoute";
 
 /** Shown when a faded previous-location marker is tapped. */
 export function PreviousLocationCard({
@@ -16,6 +17,7 @@ export function PreviousLocationCard({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const [current] = useLocation();
   const now = place.roadAddress ?? place.address;
   const ref = useRef<HTMLElement>(null);
   // Focus moves to the card, Esc closes it, and focus goes back to where it was.
@@ -46,6 +48,7 @@ export function PreviousLocationCard({
       <p className="mm-muted">{now ? t("map.nowAt", { address: now }) : t("map.nowUnknown")}</p>
       <Link
         href={`/places/${encodeURIComponent(place.id)}`}
+        replace={switchesPlace(current)}
         className="mm-button mm-button--primary"
       >
         {t("map.openPlace")}

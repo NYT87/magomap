@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { Router } from "wouter";
@@ -6,7 +7,7 @@ import { memoryLocation } from "wouter/memory-location";
 import i18n from "../i18n";
 import { setViewportWidth } from "../test/setup";
 import { AppLayout, NoticeSlot } from "./AppLayout";
-import { placeRouteOf } from "./placeRoute";
+import { placeRouteOf, switchesPlace } from "./placeRoute";
 
 function renderAt(path: string, width: number, notice?: ReactNode) {
   setViewportWidth(width);
@@ -135,6 +136,48 @@ describe("AppLayout", () => {
     const { container } = renderAt("/lists/abc", 390);
     const header = container.querySelector("header") as HTMLElement;
     expect(within(header).queryByRole("heading")).toBeNull();
+  });
+});
+
+describe("closing a place on a phone", () => {
+  function renderPhone(path: string) {
+    setViewportWidth(390);
+    const location = memoryLocation({ path, record: true });
+    render(
+      <Router hook={location.hook}>
+        <AppLayout map={<input id="mm-search" aria-label="search" />}>
+          <p>page</p>
+        </AppLayout>
+      </Router>,
+    );
+    return location;
+  }
+
+  it("Escape closes the peek, as the X does", async () => {
+    const { history } = renderPhone("/places/p1");
+    await userEvent.keyboard("{Escape}");
+    expect(history.at(-1)).toBe("/");
+  });
+
+  it("Escape on the details page does not close the place", async () => {
+    const { history } = renderPhone("/places/p1/details");
+    await userEvent.keyboard("{Escape}");
+    expect(history.at(-1)).toBe("/places/p1/details");
+  });
+
+  it("back on the map from a peek puts focus in the search field", async () => {
+    const { navigate } = renderPhone("/places/p1");
+    act(() => navigate("/"));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "search" })).toHaveFocus());
+  });
+});
+
+describe("switchesPlace", () => {
+  it("is true only on a place's peek, so opening another place replaces it in history", () => {
+    expect(switchesPlace("/places/a")).toBe(true);
+    expect(switchesPlace("/places/a/details")).toBe(false);
+    expect(switchesPlace("/")).toBe(false);
+    expect(switchesPlace("/lists/x")).toBe(false);
   });
 });
 

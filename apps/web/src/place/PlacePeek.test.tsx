@@ -1,7 +1,7 @@
 import type { PlaceRow } from "@magomap/domain";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Router, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { openUserDb } from "../data/db";
@@ -22,8 +22,15 @@ function Probe() {
   );
 }
 
+/** The peek for whichever place the route names, as the map screen renders it. */
+function Routed() {
+  const [location] = useLocation();
+  return <PlacePeek id={location.replace("/places/", "")} />;
+}
+
 function renderPeek(id: string) {
-  const { hook } = memoryLocation({ path: `/places/${id}` });
+  const { hook, history } = memoryLocation({ path: `/places/${id}`, record: true });
+  lastHistory = history;
   return render(
     <Router hook={hook}>
       <MapStageProvider>
@@ -34,6 +41,7 @@ function renderPeek(id: string) {
   );
 }
 
+let lastHistory: string[] = [];
 let n = 0;
 let db: ReturnType<typeof openUserDb>;
 beforeEach(async () => {
@@ -88,6 +96,8 @@ describe("PlacePeek", () => {
     renderPeek(PLACE.id);
     await userEvent.click(await screen.findByRole("button", { name: en.place.peek.close }));
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    // With no earlier page in the app, it replaces the place: Back won't reopen it.
+    expect(lastHistory).toEqual(["/"]);
   });
 
   it("does nothing when the card itself is tapped", async () => {
@@ -158,10 +168,62 @@ describe("PlacePeek", () => {
     expect(screen.getByTestId("focus")).toHaveTextContent("");
   });
 
-  it("shows nothing for a deleted place's card but the not-found text", async () => {
+  it("says a deleted place may have been deleted, not to wait for a sync", async () => {
     await put({ deletedAt: 5 });
     renderPeek(PLACE.id);
-    expect(await screen.findByText(en.place.notFound)).toBeVisible();
+    expect(await screen.findByText(en.place.peek.gone)).toBeVisible();
+    expect(screen.queryByText(en.place.notFound)).toBeNull();
+    expect(screen.getByRole("button", { name: en.place.peek.close })).toBeVisible();
+  });
+
+  it("labels the note as a Kakao note", async () => {
+    await seed(db);
+    renderPeek(PLACE.id);
+    const note = await screen.findByText("창가 자리");
+    expect(note.closest(".mm-place-peek__note")).toHaveTextContent(en.place.peek.kakaoNote);
+  });
+
+  it("moves focus to the place's name when it opens, and again when another place opens", async () => {
+    await seed(db);
+    await db.places.put({ ...PLACE, id: "p2", title: "두 번째" });
+    const { hook, navigate } = memoryLocation({ path: `/places/${PLACE.id}` });
+    render(
+      <Router hook={hook}>
+        <MapStageProvider>
+          <Routed />
+        </MapStageProvider>
+      </Router>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2, name: PLACE.title })).toHaveFocus(),
+    );
+    navigate("/places/p2");
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2, name: "두 번째" })).toHaveFocus(),
+    );
+  });
+
+  it("publishes its height, so the cards above it can sit clear of it", async () => {
+    await seed(db);
+    const observed: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: ResizeObserverCallback) {
+          observed.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const view = renderPeek(PLACE.id);
+    await screen.findByRole("heading", { level: 2, name: PLACE.title });
+    const entry = { borderBoxSize: [{ blockSize: 151 }] } as unknown as ResizeObserverEntry;
+    observed.at(-1)?.([entry], {} as ResizeObserver);
+    expect(document.documentElement.style.getPropertyValue("--mm-peek-height")).toBe("151px");
+    view.unmount();
+    expect(document.documentElement.style.getPropertyValue("--mm-peek-height")).toBe("");
+    vi.unstubAllGlobals();
   });
 
   it("still shows the card, and doesn't move the map, when the place has no coordinates", async () => {

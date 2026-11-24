@@ -2,7 +2,8 @@ import { ArrowLeft, List, Map as MapIcon, UserRound } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
-import { placeRouteOf } from "./placeRoute";
+import { goBackOr } from "./appHistory";
+import { placeRouteOf, switchesPlace } from "./placeRoute";
 import { useLayout } from "./useLayout";
 
 export const SEARCH_INPUT_ID = "mm-search";
@@ -86,6 +87,10 @@ export function AppLayout({ map, children, status, notice }: Props) {
       if (e.key === "Escape" && layout === "desktop" && location.startsWith("/places/")) {
         navigate("/");
       }
+      // On a phone, Escape closes a place's peek the way its X does (not its details page).
+      if (e.key === "Escape" && layout === "phone" && switchesPlace(location)) {
+        goBackOr(navigate, "/");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -108,11 +113,20 @@ export function AppLayout({ map, children, status, notice }: Props) {
     }
   }, [layout, pageRoute]);
 
-  const back = () => {
-    if (window.history.length > 1) window.history.back();
-    // Opened with no history: from a place's details, back is its peek, not a blank map.
-    else navigate(placeRoute ? `/places/${encodeURIComponent(placeRoute.id)}` : "/");
-  };
+  // Back to the map from a place's peek (its X, Escape or Back): focus goes to the search field,
+  // since the card that held it is gone.
+  const previous = useRef(location);
+  useEffect(() => {
+    const was = previous.current;
+    previous.current = location;
+    if (layout === "phone" && location === "/" && switchesPlace(was)) {
+      document.getElementById(SEARCH_INPUT_ID)?.focus({ preventScroll: true });
+    }
+  }, [layout, location]);
+
+  // Opened with no history in the app: from a place's details, back is its peek, not a blank map.
+  const back = () =>
+    goBackOr(navigate, placeRoute ? `/places/${encodeURIComponent(placeRoute.id)}` : "/");
 
   if (layout === "desktop") {
     return (

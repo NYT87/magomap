@@ -2030,14 +2030,39 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Name and line are clamped, like the note, so a long one never takes over a small screen. */
 .mm-place-peek__name {
   font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.mm-place-peek__name:focus {
+  outline: none;
+}
+
+.mm-place-peek__name:focus-visible {
+  outline: 2px solid var(--color-pine);
+  outline-offset: 2px;
 }
 
 .mm-place-peek__muted {
   font-size: var(--text-md);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.mm-place-peek__note-label {
+  color: var(--color-text-secondary);
+  font-weight: 600;
 }
 
 .mm-place-peek__note {
@@ -2055,7 +2080,8 @@ a {
   display: flex;
 }
 
-/* A previous-location card opened over a peek sits above it, not on it. */
+/* A previous-location card opened over a peek sits above it, not on it: the peek publishes its
+   own height (PlacePeek), so it stays clear at any text size. */
 .mm-shell--phone:has(.mm-place-peek) .mm-floating-card {
-  bottom: calc(232px + env(safe-area-inset-bottom));
+  bottom: calc(96px + var(--mm-peek-height, 136px) + var(--space-sm) + env(safe-area-inset-bottom));
 }

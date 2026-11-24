@@ -99,7 +99,7 @@ describe("useDragUp", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("doesn't open on a slow short drag, or a tap", () => {
+  it("doesn't open on a tap (no movement)", () => {
     const { onOpen, at } = setup();
     at("pointerDown", 100, 500);
     now += 50;
