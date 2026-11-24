@@ -134,6 +134,11 @@
     "saveFailed": "Couldn't save this place. Try searching again."
   },
   "place": {
+    "peek": {
+      "openDetails": "Open details",
+      "close": "Close",
+      "region": "Place"
+    },
     "notFound": "This place isn't on this device yet. If you just saved it, wait a moment for it to sync.",
     "openKakao": "Open in Kakao Map",
     "call": "Call",

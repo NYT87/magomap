@@ -102,3 +102,99 @@ test("the Kakao colour rule on a note stays visible in the dark theme", async ({
   });
   expect(worst).toBeGreaterThanOrEqual(3);
 });
+
+// A phone's place is a peek card over the map; the details page is its own route.
+async function openFirstPin(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  const pins = page.locator(".leaflet-marker-icon.mm-pin-host--saved");
+  await expect(pins.first()).toBeAttached({ timeout: 20_000 });
+  const title = await pins.first().getAttribute("title");
+  // Dispatched on the pin itself: neighbouring pins' 44 px targets can overlap and take a real click.
+  await page
+    .locator(`.leaflet-marker-icon.mm-pin-host--saved[title="${title}"]`)
+    .dispatchEvent("click");
+  await expect(page).toHaveURL(/\/places\/[^/]+$/);
+  return (title ?? "").replace(/, selected$/, "");
+}
+
+test.describe("the phone's place peek", () => {
+  test.beforeEach(async ({ page, context }, info) => {
+    test.skip(info.project.name !== "phone", "the peek is phone only");
+    await setVariant(page, { name: "base" });
+    await devLogin(context, "222");
+    await importFromKakao(page);
+  });
+
+  test("a tapped pin shows the map with the name above the nav, and the pin above the card", async ({
+    page,
+  }) => {
+    const name = await openFirstPin(page);
+    const peek = page.getByRole("region", { name });
+    await expect(peek).toBeVisible();
+    await expect(page.locator(".mm-map")).toBeVisible();
+    const nav = await page.getByRole("navigation").boundingBox();
+    const card = await peek.boundingBox();
+    if (!nav || !card) throw new Error("no boxes");
+    expect(card.y + card.height).toBeLessThanOrEqual(nav.y);
+    // The selected pin is brought to the middle of the map: above the card.
+    const pin = await page.locator(".mm-pin--selected").boundingBox();
+    if (!pin) throw new Error("no selected pin");
+    expect(pin.y + pin.height).toBeLessThan(card.y);
+    for (const button of [
+      page.getByRole("button", { name: "Open details" }),
+      page.getByRole("button", { name: "Close" }),
+    ]) {
+      const box = await button.boundingBox();
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test("the arrow opens the details page, Back returns to the peek, Close to the map", async ({
+    page,
+  }) => {
+    const name = await openFirstPin(page);
+    await page.getByRole("button", { name: "Open details" }).click();
+    await expect(page).toHaveURL(/\/details$/);
+    await expect(page.locator(".mm-map")).toBeHidden();
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL(/\/places\/[^/]+$/);
+    await expect(page.getByRole("region", { name })).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("region", { name })).toHaveCount(0);
+  });
+
+  test("dragging the card up opens the details page, and doesn't pan the map", async ({ page }) => {
+    const name = await openFirstPin(page);
+    const card = page.getByRole("region", { name });
+    const box = await card.boundingBox();
+    if (!box) throw new Error("no card");
+    // The map first glides to the place: measure the pin once it has stopped.
+    const pin = page.locator(".mm-pin--selected");
+    let before = await pin.boundingBox();
+    await expect(async () => {
+      const now = await pin.boundingBox();
+      const still = JSON.stringify(now) === JSON.stringify(before);
+      before = now;
+      expect(still).toBe(true);
+    }).toPass({ intervals: [400], timeout: 10_000 });
+    const x = box.x + box.width / 2;
+    await page.mouse.move(x, box.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(x, box.y - 20, { steps: 4 });
+    // Still down: the card follows, the map stays.
+    await expect.poll(async () => (await card.boundingBox())?.y).toBeLessThan(box.y);
+    expect(await page.locator(".mm-pin--selected").boundingBox()).toEqual(before);
+    await page.mouse.move(x, box.y - 120, { steps: 6 });
+    await page.mouse.up();
+    await expect(page).toHaveURL(/\/details$/);
+  });
+
+  test("a tap on the card itself opens nothing", async ({ page }) => {
+    const name = await openFirstPin(page);
+    await page.getByRole("heading", { level: 2, name }).click();
+    await expect(page).toHaveURL(/\/places\/[^/]+$/);
+  });
+});

@@ -10,6 +10,7 @@ import { useMapStage } from "../map/MapStage";
 import { MapView } from "../map/MapView";
 import { useMapData } from "../map/useMapData";
 import { VisiblePlacesList } from "../map/VisiblePlacesList";
+import { PlacePeek } from "../place/PlacePeek";
 import { SearchBar } from "../search/SearchBar";
 
 /** Asks for the position only when tapped. */
@@ -38,7 +39,8 @@ export function MapScreen() {
   const { t } = useTranslation();
   const layout = useLayout();
   const [location, navigate] = useLocation();
-  const selectedId = placeRouteOf(location)?.id;
+  const placeRoute = placeRouteOf(location);
+  const selectedId = placeRoute?.id;
   const data = useMapData(selectedId);
   const [asList, setAsList] = useState(false);
   const { locate, denied } = useLocate();
@@ -97,6 +99,7 @@ export function MapScreen() {
           )}
         </>
       )}
+      {layout === "phone" && placeRoute && !placeRoute.details && <PlacePeek id={placeRoute.id} />}
       {layout === "desktop" && (
         <div className="mm-map-tools">
           <button type="button" className="mm-fab" onClick={locate}>
