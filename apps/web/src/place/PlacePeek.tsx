@@ -11,8 +11,9 @@ import { peekNoteOf } from "./kakaoNotes";
 import { useDragUp } from "./useDragUp";
 
 /**
- * A phone's place, over the map: a small card with the name that opens the details page from its
- * arrow button, or by dragging it up. The X goes back where she came from (else the map).
+ * A phone's place, over the map: a small card with the name that opens the details page when
+ * tapped, from its arrow button (the keyboard's way), or by dragging it up. The X goes back
+ * where she came from (else the map).
  */
 export function PlacePeek({ id }: { id: string }) {
   const { t } = useTranslation();
@@ -25,7 +26,7 @@ export function PlacePeek({ id }: { id: string }) {
   const { setFocus } = useMapStage();
   const headingId = useId();
   const openDetails = () => navigate(`/places/${encodeURIComponent(id)}/details`);
-  const { handlers, offset, dragging } = useDragUp({ onOpen: openDetails });
+  const { handlers, offset, dragging } = useDragUp({ onOpen: openDetails, openOnTap: true });
 
   const heading = useRef<HTMLHeadingElement>(null);
   const focusedFor = useRef<string | null>(null);

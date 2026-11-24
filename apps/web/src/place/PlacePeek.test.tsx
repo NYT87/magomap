@@ -100,12 +100,25 @@ describe("PlacePeek", () => {
     expect(lastHistory).toEqual(["/"]);
   });
 
-  it("does nothing when the card itself is tapped", async () => {
+  it("a tap anywhere on the card opens the details page, as in Kakao Map", async () => {
     await seed(db);
     renderPeek(PLACE.id);
-    await userEvent.click(await screen.findByRole("heading", { level: 2, name: PLACE.title }));
-    expect(screen.getByTestId("location")).toHaveTextContent(`/places/${PLACE.id}`);
-    expect(screen.getByTestId("location").textContent).not.toContain("details");
+    await userEvent.click(await screen.findByText("베이커리"));
+    expect(screen.getByTestId("location")).toHaveTextContent(`/places/${PLACE.id}/details`);
+  });
+
+  it("the X closes without also opening the details", async () => {
+    await seed(db);
+    renderPeek(PLACE.id);
+    await userEvent.click(await screen.findByRole("button", { name: en.place.peek.close }));
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    expect(lastHistory).not.toContain(`/places/${PLACE.id}/details`);
+  });
+
+  it("a tap on the not-found card opens nothing", async () => {
+    renderPeek("nope");
+    await userEvent.click(await screen.findByText(en.place.notFound));
+    expect(screen.getByTestId("location")).toHaveTextContent("/places/nope");
   });
 
   it("brings the map to the place, once the place is known", async () => {

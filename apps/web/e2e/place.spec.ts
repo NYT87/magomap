@@ -192,9 +192,9 @@ test.describe("the phone's place peek", () => {
     await expect(page).toHaveURL(/\/details$/);
   });
 
-  test("a tap on the card itself opens nothing", async ({ page }) => {
+  test("a tap on the card opens the details page, as in Kakao Map", async ({ page }) => {
     const name = await openFirstPin(page);
     await page.getByRole("heading", { level: 2, name }).click();
-    await expect(page).toHaveURL(/\/places\/[^/]+$/);
+    await expect(page).toHaveURL(/\/places\/[^/]+\/details$/);
   });
 });
