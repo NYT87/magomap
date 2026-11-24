@@ -16,19 +16,17 @@ const drawn = (page: Page) =>
     timeout: 20_000,
   });
 
-test("the open place's pin stands out", async ({ page }, info) => {
+test("the open place's pin stands out", async ({ page }) => {
   await page.goto(`/places/${BADA}`);
   await expect(selectedPin(page)).toHaveCount(1);
-  // The phone's map is hidden under place pages: there it is only present.
-  if (info.project.name === "desktop") await expect(selectedPin(page)).toBeVisible();
+  // The map is visible on a phone too: the place is a peek over it.
+  await expect(selectedPin(page)).toBeVisible();
   await expect(page.locator(".marker-cluster .mm-pin--selected")).toHaveCount(0);
 });
 
 test("zoomed out, it still isn't clustered", async ({ page }) => {
   await page.goto(`/places/${BADA}`);
   await expect(selectedPin(page)).toHaveCount(1);
-  // On a phone the map sits hidden under the place page, where a key press can't reach it: show it.
-  await page.addStyleTag({ content: ".mm-map[hidden] { visibility: visible !important; }" });
   await page.locator(".leaflet-container").focus();
   // Zoom out until every other saved pin has merged into a cluster: only then does the check mean
   // something (a selected pin that clustered would be gone, or inside a cluster).

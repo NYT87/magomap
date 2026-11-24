@@ -6,6 +6,7 @@ import { memoryLocation } from "wouter/memory-location";
 import i18n from "../i18n";
 import { setViewportWidth } from "../test/setup";
 import { AppLayout, NoticeSlot } from "./AppLayout";
+import { placeRouteOf } from "./placeRoute";
 
 function renderAt(path: string, width: number, notice?: ReactNode) {
   setViewportWidth(width);
@@ -38,11 +39,35 @@ describe("AppLayout", () => {
   });
 
   it("shows pages full-screen over the map on phones, with a back button", () => {
-    renderAt("/places/x", 390);
+    renderAt("/places/x/details", 390);
     expect(screen.queryByRole("complementary")).toBeNull();
     expect(screen.getByText("place page")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /back|뒤로/i })).toBeInTheDocument();
     expect(screen.getByTestId("map")).toBeInTheDocument();
+  });
+
+  it("keeps the map and the bottom nav on a phone place route, with no page", () => {
+    const { container } = renderAt("/places/p1", 390);
+    expect(container.querySelector(".mm-map")).not.toHaveAttribute("hidden");
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(container.querySelector(".mm-page")).toBeNull();
+    expect(container.querySelector(".mm-page__header")).toBeNull();
+    expect(screen.queryByText("place page")).toBeNull();
+  });
+
+  it("hides the map under the details page on a phone", () => {
+    const { container } = renderAt("/places/p1/details", 390);
+    expect(container.querySelector(".mm-map")).toHaveAttribute("hidden");
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.getByText("place page")).toBeInTheDocument();
+  });
+
+  it("shows a place in the panel on desktop, at both place routes", () => {
+    for (const path of ["/places/p1", "/places/p1/details"]) {
+      const { unmount } = renderAt(path, 1440);
+      expect(screen.getByRole("complementary")).toHaveTextContent("place page");
+      unmount();
+    }
   });
 
   it("shows only the map at the root on phones", () => {
@@ -110,5 +135,27 @@ describe("AppLayout", () => {
     const { container } = renderAt("/lists/abc", 390);
     const header = container.querySelector("header") as HTMLElement;
     expect(within(header).queryByRole("heading")).toBeNull();
+  });
+});
+
+describe("placeRouteOf", () => {
+  it("reads the place and whether it is the details page", () => {
+    expect(placeRouteOf("/places/p1")).toEqual({ id: "p1", details: false });
+    expect(placeRouteOf("/places/p1/")).toEqual({ id: "p1", details: false });
+    expect(placeRouteOf("/places/p1/details")).toEqual({ id: "p1", details: true });
+    expect(placeRouteOf("/places/a%20b")).toEqual({ id: "a b", details: false });
+    expect(placeRouteOf("/places/a%20b/details")).toEqual({ id: "a b", details: true });
+  });
+
+  it("is null for other routes", () => {
+    expect(placeRouteOf("/places")).toBeNull();
+    expect(placeRouteOf("/places/")).toBeNull();
+    expect(placeRouteOf("/lists/x")).toBeNull();
+    expect(placeRouteOf("/")).toBeNull();
+    expect(placeRouteOf("/places/p1/other")).toBeNull();
+  });
+
+  it("never throws on a broken escape", () => {
+    expect(placeRouteOf("/places/%E0%A4%A")).toEqual({ id: "%E0%A4%A", details: false });
   });
 });

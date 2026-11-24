@@ -2,6 +2,7 @@ import { ArrowLeft, List, Map as MapIcon, UserRound } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
+import { placeRouteOf } from "./placeRoute";
 import { useLayout } from "./useLayout";
 
 export const SEARCH_INPUT_ID = "mm-search";
@@ -9,7 +10,7 @@ export const SEARCH_INPUT_ID = "mm-search";
 interface Props {
   /** The map; stays mounted on every route. */
   map: ReactNode;
-  /** The routed page (ignored at "/" on phones, where the map is the page). */
+  /** The routed page (ignored on the phone map routes, where the map is the page). */
   children: ReactNode;
   /** The sync indicator: in the header on desktop and on phone pages (the map has its own). */
   status?: ReactNode;
@@ -65,7 +66,9 @@ export function AppLayout({ map, children, status, notice }: Props) {
   const layout = useLayout();
   const [location, navigate] = useLocation();
   const { t } = useTranslation();
-  const atRoot = location === "/";
+  const placeRoute = placeRouteOf(location);
+  // On a phone the map is the screen at "/" and at a place's peek; every other route is a page.
+  const onMap = location === "/" || (placeRoute !== null && !placeRoute.details);
   const titleKey = HEADER_TITLES[location];
 
   useEffect(() => {
@@ -95,18 +98,20 @@ export function AppLayout({ map, children, status, notice }: Props) {
     document.title = key ? `${t(key)} – ${t("app.name")}` : t("app.name");
   }, [location, t]);
   const page = useRef<HTMLElement>(null);
+  const pageRoute = onMap ? null : location;
   useEffect(() => {
-    if (layout !== "phone" || location === "/") return;
+    if (layout !== "phone" || pageRoute === null) return;
     const heading = page.current?.querySelector<HTMLElement>("h1");
     if (heading) {
       heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     }
-  }, [layout, location]);
+  }, [layout, pageRoute]);
 
   const back = () => {
     if (window.history.length > 1) window.history.back();
-    else navigate("/");
+    // Opened with no history: from a place's details, back is its peek, not a blank map.
+    else navigate(placeRoute ? `/places/${encodeURIComponent(placeRoute.id)}` : "/");
   };
 
   if (layout === "desktop") {
@@ -134,10 +139,10 @@ export function AppLayout({ map, children, status, notice }: Props) {
   return (
     <div className="mm-shell mm-shell--phone">
       {/* One map element throughout (no remount); hidden from everyone while a page covers it. */}
-      <main className="mm-map" hidden={!atRoot}>
-        <NoticeContext.Provider value={atRoot ? notice : null}>{map}</NoticeContext.Provider>
+      <main className="mm-map" hidden={!onMap}>
+        <NoticeContext.Provider value={onMap ? notice : null}>{map}</NoticeContext.Provider>
       </main>
-      {atRoot ? (
+      {onMap ? (
         <Nav current={location} />
       ) : (
         <main className="mm-page" ref={page}>

@@ -11,7 +11,7 @@ test("a long list name and a long note stay inside their Kakao note card", async
   await setVariant(page, { name: "base" });
   await devLogin(context, "222");
   await importFromKakao(page);
-  await page.goto(`/places/${BADA}`);
+  await page.goto(`/places/${BADA}/details`);
   await expect(page.locator(".mm-kakao-note").first()).toBeVisible();
   // Give the place's Kakao list a long unbroken name and its note a long link, straight in
   // the local database.
@@ -71,7 +71,7 @@ test("the Kakao colour rule on a note stays visible in the dark theme", async ({
   await devLogin(context, "222");
   await importFromKakao(page);
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto(`/places/${BADA}`);
+  await page.goto(`/places/${BADA}/details`);
   const text = page.locator(".mm-kakao-note__text").first();
   await expect(text).toBeVisible();
   // Every Kakao colour, as the rule would draw it, against the card behind it.

@@ -10,7 +10,7 @@ test("a note written offline survives a reload and syncs when back online", asyn
   await setVariant(page, { name: "base" });
   await devLogin(context, "222");
   await importFromKakao(page);
-  await page.goto(`/places/${BADA}`);
+  await page.goto(`/places/${BADA}/details`);
   await expect(page.getByRole("heading", { name: "바다정원 카페" })).toBeVisible();
 
   await context.setOffline(true);
@@ -33,7 +33,7 @@ test("a note written offline survives a reload and syncs when back online", asyn
   const other = await browser.newContext({ locale: "en-US" });
   await devLogin(other, "222");
   const second = await other.newPage();
-  await second.goto(`/places/${BADA}`);
+  await second.goto(`/places/${BADA}/details`);
   await expect(second.locator(".mm-entry__body", { hasText: text })).toBeVisible({
     timeout: 20_000,
   });

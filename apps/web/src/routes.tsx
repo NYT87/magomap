@@ -1,6 +1,7 @@
 import type { Me } from "@magomap/domain";
 import { Redirect, Route, Switch } from "wouter";
 import { decodeId } from "./decodeId";
+import { useLayout } from "./layout/useLayout";
 import { PlaceScreen } from "./place/PlaceScreen";
 import { Account } from "./screens/Account";
 import { ListScreen } from "./screens/ListScreen";
@@ -9,6 +10,7 @@ import { HomePanel } from "./screens/MapScreen";
 
 /** The pages shown in the panel (desktop) or over the map (phone). */
 export function PageRoutes({ me }: { me: Me }) {
+  const layout = useLayout();
   return (
     <Switch>
       <Route path="/account">
@@ -22,7 +24,13 @@ export function PageRoutes({ me }: { me: Me }) {
       <Route path="/import">
         <Redirect to="/account" replace />
       </Route>
-      <Route path="/places/:id">{(p) => <PlaceScreen key={p.id} id={decodeId(p.id)} />}</Route>
+      <Route path="/places/:id/details">
+        {(p) => <PlaceScreen key={p.id} id={decodeId(p.id)} />}
+      </Route>
+      {/* On a phone a place is a peek over the map (rendered by the map layer), not a page. */}
+      <Route path="/places/:id">
+        {(p) => (layout === "phone" ? null : <PlaceScreen key={p.id} id={decodeId(p.id)} />)}
+      </Route>
       <Route path="/">
         <HomePanel />
       </Route>
