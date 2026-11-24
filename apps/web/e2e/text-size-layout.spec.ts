@@ -7,7 +7,7 @@ const SCREENS = [
   { name: "Map", path: "/", ready: ".mm-map-top .mm-search__box" },
   { name: "Lists", path: "/lists", ready: ".mm-page__title" },
   { name: "Account", path: "/account", ready: ".mm-page__title" },
-  { name: "a place page", path: `/places/${BADA}`, ready: ".mm-section__title" },
+  { name: "a place page", path: `/places/${BADA}/details`, ready: ".mm-section__title" },
 ] as const;
 
 // Map pins and clusters and the map providers' controls are out of scope.

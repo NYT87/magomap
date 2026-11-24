@@ -15,7 +15,7 @@ test("re-imports keep notes, mark removed favourites and show previous locations
   // The favourite disappears from Kakao: the place stays, marked, with its note.
   await setVariant(page, { name: "withoutFavourite", args: ["9001"] });
   await importFromKakao(page);
-  await page.goto(`/places/${BADA}`);
+  await page.goto(`/places/${BADA}/details`);
   // The list chip's label (the Kakao note card also says "(Removed from Kakao)").
   await expect(page.getByText("Removed from Kakao", { exact: true })).toBeVisible();
   await expect(page.getByText("주차 어려움")).toBeVisible();

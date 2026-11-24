@@ -5,7 +5,7 @@ import { BADA, devLogin, importFromKakao, setRootSize, setVariant } from "./help
 // Text sizes at the default root size (16px), as computed before text followed the device.
 type Probe = { page: "account" | "map" | "place"; selector: string; px: number };
 
-const PATHS = { account: "/account", map: "/", place: `/places/${BADA}` };
+const PATHS = { account: "/account", map: "/", place: `/places/${BADA}/details` };
 
 function probes(phone: boolean): Probe[] {
   const list: Probe[] = [

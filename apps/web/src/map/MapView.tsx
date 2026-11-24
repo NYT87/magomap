@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
+import { switchesPlace } from "../layout/placeRoute";
 import { applyFocus } from "./applyFocus";
 import { redrawKeepingFocus } from "./keepFocus";
 import { preloadLeaflet } from "./leafletAdapter";
@@ -26,7 +27,10 @@ export function MapView({ data }: { data: Data | null }) {
   const config = useConfig();
   const stage = useMapStage();
   const { mapChoice, setKakaoAvailable } = useMapPrefs();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  // Read when a pin is tapped (the tap handler is set once per adapter).
+  const locationRef = useRef(location);
+  locationRef.current = location;
   const el = useRef<HTMLDivElement>(null);
   const [adapter, setAdapter] = useState<MapAdapter | null>(null);
   const fitted = useRef(false);
@@ -107,7 +111,10 @@ export function MapView({ data }: { data: Data | null }) {
         if (location && place) setPrevious({ location, place });
         return;
       }
-      navigate(`/places/${encodeURIComponent(id)}`);
+      // From one place's peek to another: a switch, not one more step for Back.
+      navigate(`/places/${encodeURIComponent(id)}`, {
+        replace: switchesPlace(locationRef.current),
+      });
     });
   }, [adapter, navigate, stage.onSearchSelect]);
 
