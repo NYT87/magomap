@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
-import { DEFAULT_APP_URL } from "./scripts/check-pages";
+import { appUrlOf } from "./scripts/check-pages";
 
 // APP_URL (the deployed app) and SITE_URL (this homepage) are read at build time.
-const APP_URL = process.env.APP_URL || DEFAULT_APP_URL;
+const APP_URL = appUrlOf(process.env.APP_URL);
 const SITE_URL = (process.env.SITE_URL || "https://nyt87.github.io/magomap").replace(/\/$/, "");
 
 const inject = (): Plugin => ({
