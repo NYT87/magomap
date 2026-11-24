@@ -228,7 +228,7 @@ Each account is one person on a few devices, so a simple design is enough:
 
 - **Map.** The home screen: map, search bar, list picker, unsynced-changes indicator.
 - **Place.**
-  - Header: name, address, category, "Open in Kakao Map" (app link `kakaomap://place?id=`, web `https://place.map.kakao.com/<id>`).
+  - Header: name, address, category, "Open in Kakao Map" (app link `kakaomap://place?placeId=`, web `https://place.map.kakao.com/<id>`).
   - **Diary**: an "Add visit note" button opens a text box with the date pre-set to today; entries are listed newest first.
   - **Links.**
   - **Lists**: membership chips; Kakao lists are read-only and show their Kakao note; own lists can be added or removed.

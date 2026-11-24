@@ -114,6 +114,10 @@ Captured from the owner's browser (a place's colour changed from the colour pick
 - It works the same for an `ADDRESS` favourite (the answer's `type` is `ADDRESS`).
 - Colour codes seen: `01`, `06`, `07`.
 
+## 9. Opening a place in the Kakao Map app on a phone (2026-11-24)
+
+The app link for a Kakao place is `kakaomap://place?placeId=<id>` (the id is the digits of `p_kakao_<id>`). The first version used `place?id=<id>`: it launched the app but did not load the place, so the parameter is `placeId`. Tested by the owner on their phone. Address favourites (keys like `N34923295`) keep `kakaomap://look?p=<lat>,<lng>`.
+
 ## Still open
 
 - Phone edits reaching the endpoint (step 4).

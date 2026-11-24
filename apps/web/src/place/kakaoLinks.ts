@@ -15,7 +15,7 @@ export function kakaoLinks(
 ): KakaoLinks | null {
   if (/^\d+$/.test(id)) {
     return {
-      app: `kakaomap://place?id=${encodeURIComponent(id)}`,
+      app: `kakaomap://place?placeId=${encodeURIComponent(id)}`,
       web: `https://place.map.kakao.com/${encodeURIComponent(id)}`,
     };
   }
