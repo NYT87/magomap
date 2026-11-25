@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.8](https://github.com/NYT87/magomap/compare/magomap-v0.1.7...magomap-v0.1.8) (2026-11-25)
+
+
+### Features
+
+* **api:** remove the kakao-list import routes and settings ([85e37dd](https://github.com/NYT87/magomap/commit/85e37ddd5cf965b417013f53031493e8f8676b84))
+* remove the kakao-list import (Sync from Kakao Map replaces it) ([aaebbba](https://github.com/NYT87/magomap/commit/aaebbba0a454f740e4fa87ce30adbf6f3ada1e10))
+* **web:** opening a place zooms in only from far out, and moves only when it's off screen ([8f65555](https://github.com/NYT87/magomap/commit/8f65555354bdbb3d93b6c924ee03ea27ae0393d1))
+* **web:** remove the kakao-list import from Account ([3a1c41d](https://github.com/NYT87/magomap/commit/3a1c41d73cb7ac2c64d6019d2cb66a6c5c16f64a))
+* **web:** the place card opens with a tap and no longer drags ([78364d2](https://github.com/NYT87/magomap/commit/78364d29f9b450f4c725f34df5e4c95e7dd3cc8b))
+* **web:** the place card opens with a tap, and opening a place zooms only when it helps ([9fed7c8](https://github.com/NYT87/magomap/commit/9fed7c8187042e81bb324393f3b8c4d05ab55dab))
+
+
+### Bug Fixes
+
+* a Kakao Map sync fills an empty account name; drop store code only kakao-list used ([f4da1fe](https://github.com/NYT87/magomap/commit/f4da1fe316bfe5dfe02a93216c4d5d9636bc9247))
+
 ## [0.1.7](https://github.com/NYT87/magomap/compare/magomap-v0.1.6...magomap-v0.1.7) (2026-11-25)
 
 
