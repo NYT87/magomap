@@ -45,6 +45,13 @@ function stubKakao() {
     constructor(_el: HTMLElement, opts: unknown) {
       mapOptions.push(opts);
     }
+    // What's on screen: 37.0–37.1 N, 127.0–127.1 E.
+    getBounds() {
+      return {
+        getSouthWest: () => new LatLng(37, 127),
+        getNorthEast: () => new LatLng(37.1, 127.1),
+      };
+    }
     getProjection() {
       return {
         coordsFromContainerPoint: (p: Point) => new LatLng(37 - p.y * 0.001, 127 + p.x * 0.001),
@@ -81,6 +88,15 @@ describe("Kakao adapter", () => {
     });
     // https://apis.map.kakao.com/web/documentation/#MapOptions (keyboardShortcuts, default false)
     expect(mapOptions[0]).toMatchObject({ keyboardShortcuts: true });
+  });
+
+  it("tells a place well on screen from one near an edge or off it, from Kakao's bounds", () => {
+    stubKakao();
+    const adapter = createKakaoAdapter();
+    adapter.mount(document.createElement("div"), { center: { lat: 37.05, lng: 127.05 }, zoom: 16 });
+    expect(adapter.isWellInView({ lat: 37.05, lng: 127.05 })).toBe(true);
+    expect(adapter.isWellInView({ lat: 37.005, lng: 127.05 })).toBe(false);
+    expect(adapter.isWellInView({ lat: 38, lng: 127.05 })).toBe(false);
   });
 
   it("keeps the selected pin out of the clusterer, above the others", () => {

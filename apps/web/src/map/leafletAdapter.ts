@@ -1,5 +1,7 @@
 // Leaflet + OpenStreetMap: the fallback map. https://leafletjs.com/reference.html
+
 import type * as Leaflet from "leaflet";
+import { PLACE_ZOOM, wellInside } from "./applyFocus";
 import { watchLongPress } from "./longPress";
 import type { ContextPress, LatLng, MapAdapter, MapMarker } from "./MapAdapter";
 import { HIT, markerHtml } from "./markerHtml";
@@ -72,7 +74,7 @@ export function createLeafletAdapter(): MapAdapter {
     }
     if (points.length === 1) {
       const p = points[0] as LatLng;
-      map.setView([p.lat, p.lng], 15, { animate: false });
+      map.setView([p.lat, p.lng], PLACE_ZOOM, { animate: false });
     } else {
       map.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng])), {
         padding: [48, 48],
@@ -161,6 +163,14 @@ export function createLeafletAdapter(): MapAdapter {
     },
     panTo(p) {
       map?.panTo([p.lat, p.lng]);
+    },
+    isWellInView(p) {
+      if (!map) return false;
+      const b = map.getBounds();
+      return wellInside(
+        { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() },
+        p,
+      );
     },
     getCenter() {
       if (!map) return center;
