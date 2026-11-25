@@ -13,6 +13,14 @@ import { createAdapter, loadKakaoSdk } from "./loadMapAdapter";
 import { type ContextPress, DEFAULT_VIEW, type MapAdapter } from "./MapAdapter";
 import { MapContextMenu } from "./MapContextMenu";
 import { useMapStage } from "./MapStage";
+import {
+  boundsOf,
+  type FitMemo,
+  opensAt,
+  readFitMemo,
+  stillFits,
+  writeFitMemo,
+} from "./mapFitMemo";
 import { useMapPrefs } from "./mapPrefs";
 import { PreviousLocationCard } from "./PreviousLocationCard";
 import { providerFor } from "./providerChoice";
@@ -22,6 +30,9 @@ import type { useMapData } from "./useMapData";
 
 type Data = NonNullable<ReturnType<typeof useMapData>>;
 
+/** The map's box: a fit is only good for a box of the same size. */
+const sizeOf = (e: HTMLElement) => ({ w: e.clientWidth, h: e.clientHeight });
+
 /**
  * The map itself: Kakao Map or OpenStreetMap, chosen by the Map setting and, on Automatic, by
  * where the map is. It switches in place when that answer changes, then follows the markers.
@@ -30,7 +41,7 @@ export function MapView({ data }: { data: Data | null }) {
   const { t } = useTranslation();
   const config = useConfig();
   const stage = useMapStage();
-  const { mapChoice, setKakaoAvailable } = useMapPrefs();
+  const { mapChoice, setKakaoAvailable, fitKey } = useMapPrefs();
   const [location, navigate] = useLocation();
   // Read when a pin is tapped (the tap handler is set once per adapter).
   const locationRef = useRef(location);
@@ -38,6 +49,24 @@ export function MapView({ data }: { data: Data | null }) {
   const el = useRef<HTMLElement>(null);
   const [adapter, setAdapter] = useState<MapAdapter | null>(null);
   const fitted = useRef(false);
+  // Where the map settled after fitting the saved places last time, when made on this map in
+  // a box this size: it opened there.
+  const memo = useRef<FitMemo | null>(null);
+  // The bounds of a fit still waiting for the map to load, remembered once it has moved there.
+  const fitting = useRef<FitMemo["bounds"] | null>(null);
+  const fitKeyRef = useRef(fitKey);
+  fitKeyRef.current = fitKey;
+  const focusRef = useRef(stage.focus);
+  focusRef.current = stage.focus;
+  const remember = useCallback((a: MapAdapter, bounds: FitMemo["bounds"]) => {
+    if (!el.current) return;
+    writeFitMemo(fitKeyRef.current, {
+      provider: a.provider,
+      bounds,
+      view: { center: a.getCenter(), zoom: a.getZoom() },
+      size: sizeOf(el.current),
+    });
+  }, []);
   const [previous, setPrevious] = useState<{ location: PlaceLocationRow; place: PlaceRow } | null>(
     null,
   );
@@ -72,8 +101,19 @@ export function MapView({ data }: { data: Data | null }) {
         kakaoReady.current = ready;
         setKakaoAvailable(ready);
         if (!el.current) return;
-        const a = createAdapter(providerFor(choice.current, DEFAULT_VIEW.center, null, ready));
-        a.mount(el.current, DEFAULT_VIEW);
+        const m = readFitMemo(fitKeyRef.current);
+        const size = sizeOf(el.current);
+        // The map the remembered view would pick; if it was made on another map or in another
+        // box, open at the default view instead, as before.
+        let provider = providerFor(choice.current, (m?.view ?? DEFAULT_VIEW).center, null, ready);
+        let view = opensAt(m, { provider, size });
+        if (!view) {
+          view = DEFAULT_VIEW;
+          provider = providerFor(choice.current, view.center, null, ready);
+        }
+        memo.current = view === DEFAULT_VIEW ? null : m;
+        const a = createAdapter(provider);
+        a.mount(el.current, view);
         stage.map.current = a;
         setAdapter(a);
       });
@@ -103,8 +143,16 @@ export function MapView({ data }: { data: Data | null }) {
   }, [stage.map]);
 
   useEffect(() => {
-    adapter?.onViewChange(reconsider);
-  }, [adapter, reconsider]);
+    if (!adapter) return;
+    adapter.onViewChange(() => {
+      // The first move after a fit that waited for the map is that fit, unless a place opened
+      // meanwhile (its focus replaces the waiting fit): then it isn't the places' view.
+      const bounds = fitting.current;
+      fitting.current = null;
+      if (bounds && !focusRef.current) remember(adapter, bounds);
+      reconsider();
+    });
+  }, [adapter, reconsider, remember]);
 
   useEffect(() => {
     void mapChoice;
@@ -166,14 +214,32 @@ export function MapView({ data }: { data: Data | null }) {
 
   useEffect(() => {
     if (!adapter || !data) return;
-    const markers = [...data.markers, ...stage.searchMarkers];
-    redrawKeepingFocus(el.current, () => adapter.setMarkers(markers));
     const saved = data.markers.filter((m) => m.kind === "saved");
+    // Fitted before the pins are added, so they're clustered once, at the zoom they'll stay at.
     if (!fitted.current && saved.length > 0) {
       fitted.current = true;
-      adapter.fitTo(saved.map((m) => m.position));
+      const points = saved.map((m) => m.position);
+      const bounds = boundsOf(points);
+      const here = { provider: adapter.provider, size: sizeOf(el.current ?? document.body) };
+      // Opened where the same places were fitted last time: already there, nothing moves. On
+      // the Kakao map, only if the places really are on screen (a wrong memory costs a refit,
+      // never a map away from the places); Leaflet may still be loading, and fits in one go.
+      const onScreen = (b: NonNullable<typeof bounds>) =>
+        adapter.provider === "leaflet" ||
+        [
+          { lat: b.south, lng: b.west },
+          { lat: b.north, lng: b.east },
+        ].every((p) => adapter.isWellInView(p, 0));
+      if (bounds && !(stillFits(memo.current, here, bounds) && onScreen(bounds))) {
+        adapter.fitTo(points);
+        // Both maps fit at once when loaded: remembered now, before a place's focus moves it.
+        if (adapter.pendingFit()) fitting.current = bounds;
+        else remember(adapter, bounds);
+      }
     }
-  }, [adapter, data, stage.searchMarkers]);
+    const markers = [...data.markers, ...stage.searchMarkers];
+    redrawKeepingFocus(el.current, () => adapter.setMarkers(markers));
+  }, [adapter, data, stage.searchMarkers, remember]);
 
   // Looking at one place: a saved one is only brought to the middle (the zoom stays), a search
   // result is brought close. Once per place: a map switch must not pull the view back (that

@@ -97,6 +97,8 @@ describe("Kakao adapter", () => {
     expect(adapter.isWellInView({ lat: 37.05, lng: 127.05 })).toBe(true);
     expect(adapter.isWellInView({ lat: 37.005, lng: 127.05 })).toBe(false);
     expect(adapter.isWellInView({ lat: 38, lng: 127.05 })).toBe(false);
+    // With no inset, anywhere on screen counts.
+    expect(adapter.isWellInView({ lat: 37.005, lng: 127.05 }, 0)).toBe(true);
   });
 
   it("keeps the selected pin out of the clusterer, above the others", () => {

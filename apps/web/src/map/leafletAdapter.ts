@@ -164,12 +164,13 @@ export function createLeafletAdapter(): MapAdapter {
     panTo(p) {
       map?.panTo([p.lat, p.lng]);
     },
-    isWellInView(p) {
+    isWellInView(p, inset) {
       if (!map) return false;
       const b = map.getBounds();
       return wellInside(
         { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() },
         p,
+        inset,
       );
     },
     getCenter() {

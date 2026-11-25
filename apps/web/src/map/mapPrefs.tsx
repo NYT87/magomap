@@ -14,6 +14,8 @@ interface MapPrefs {
   /** Whether Kakao Map loaded on this page; null until the map has tried. Not stored. */
   kakaoAvailable: boolean | null;
   setKakaoAvailable: (available: boolean) => void;
+  /** Where this account's last fit of the map to its places is kept (mapFitMemo). */
+  fitKey: string;
 }
 
 const Ctx = createContext<MapPrefs | null>(null);
@@ -90,8 +92,18 @@ export function MapPrefsProvider({ userId, children }: { userId: string; childre
       setMapChoice,
       kakaoAvailable,
       setKakaoAvailable,
+      fitKey: deviceKeys.mapFit(userId),
     }),
-    [hidden, setVisible, showPrevious, setShowPrevious, mapChoice, setMapChoice, kakaoAvailable],
+    [
+      hidden,
+      setVisible,
+      showPrevious,
+      setShowPrevious,
+      mapChoice,
+      setMapChoice,
+      kakaoAvailable,
+      userId,
+    ],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
