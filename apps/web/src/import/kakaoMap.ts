@@ -119,7 +119,13 @@ async function readKakaoMap(): Promise<Read> {
  * The read a `kakao_account_*` refusal stopped, kept so confirming it doesn't read Kakao Map
  * again. Only in memory, only for the magomap account it was read for.
  */
-let pending: { account: string; read: Read } | null = null;
+let pending: { account: string; read: Read; readAt: number } | null = null;
+
+/**
+ * A kept read older than this is read again: the server takes a read's age only up to an hour,
+ * and an old read would be a stale picture of Kakao Map anyway.
+ */
+const KEEP_READ_MS = 55 * 60_000;
 
 /** Drops the read kept for a confirmation (she cancelled, or it was used). */
 export function forgetKakaoMapRead() {
@@ -167,7 +173,9 @@ export async function runKakaoMapSync(
   opts: { account?: string; confirmAccount?: string } = {},
 ): Promise<ImportSummary> {
   const account = opts.account ?? dbUserId(currentDb());
-  const kept = pending?.account === account ? pending.read : null;
+  const keptRead =
+    pending?.account === account && Date.now() - pending.readAt < KEEP_READ_MS ? pending : null;
+  const kept = keptRead?.read ?? null;
   pending = null;
   // A confirmation applies only to the read she was shown; anything else reads again.
   let keptId: string | undefined;
@@ -175,18 +183,23 @@ export async function runKakaoMapSync(
     keptId = kept && opts.confirmAccount !== undefined ? await accountIdOf(kept) : undefined;
   } catch {
     // Keep the read, so confirming again once she's back online still uses it.
-    pending = kept ? { account, read: kept } : null;
+    pending = keptRead;
     throw new KakaoMapSyncError("offline");
   }
   const confirmAccount =
     keptId !== undefined && keptId.slice(-4) === opts.confirmAccount ? keptId : undefined;
-  const read = confirmAccount && kept ? kept : await readKakaoMap();
+  // When the read began: the sync's snapshot is as of then, so an edit made from magomap after
+  // it began is never put back by this sync.
+  const reuse = confirmAccount !== undefined && keptRead !== null;
+  const readAt = reuse ? keptRead.readAt : Date.now();
+  const read = reuse ? keptRead.read : await readKakaoMap();
 
   let run: { runId: string; lists: { externalId: string; name: string; itemCount: number }[] };
   try {
     run = await post(account, "/api/import/kakao-map/runs", {
       ...read.start,
       ...(confirmAccount ? { confirmAccount } : {}),
+      readAgeMs: Math.min(3_600_000, Math.max(0, Date.now() - readAt)),
     });
   } catch (error) {
     const code = codeOf(error);
@@ -194,7 +207,7 @@ export async function runKakaoMapSync(
       error instanceof ApiError &&
       (code === "kakao_account_unconfirmed" || code === "kakao_account_mismatch")
     ) {
-      pending = { account, read };
+      pending = { account, read, readAt };
       const body = isRecord(error.body) ? error.body : {};
       throw new KakaoMapSyncError(
         code,
@@ -204,7 +217,7 @@ export async function runKakaoMapSync(
     }
     // A confirmation that couldn't go out: keep the read, so confirming again once she's back
     // online sends the same read she was shown.
-    if (code === "offline" && confirmAccount) pending = { account, read };
+    if (code === "offline" && confirmAccount) pending = { account, read, readAt };
     throw new KakaoMapSyncError(code);
   }
 

@@ -34,11 +34,19 @@ export type WriteRequest =
   | { op: "account" }
   | { op: "create"; name: string }
   | { op: "add"; folderId: number; places: WritePlace[] }
-  | { op: "color"; folderId: number; key: string; color: string }
+  | {
+      op: "color";
+      folderId: number;
+      key: string;
+      /** The favourite's own id; when given, it must be that favourite, with that place key. */
+      seq?: number;
+      color: string;
+    }
   | {
       op: "note";
       folderId: number;
       key: string;
+      seq?: number;
       note: string;
       /** The note magomap last knew; if Kakao's differs, nothing is written (unless `overwrite`). */
       expected?: string;
@@ -233,8 +241,13 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
 
     if (request.op === "color" || request.op === "note") {
       // Read fresh, then send the favourite back as the page does: only one field differs.
+      // By the favourite's own seq when the app gives it (a place can be in one list twice);
+      // its place key must still match, or it's another favourite.
       const found = (await favoritesIn(request.folderId)).find(
-        (f) => f.key !== undefined && String(f.key) === request.key,
+        (f) =>
+          f.key !== undefined &&
+          String(f.key) === request.key &&
+          (request.seq === undefined || f.seq === request.seq),
       );
       if (!found) throw new Failure(NOT_FOUND);
       const { seq, display1, display2, memo } = found;

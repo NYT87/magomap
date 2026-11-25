@@ -77,7 +77,7 @@ async function seedKakao(r: UserListRow["role"] = "owner") {
   await db.lists.put(list("K", "kakao"));
   await db.user_lists.put(role("K", r));
   await db.place_sources.put(kakaoSource);
-  await db.list_items.put(item("ik", "K", { providerNote: "옛 메모" }));
+  await db.list_items.put(item("ik", "K", { providerNote: "옛 메모", externalId: "9001" }));
 }
 const types = () => ask.mock.calls.map(([m]) => m.type);
 
@@ -97,12 +97,21 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     expect(order).toEqual([
       "magomap.account",
       "/api/import/kakao-map/account",
+      // Asked before Kakao Map is changed, recorded after.
+      "/api/kakao-notes",
       "magomap.setNote",
       "/api/kakao-notes",
     ]);
+    expect(post.mock.calls.at(-2)?.[2]).toEqual({
+      listId: "K",
+      itemId: "ik",
+      note: "새 메모\n둘째 줄",
+      check: true,
+    });
     expect(ask.mock.calls.find(([m]) => m.type === "magomap.setNote")?.[0]).toMatchObject({
       folderId: 555,
       key: "1063803587",
+      seq: 9001,
       note: "새 메모\n둘째 줄",
     });
     expect(post.mock.calls.at(-1)?.[2]).toEqual({
@@ -136,7 +145,10 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     const failure = await setKakaoNote({ itemId: "ik", note: "새 메모" }).catch((e) => e);
     expect(failure).toBeInstanceOf(NoteChangedError);
     expect(failure).toMatchObject({ code: "note_changed", current: "아내가 바꾼 메모" });
-    expect(post.mock.calls.map((c) => c[1])).toEqual(["/api/import/kakao-map/account"]);
+    expect(post.mock.calls.map((c) => c[1])).toEqual([
+      "/api/import/kakao-map/account",
+      "/api/kakao-notes",
+    ]);
     expect((await db.list_items.get("ik"))?.providerNote).toBe("옛 메모");
   });
 
@@ -170,7 +182,10 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     await expect(setKakaoNote({ itemId: "ik", note: "새" })).rejects.toMatchObject({
       code: "kakao_unavailable",
     });
-    expect(post.mock.calls.map((c) => c[1])).toEqual(["/api/import/kakao-map/account"]);
+    expect(post.mock.calls.map((c) => c[1])).toEqual([
+      "/api/import/kakao-map/account",
+      "/api/kakao-notes",
+    ]);
     expect((await db.list_items.get("ik"))?.providerNote).toBe("옛 메모");
   });
 
@@ -185,10 +200,25 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     expect((await db.list_items.get("ik"))?.providerNote).toBe("옛 메모");
   });
 
-  it("when Kakao took it but the server didn't, says so and leaves the local note", async () => {
+  it("when the server won't record it (no known owner), Kakao Map isn't changed", async () => {
     await seedKakao();
     post.mockImplementation(async (_a, path) => {
-      if (path === "/api/kakao-notes") throw new NetworkError();
+      if (path === "/api/kakao-notes") throw new ApiError(409, { error: "owner_unknown" });
+      return { ok: true };
+    });
+    await expect(setKakaoNote({ itemId: "ik", note: "새" })).rejects.toMatchObject({
+      code: "sync_first",
+    });
+    expect(ask.mock.calls.map(([m]) => m.type)).toEqual(["magomap.account"]);
+    expect((await db.list_items.get("ik"))?.providerNote).toBe("옛 메모");
+  });
+
+  it("when Kakao took it but the server didn't, says so and leaves the local note", async () => {
+    await seedKakao();
+    post.mockImplementation(async (_a, path, body) => {
+      if (path === "/api/kakao-notes" && !(body as { check?: boolean }).check) {
+        throw new NetworkError();
+      }
       return { ok: true };
     });
     await expect(setKakaoNote({ itemId: "ik", note: "새" })).rejects.toMatchObject({

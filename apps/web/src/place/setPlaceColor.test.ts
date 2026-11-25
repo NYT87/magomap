@@ -77,7 +77,7 @@ async function seedKakao(r: UserListRow["role"] = "owner") {
   await db.lists.put(list("K", "kakao"));
   await db.user_lists.put(role("K", r));
   await db.place_sources.put(kakaoSource);
-  await db.list_items.put(item("ik", "K", { providerColor: "01" }));
+  await db.list_items.put(item("ik", "K", { providerColor: "01", externalId: "9001" }));
 }
 async function seedOwn() {
   await db.lists.put(list("O", null));
@@ -102,12 +102,22 @@ describe("setPlaceColor on a Kakao list he owns", () => {
     expect(order).toEqual([
       "magomap.account",
       "/api/import/kakao-map/account",
+      // Asked before Kakao Map is changed, recorded after.
+      "/api/kakao-colors",
       "magomap.setColor",
       "/api/kakao-colors",
     ]);
+    expect(post.mock.calls.at(-2)?.[2]).toEqual({
+      listId: "K",
+      itemId: "ik",
+      color: "05",
+      check: true,
+    });
+    // The favourite itself, by its own Kakao id, not just the place.
     expect(ask.mock.calls.find(([m]) => m.type === "magomap.setColor")?.[0]).toMatchObject({
       folderId: 555,
       key: "1063803587",
+      seq: 9001,
       color: "05",
     });
     expect(post.mock.calls.at(-1)?.[2]).toEqual({ listId: "K", itemId: "ik", color: "05" });
@@ -126,7 +136,10 @@ describe("setPlaceColor on a Kakao list he owns", () => {
     await expect(setPlaceColor({ itemId: "ik", color: "05" })).rejects.toMatchObject({
       code: "kakao_unavailable",
     });
-    expect(post.mock.calls.map((c) => c[1])).toEqual(["/api/import/kakao-map/account"]);
+    expect(post.mock.calls.map((c) => c[1])).toEqual([
+      "/api/import/kakao-map/account",
+      "/api/kakao-colors",
+    ]);
     expect((await db.list_items.get("ik"))?.providerColor).toBe("01");
   });
 
@@ -143,14 +156,56 @@ describe("setPlaceColor on a Kakao list he owns", () => {
 
   it("when Kakao took it but the server didn't, says so and leaves the local colour", async () => {
     await seedKakao();
-    post.mockImplementation(async (_a, path) => {
-      if (path === "/api/kakao-colors") throw new NetworkError();
+    post.mockImplementation(async (_a, path, body) => {
+      if (path === "/api/kakao-colors" && !(body as { check?: boolean }).check) {
+        throw new NetworkError();
+      }
       return { ok: true };
     });
     await expect(setPlaceColor({ itemId: "ik", color: "05" })).rejects.toMatchObject({
       code: "server_failed",
     });
     expect((await db.list_items.get("ik"))?.providerColor).toBe("01");
+  });
+
+  it.each([
+    ["owner_unknown", 409, "sync_first"],
+    ["kakao_account_unconfirmed", 409, "account_unconfirmed"],
+    ["not_owner", 403, "not_owner"],
+    ["not_found", 404, "not_found"],
+  ])(
+    "when the server won't record it (%s), Kakao Map isn't changed",
+    async (error, status, code) => {
+      await seedKakao();
+      post.mockImplementation(async (_a, path) => {
+        if (path === "/api/kakao-colors") throw new ApiError(status, { error });
+        return { ok: true };
+      });
+      await expect(setPlaceColor({ itemId: "ik", color: "05" })).rejects.toMatchObject({ code });
+      expect(types()).toEqual(["magomap.account"]);
+      expect((await db.list_items.get("ik"))?.providerColor).toBe("01");
+    },
+  );
+
+  it("offline before asking the server, Kakao Map isn't changed", async () => {
+    await seedKakao();
+    post.mockImplementation(async (_a, path) => {
+      if (path === "/api/kakao-colors") throw new NetworkError();
+      return { ok: true };
+    });
+    await expect(setPlaceColor({ itemId: "ik", color: "05" })).rejects.toMatchObject({
+      code: "offline",
+    });
+    expect(types()).toEqual(["magomap.account"]);
+  });
+
+  it("changes nothing for a favourite without its own Kakao id", async () => {
+    await seedKakao();
+    await db.list_items.update("ik", { externalId: "555-0" });
+    await expect(setPlaceColor({ itemId: "ik", color: "05" })).rejects.toMatchObject({
+      code: "not_found",
+    });
+    expect(ask).not.toHaveBeenCalled();
   });
 
   it("stops before Kakao Map for another account", async () => {

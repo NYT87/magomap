@@ -142,7 +142,7 @@ describe("runKakaoMapSync", () => {
       "/api/import/runs/r1/complete",
     ]);
     // The start carries the raw read's folders and counts, and no confirmation.
-    expect(bodyOf(run)).toEqual(READ.start);
+    expect(bodyOf(run)).toEqual({ ...READ.start, readAgeMs: expect.any(Number) });
     // Each page is that folder's favourites, 500 at a time, in order.
     expect(bodyOf(`${run}/r1/lists/0~kakao-login-1/pages/0`)).toEqual({
       favorites: READ.favorites["0"],
@@ -220,7 +220,55 @@ describe("runKakaoMapSync", () => {
     expect(bodyOf("/api/import/kakao-map/runs")).toEqual({
       ...READ.start,
       confirmAccount: ACCOUNT,
+      readAgeMs: expect.any(Number),
     });
+  });
+
+  it("says how long ago its Kakao Map read began, a confirmation later included", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const send = extension((m) => (m.type === "magomap.read" ? READ : undefined));
+    server((path, body) =>
+      path === "/api/import/kakao-map/runs" &&
+      (body as { confirmAccount?: string }).confirmAccount === undefined
+        ? new ApiError(409, {
+            error: "kakao_account_unconfirmed",
+            account: { nickname: "수지", idTail: "7800" },
+          })
+        : null,
+    );
+    await runKakaoMapSync(() => {}).catch(() => {});
+    expect(bodyOf("/api/import/kakao-map/runs").readAgeMs).toBe(0);
+    // She read the question for two minutes: the same read, two minutes old.
+    vi.setSystemTime(1_000_000 + 120_000);
+    api.mockClear();
+    await runKakaoMapSync(() => {}, { confirmAccount: "7800" });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(bodyOf("/api/import/kakao-map/runs").readAgeMs).toBe(120_000);
+  });
+
+  it("reads Kakao Map again when the read kept for a confirmation is nearly an hour old", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const send = extension((m) => (m.type === "magomap.read" ? READ : undefined));
+    server((path, body) =>
+      path === "/api/import/kakao-map/runs" &&
+      (body as { confirmAccount?: string }).confirmAccount === undefined
+        ? new ApiError(409, {
+            error: "kakao_account_unconfirmed",
+            account: { nickname: "수지", idTail: "7800" },
+          })
+        : null,
+    );
+    await runKakaoMapSync(() => {}).catch(() => {});
+    vi.setSystemTime(1_000_000 + 56 * 60_000);
+    api.mockClear();
+    // An old read can't be confirmed (the server only takes the last hour): she's asked again.
+    await expect(runKakaoMapSync(() => {}, { confirmAccount: "7800" })).rejects.toMatchObject({
+      code: "kakao_account_unconfirmed",
+    });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(bodyOf("/api/import/kakao-map/runs").readAgeMs).toBe(0);
   });
 
   it("a confirming start that fails offline keeps the read, so the retry confirms the same read", async () => {
@@ -249,6 +297,7 @@ describe("runKakaoMapSync", () => {
     expect(bodyOf("/api/import/kakao-map/runs")).toEqual({
       ...READ.start,
       confirmAccount: ACCOUNT,
+      readAgeMs: expect.any(Number),
     });
   });
 
@@ -261,7 +310,10 @@ describe("runKakaoMapSync", () => {
     await runKakaoMapSync(() => {}, { confirmAccount: "1234" }).catch(() => {});
     // A confirmation for another account reads again and sends no confirmation.
     expect(send).toHaveBeenCalledTimes(2);
-    expect(bodyOf("/api/import/kakao-map/runs")).toEqual(READ.start);
+    expect(bodyOf("/api/import/kakao-map/runs")).toEqual({
+      ...READ.start,
+      readAgeMs: expect.any(Number),
+    });
     expect(api.mock.calls.every(([, init]) => !String(init.body).includes("confirmAccount"))).toBe(
       true,
     );

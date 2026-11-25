@@ -459,6 +459,42 @@ describe("writing to Kakao Map", () => {
     });
   });
 
+  it("passes the favourite's own seq on to the page, and refuses one that isn't a positive id", async () => {
+    const stub = makeStub({ tabs: tab, write: async () => ({ ok: true }) });
+    await stub.send({
+      type: "magomap.setColor",
+      folderId: 7,
+      key: "1063803587",
+      seq: 9001,
+      color: "05",
+    });
+    expect(stub.executeScript.mock.calls[0]?.[0]).toMatchObject({
+      args: [{ op: "color", folderId: 7, key: "1063803587", seq: 9001, color: "05" }],
+    });
+    await stub.send({
+      type: "magomap.setNote",
+      folderId: 7,
+      key: "1063803587",
+      seq: 9001,
+      note: "새",
+    });
+    expect(stub.executeScript.mock.calls[1]?.[0]).toMatchObject({
+      args: [{ op: "note", folderId: 7, key: "1063803587", seq: 9001, note: "새" }],
+    });
+    for (const seq of [0, -1, 1.5, "9001", 2 ** 60]) {
+      expect(
+        await stub.send({
+          type: "magomap.setColor",
+          folderId: 7,
+          key: "1063803587",
+          seq,
+          color: "05",
+        }),
+      ).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(stub.executeScript).toHaveBeenCalledTimes(2);
+  });
+
   it("setNote sends the list, the place key and the note to the page, empty allowed", async () => {
     const stub = makeStub({ tabs: tab, write: async () => ({ ok: true }) });
     expect(

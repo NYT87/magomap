@@ -140,6 +140,14 @@ async function uploader(c: Context<AppEnv>): Promise<string> {
 const startExtras = z.object({
   counts: z.array(z.object({ firstDisplay2: z.string().max(LIMITS.importText).optional() })),
   confirmAccount: z.string().min(1).max(200).optional(),
+  /**
+   * How long before this request the browser began reading Kakao Map (a duration, so the two
+   * clocks never meet): the run's snapshot is taken as of then, so an edit made from magomap
+   * after the read began is never put back by it. At most an hour. Trusted as sent only because
+   * an earlier snapshot never wins anything (importRuns.ts: isNewer, olderForUser, the removal of
+   * unseen items): if an older snapshot ever could, this needs another look.
+   */
+  readAgeMs: z.number().int().min(0).max(3_600_000).optional(),
 });
 
 /** Every list is counted exactly once, and nothing else is. */
@@ -281,14 +289,21 @@ const colorBody = z.object({
   listId: z.string().min(1).max(200),
   itemId: z.string().min(1).max(200),
   color: z.string().regex(/^\d{2}$/),
+  /** Only asks whether it may (before Kakao Map is changed); records nothing. */
+  check: z.literal(true).optional(),
 });
 kakaoMapRoutes.post("/kakao-colors", (c) =>
   uploadHandled(c, async () => {
     await uploader(c);
     const body = colorBody.safeParse(await readJson(c));
     if (!body.success) throw invalid();
-    const result = await recordKakaoColorEdit(c.var.db, c.var.userId, body.data, Date.now());
+    const { check, ...edit } = body.data;
+    const result = await recordKakaoColorEdit(c.var.db, c.var.userId, edit, Date.now(), {
+      checkOnly: check === true,
+    });
     switch (result) {
+      case "allowed":
+        return { allowed: true };
       case "updated":
         return { updated: true };
       case "invalid":
@@ -313,14 +328,21 @@ const noteBody = z.object({
   listId: z.string().min(1).max(200),
   itemId: z.string().min(1).max(200),
   note: z.string().max(LIMITS.importText),
+  /** Only asks whether it may (before Kakao Map is changed); records nothing. */
+  check: z.literal(true).optional(),
 });
 kakaoMapRoutes.post("/kakao-notes", (c) =>
   uploadHandled(c, async () => {
     await uploader(c);
     const body = noteBody.safeParse(await readJson(c));
     if (!body.success) throw invalid();
-    const result = await recordKakaoNoteEdit(c.var.db, c.var.userId, body.data, Date.now());
+    const { check, ...edit } = body.data;
+    const result = await recordKakaoNoteEdit(c.var.db, c.var.userId, edit, Date.now(), {
+      checkOnly: check === true,
+    });
     switch (result) {
+      case "allowed":
+        return { allowed: true };
       case "updated":
         return { updated: true };
       case "invalid":
@@ -381,8 +403,8 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
         source: "kakao_map",
         complete: true,
         subscriptionKnown: read.lists.length > 0,
-        // The Worker's clock, never the client's: every direct sync is a new snapshot.
-        importedAt: new Date(now).toISOString(),
+        // The Worker's clock, never the client's, less how long ago the read began.
+        importedAt: new Date(now - (extras.data.readAgeMs ?? 0)).toISOString(),
         // Each list's Kakao owner decides who owns it in magomap (spec: "Who owns a list").
         // A bare followed folder only grants access (its fallback name and missing contents
         // never overwrite the shared list; docs/kakao-map-access.md section 6).

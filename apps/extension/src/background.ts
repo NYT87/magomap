@@ -10,10 +10,10 @@
  * - `{ type: "magomap.account" }` → `{ ok: true, folders }`: her folder records, so magomap can
  *   tell whose Kakao Map is signed in (it applies the sync's own rule)
  * - `{ type: "magomap.createList", name }` → `{ ok: true, folderId }`: a new Kakao Map list
- * - `{ type: "magomap.setColor", folderId, key, color }` → `{ ok: true }`: changes one place's colour in
+ * - `{ type: "magomap.setColor", folderId, key, seq?, color }` → `{ ok: true }`: changes one place's colour in
  *   one of her lists (read fresh, sent back with only `color` changed, read again to verify), or
  *   `{ ok: false, error: "not_found" }` when the place isn't in that list
- * - `{ type: "magomap.setNote", folderId, key, note }` → `{ ok: true }`: changes one place's Kakao
+ * - `{ type: "magomap.setNote", folderId, key, seq?, note }` → `{ ok: true }`: changes one place's Kakao
  *   note (`note` may be empty, which clears it) the same way, `memo` the only field that changes
  * - `{ type: "magomap.addPlaces", folderId, places }` → `{ ok: true, added, skipped }`, or
  *   `{ ok: false, error, added? }` (`added`: how many went in before it stopped)
@@ -260,6 +260,10 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
   }
   const folderId = m.folderId;
   if (!Number.isSafeInteger(folderId) || Number(folderId) <= 0) return null;
+  // The favourite's own id, when the app sends it (older apps don't).
+  const { seq } = m;
+  if (seq !== undefined && (!Number.isSafeInteger(seq) || (seq as number) <= 0)) return null;
+  const seqPart = seq === undefined ? {} : { seq: seq as number };
   if (type === "magomap.setNote") {
     const { key, note } = m;
     if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
@@ -274,6 +278,7 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
       op: "note",
       folderId: folderId as number,
       key,
+      ...seqPart,
       note,
       ...(expected === undefined ? {} : { expected }),
       ...(overwrite === undefined ? {} : { overwrite }),
@@ -283,7 +288,7 @@ function parseWrite(type: unknown, message: unknown): WriteRequest | null {
     const { key, color } = m;
     if (typeof key !== "string" || !/^[1-9]\d{0,14}$/.test(key)) return null;
     if (typeof color !== "string" || !/^\d{2}$/.test(color)) return null;
-    return { op: "color", folderId: folderId as number, key, color };
+    return { op: "color", folderId: folderId as number, key, ...seqPart, color };
   }
   const list = m.places;
   if (!Array.isArray(list) || list.length === 0 || list.length > MAX_PLACES) return null;

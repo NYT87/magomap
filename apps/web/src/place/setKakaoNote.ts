@@ -8,6 +8,7 @@ import { currentDb, dbUserId } from "../data/db";
 import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
 import { checkKakaoAccount, KakaoCopyError } from "../lists/duplicateToKakao";
+import { favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
 
 export type NoteErrorCode =
   | "extension_missing"
@@ -19,6 +20,8 @@ export type NoteErrorCode =
   | "not_owner"
   | "busy"
   | "offline"
+  | "sync_first"
+  | "check_failed"
   | "too_long"
   | "note_changed"
   | "server_failed";
@@ -72,7 +75,9 @@ export async function setKakaoNote(input: {
   const folderId = list.externalId === null ? undefined : kakaoFolderIdOf(list.externalId);
   const sources = await db.place_sources.where("placeId").equals(item.placeId).toArray();
   const key = sources.find((s) => s.provider === "kakao" && s.deletedAt == null)?.externalId;
-  if (!folderId || !key) throw new NoteError("not_found");
+  // The favourite itself, by its own Kakao id: a place can be in one list twice.
+  const seq = favoriteSeqOf(item.externalId);
+  if (!folderId || !key || seq === undefined) throw new NoteError("not_found");
 
   if (working) throw new NoteError("busy");
   working = true;
@@ -89,12 +94,20 @@ export async function setKakaoNote(input: {
       }
       throw new NoteError("kakao_unavailable");
     }
+    // The server is asked first: if it wouldn't record the change, Kakao Map isn't touched.
+    const refusal = await refusalBeforeKakao(dbUserId(db), "/api/kakao-notes", {
+      listId: list.id,
+      itemId: item.id,
+      note,
+    });
+    if (refusal) throw new NoteError(refusal);
     // Kakao Map first; nothing is recorded anywhere unless it took the note.
     const answer = await askExtension(
       {
         type: "magomap.setNote",
         folderId,
         key,
+        seq,
         note,
         // The note magomap knows: the extension compares it with Kakao Map's before writing.
         expected: item.providerNote ?? "",

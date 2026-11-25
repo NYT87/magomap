@@ -5,6 +5,8 @@ import { boundKakaoMapAccount } from "./kakaoMapAccounts";
 
 export type KakaoColorEdit =
   | "updated"
+  /** With `checkOnly`: it may, and nothing was written. */
+  | "allowed"
   | "invalid"
   | "not_found"
   | "not_owner"
@@ -22,6 +24,7 @@ export async function recordKakaoColorEdit(
   userId: string,
   edit: { listId: string; itemId: string; color: string },
   now: number,
+  opts: { checkOnly?: boolean } = {},
 ): Promise<KakaoColorEdit> {
   if (!Object.hasOwn(KAKAO_PLACE_COLORS, edit.color)) return "invalid";
   const found = await db.kysely
@@ -45,6 +48,7 @@ export async function recordKakaoColorEdit(
   const owner = found.provider_owner_id;
   if (owner == null) return "owner_unknown";
   if (owner !== bound.kakaoMapUserId && owner !== bound.alias) return "not_owner";
+  if (opts.checkOnly) return "allowed";
   return withWrite(db, async (ctx) => ({
     statements: [
       db.kysely
