@@ -73,11 +73,15 @@ describe("sync", () => {
   it("sends nothing while pushes are held (an undo may still take it back), then sends it", async () => {
     const db = open();
     await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
-    const release = holdPushes();
+    const release = holdPushes(db);
+    const lastBefore = syncState().lastSyncAt;
     const held = await syncNow();
     expect(held.pushed).toBe(0);
     expect(server.pushes).toHaveLength(0);
     expect(await db.outbox.count()).toBe(1);
+    // Not "synced" while changes wait.
+    expect(syncState().lastSyncAt).toBe(lastBefore);
+    expect(await db.meta.get("lastSyncAt")).toBeUndefined();
     release();
     // Releasing twice does no harm.
     release();
@@ -86,16 +90,43 @@ describe("sync", () => {
   });
 
   it("lets go of a forgotten hold after a while", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      open();
-      await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
-      holdPushes();
-      vi.setSystemTime(Date.now() + 60_000);
+      holdPushes(db);
+      expect((await syncNow()).pushed).toBe(0);
+      vi.advanceTimersByTime(30_000);
       expect((await syncNow()).pushed).toBe(1);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("sends what waited when a forgotten hold runs out, without being asked", async () => {
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    holdPushes(db);
+    const stop = startSyncTriggers();
+    try {
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(server.pushes).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.waitFor(() => expect(server.pushes.length).toBeGreaterThan(0));
+    } finally {
+      stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds only the account it was taken for", async () => {
+    const first = openUserDb(`s${n}a`);
+    holdPushes(first);
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    expect((await syncNow()).pushed).toBe(1);
+    expect(await db.outbox.count()).toBe(0);
   });
 
   it("replaces the local row with the server's on ignored_stale", async () => {

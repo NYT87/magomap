@@ -1092,7 +1092,12 @@ a {
   overflow-wrap: break-word;
 }
 
-/* Saving with no list: its own group, set apart from her lists by a line above. */
+/* Saving with no list: its own group, set apart from her lists by one line above (her lists'
+   last row drops its own). */
+.mm-map-menu__list--mine > li:last-child > .mm-map-menu__row {
+  border-bottom: 0;
+}
+
 .mm-map-menu__list--apart {
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-xs);

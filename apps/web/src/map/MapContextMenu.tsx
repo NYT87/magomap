@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { Sheet } from "../components/Sheet";
+import { currentDb } from "../data/db";
 import { holdPushes } from "../data/events";
 import { type PlaceState, placeStatesOf } from "../data/placeState";
 import { useLists } from "../data/queries";
@@ -172,7 +173,13 @@ export function MapContextMenu({
   const savingNow = useRef(false);
   const retried = useRef(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    // Closed or gone: a save still running acts on nothing (and lets go of its hold).
+    return () => {
+      pressToken.current += 1;
+    };
+  }, []);
 
   // Opened by her own tap on "New list": the name field is where she goes next.
   useEffect(() => {
@@ -247,7 +254,7 @@ export function MapContextMenu({
     setSaving(true);
     setFailed(false);
     // Nothing of it is sent while its Undo is offered.
-    const release = holdPushes();
+    const release = holdPushes(currentDb());
     try {
       const saved = await savePlaceToList(
         "newListName" in target
@@ -370,7 +377,7 @@ export function MapContextMenu({
       <p id={chooseId} className="mm-field__label">
         {t("map.save.chooseList")}
       </p>
-      <ul className="mm-map-menu__list" aria-labelledby={chooseId}>
+      <ul className="mm-map-menu__list mm-map-menu__list--mine" aria-labelledby={chooseId}>
         {(lists?.mine ?? []).map(({ list }) => {
           const inIt = chosenState?.listIds.has(list.id) ?? false;
           return (
@@ -469,15 +476,19 @@ export function MapContextMenu({
       {listStep || places}
     </div>
   );
+  const close = () => {
+    pressToken.current += 1;
+    onClose();
+  };
   const title = t("map.save.title");
   // Escape on the lists is a step back to the places; on the places it closes.
   const onEscape = chosen ? back : undefined;
   return layout === "phone" ? (
-    <Sheet title={title} onClose={onClose} onEscape={onEscape}>
+    <Sheet title={title} onClose={close} onEscape={onEscape}>
       {content}
     </Sheet>
   ) : (
-    <Popover at={press.at} title={title} onClose={onClose} onEscape={onEscape}>
+    <Popover at={press.at} title={title} onClose={close} onEscape={onEscape}>
       {content}
     </Popover>
   );

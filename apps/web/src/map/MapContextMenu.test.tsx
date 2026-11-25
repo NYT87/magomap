@@ -62,6 +62,7 @@ const record = (placeId: string, listName: string | null = null): SavedFromMap =
   listName,
   changed: true,
   rows: [],
+  related: {},
   outbox: [],
   createdListId: null,
   addedItemId: null,
@@ -97,6 +98,19 @@ function Opener() {
         map
       </button>
       {press && <MapContextMenu press={press} onClose={() => setPress(null)} />}
+    </>
+  );
+}
+
+/** The menu until the map goes away (a "map gone" button). */
+function Closable({ onSaved }: { onSaved: () => void }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(false)}>
+        map gone
+      </button>
+      {open && <MapContextMenu press={PRESS} onClose={() => {}} onSaved={onSaved} />}
     </>
   );
 }
@@ -494,7 +508,7 @@ describe("MapContextMenu", () => {
     await act(async () => pending.resolve(record("p_kakao_1")));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
-    expect(pushesHeld()).toBe(false);
+    expect(pushesHeld(db)).toBe(false);
     expect(screen.getByRole("button", { name: /Place 2/ })).toBeVisible();
     // Nor does a late failure show on the newer menu.
     expect(screen.queryByRole("alert")).toBeNull();
@@ -552,9 +566,9 @@ describe("MapContextMenu", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(onSaved.mock.calls[0]?.[0]).toBe(saved);
-    expect(pushesHeld()).toBe(true);
+    expect(pushesHeld(db)).toBe(true);
     onSaved.mock.calls[0]?.[1]();
-    expect(pushesHeld()).toBe(false);
+    expect(pushesHeld(db)).toBe(false);
   });
 
   it("lets go of the hold when the save fails", async () => {
@@ -564,7 +578,30 @@ describe("MapContextMenu", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
     await screen.findByRole("alert");
-    expect(pushesHeld()).toBe(false);
+    expect(pushesHeld(db)).toBe(false);
+  });
+
+  it("a save still running when the menu closes neither opens the place nor keeps a hold", async () => {
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    const pending = deferred<SavedFromMap>();
+    savePlaceToList.mockReturnValue(pending.promise);
+    const onSaved = vi.fn();
+    const { hook } = memoryLocation({ path: "/" });
+    render(
+      <Router hook={hook}>
+        <Closable onSaved={onSaved} />
+        <Where />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
+    expect(pushesHeld(db)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "map gone" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => pending.resolve(record("p_kakao_1")));
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(pushesHeld(db)).toBe(false);
   });
 
   it("Escape closes it and returns focus", async () => {

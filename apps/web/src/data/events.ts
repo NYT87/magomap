@@ -13,25 +13,36 @@ export function notifyWrite() {
 
 /** The longest a hold lasts, should its holder never let go. */
 const HOLD_MAX_MS = 30_000;
-/** Each hold's end time, until released. */
-const holds = new Set<{ until: number }>();
+/** Holds on, per account database, each until released or timed out. */
+const holds = new Map<object, Set<object>>();
 
 /**
- * Keeps local changes from being sent (pulling goes on) until the returned release is called,
- * or HOLD_MAX_MS at most: while an Undo is offered, what it would take back stays on the device.
- * Releasing tells the sync to send what waited.
+ * Keeps `owner`'s (an account database's) local changes from being sent, pulling going on, until
+ * the returned release is called or HOLD_MAX_MS pass: while an Undo is offered, what it would
+ * take back stays on the device. Another account's sending is never held. When the hold ends,
+ * either way, the sync is told to send what waited.
  */
-export function holdPushes(): () => void {
-  const hold = { until: Date.now() + HOLD_MAX_MS };
-  holds.add(hold);
-  return () => {
-    if (holds.delete(hold)) notifyWrite();
+export function holdPushes(owner: object): () => void {
+  const hold = {};
+  const mine = holds.get(owner) ?? new Set<object>();
+  holds.set(owner, mine);
+  mine.add(hold);
+  const end = () => {
+    clearTimeout(timer);
+    if (!mine.delete(hold)) return;
+    if (mine.size === 0 && holds.get(owner) === mine) holds.delete(owner);
+    notifyWrite();
   };
+  const timer = setTimeout(end, HOLD_MAX_MS);
+  return end;
 }
 
-/** Whether a hold is on now. */
-export function pushesHeld(): boolean {
-  const now = Date.now();
-  for (const hold of holds) if (hold.until <= now) holds.delete(hold);
-  return holds.size > 0;
+/** Whether `owner`'s sending is held now. */
+export function pushesHeld(owner: object): boolean {
+  return (holds.get(owner)?.size ?? 0) > 0;
+}
+
+/** Ends every hold on `owner` at once (its database closed: nothing of it is held any more). */
+export function dropHolds(owner: object) {
+  holds.delete(owner);
 }
