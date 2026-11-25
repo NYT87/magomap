@@ -88,6 +88,7 @@ export async function setKakaoNote(input: {
       if (
         error instanceof KakaoCopyError &&
         error.code !== "partial" &&
+        error.code !== "list_missing" &&
         error.code !== "not_kakao_list"
       ) {
         throw new NoteError(error.code);

@@ -71,6 +71,7 @@ export async function setPlaceColor(input: { itemId: string; color: string }): P
       if (
         error instanceof KakaoCopyError &&
         error.code !== "partial" &&
+        error.code !== "list_missing" &&
         error.code !== "not_kakao_list"
       ) {
         throw new ColorError(error.code);

@@ -386,6 +386,10 @@
       "errUnavailable": "Kakao Map didn't accept the copy. Nothing more was written; try again.",
       "errPartial_one": "{{count}} place was added to Kakao Map before it stopped. Try again to add the rest to the same list.",
       "errPartial_other": "{{count}} places were added to Kakao Map before it stopped. Try again to add the rest to the same list.",
+      "errPartialAtLeast_one": "At least {{count}} place was added to Kakao Map before it stopped. Try again to add the rest to the same list.",
+      "errPartialAtLeast_other": "At least {{count}} places were added to Kakao Map before it stopped. Try again to add the rest to the same list.",
+      "errPartialUnknown": "It stopped partway, and some places may already be in the new Kakao Map list. Try again to add the rest to the same list.",
+      "errListMissing": "The Kakao Map list being filled is gone, or isn't yours. Try again to make a new list.",
       "errUnconfirmed": "Nothing is linked to magomap yet. Run Sync from Kakao Map in Account first, then copy."
     }
   },

@@ -304,7 +304,46 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       throw new Failure(UNAVAILABLE);
     }
 
-    // Add: only what the list doesn't hold yet, so running it again adds nothing.
+    // Add: only to one of her own lists. Kakao would refuse another's list anyway; this makes
+    // sure of it before anything is sent. The rule is the domain's Kakao Map adapter's: a list
+    // without Kakao's `subscribe` flag is hers, and a flagged one (followed, or her own public
+    // one) is hers when it carries the owner id her unflagged lists carry.
+    const flagged = (value: unknown) => {
+      if (value == null || value === false) return false;
+      const text = String(value).trim().toLowerCase();
+      return text !== "" && text !== "0" && text !== "n" && text !== "false";
+    };
+    const ownerOf = (folder: Record<string, unknown>): string | undefined => {
+      const kakaoId =
+        typeof folder.kakao_map_user_id === "string" ? folder.kakao_map_user_id.trim() : "";
+      if (kakaoId !== "") return kakaoId;
+      const mapId = folder.map_user_id;
+      const text =
+        typeof mapId === "string" || typeof mapId === "number" ? String(mapId).trim() : "";
+      return text === "" ? undefined : text;
+    };
+    const isHers = async () => {
+      const answer = await send("/folder/list");
+      if (!succeeded(answer) || !Array.isArray(answer.folders)) throw new Failure(UNAVAILABLE);
+      const live = answer.folders.filter((f) => isRecord(f) && f.status !== "D") as Record<
+        string,
+        unknown
+      >[];
+      const target = live.find((f) => f.folderid === request.folderId);
+      if (!target) return false;
+      if (!flagged(target.subscribe)) return true;
+      const owner = ownerOf(target);
+      return owner !== undefined && live.some((f) => !flagged(f.subscribe) && ownerOf(f) === owner);
+    };
+    // A list made a moment ago may not be in Kakao's list yet: a few short tries.
+    let hers = false;
+    for (let attempt = 0; attempt < 3 && !hers; attempt += 1) {
+      if (attempt > 0) await pause(300);
+      hers = await isHers();
+    }
+    if (!hers) throw new Failure(NOT_FOUND);
+
+    // Only what the list doesn't hold yet, so running it again adds nothing.
     const present = await keysIn(request.folderId);
     const toAdd: WritePlace[] = [];
     for (const place of request.places) {

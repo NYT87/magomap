@@ -120,6 +120,18 @@ describe("writeInPage: create", () => {
 });
 
 describe("writeInPage: add", () => {
+  /** Her lists: the default one and list 7, hers by her Kakao Map id. */
+  const mine = () =>
+    json(
+      ok({
+        folders: [
+          { folderid: 0, kakao_map_user_id: "u1" },
+          { folderid: 7, kakao_map_user_id: "u1" },
+        ],
+      }),
+    );
+  const serveAdd = (routes: Parameters<typeof serve>[0]) =>
+    serve({ "GET /folder/list": mine, ...routes });
   const existing = (keys: string[], nextId?: string) =>
     json({
       favorites: keys.map((key, i) => ({ seq: i + 1, key })),
@@ -136,13 +148,14 @@ describe("writeInPage: add", () => {
     );
 
   it("reads the list first and adds only the places that aren't in it, as the page does", async () => {
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": () => existing(["1001"]),
       "POST /favorite/add": ({ body }) => added((body as { datas: unknown[] }).datas.length),
     });
     const result = await writeInPage({ op: "add", folderId: 7, places: [place(1), place(2)] });
     expect(result).toEqual({ ok: true, added: 1, skipped: 1 });
-    expect(calls[0]?.query).toBe("?folderid=7");
+    expect(calls.map((c) => c.path).slice(0, 2)).toEqual(["/folder/list", "/favorite/mine/list"]);
+    expect(calls[1]?.query).toBe("?folderid=7");
     const post = calls.find((c) => c.method === "POST");
     expect(post?.body).toEqual({
       datas: [
@@ -164,7 +177,7 @@ describe("writeInPage: add", () => {
 
   it("follows the list's pages when reading what is already there", async () => {
     let page = 0;
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": ({ query }) => {
         page += 1;
         return query.includes("next_id=p2") ? existing(["1002"]) : existing(["1001"], "p2");
@@ -180,7 +193,7 @@ describe("writeInPage: add", () => {
 
   it("a second identical call adds nothing", async () => {
     const stored = new Set<string>();
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": () => existing([...stored]),
       "POST /favorite/add": ({ body }) => {
         const datas = (body as { datas: { key: number }[] }).datas;
@@ -202,7 +215,7 @@ describe("writeInPage: add", () => {
   });
 
   it("counts a place sent twice once", async () => {
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": () => existing([]),
       "POST /favorite/add": ({ body }) => added((body as { datas: unknown[] }).datas.length),
     });
@@ -214,7 +227,7 @@ describe("writeInPage: add", () => {
   });
 
   it("sends 20 places per request", async () => {
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": () => existing([]),
       "POST /favorite/add": ({ body }) => added((body as { datas: unknown[] }).datas.length),
     });
@@ -232,7 +245,7 @@ describe("writeInPage: add", () => {
 
   it("stops at a failed request and says how many were added before it", async () => {
     let post = 0;
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": () => existing([]),
       "POST /favorite/add": ({ body }) => {
         post += 1;
@@ -247,7 +260,7 @@ describe("writeInPage: add", () => {
   });
 
   it("counts only the places Kakao says it added when a batch is partly refused", async () => {
-    serve({
+    serveAdd({
       "GET /favorite/mine/list": () => existing([]),
       "POST /favorite/add": () =>
         json(
@@ -261,12 +274,87 @@ describe("writeInPage: add", () => {
   });
 
   it("is signed out when the list can't be read because the login is gone", async () => {
-    serve({ "GET /favorite/mine/list": () => json({}, { status: 403 }) });
+    serveAdd({ "GET /favorite/mine/list": () => json({}, { status: 403 }) });
     expect(await writeInPage({ op: "add", folderId: 7, places: [place(1)] })).toEqual({
       ok: false,
       error: "kakao_signed_out",
       added: 0,
     });
+  });
+
+  it("adds only to one of her own lists: a followed, deleted or unknown list is not_found, and nothing is sent", async () => {
+    serve({
+      "GET /folder/list": () =>
+        json(
+          ok({
+            folders: [
+              { folderid: 0, kakao_map_user_id: "u1" },
+              { folderid: 8, subscribe: "Y", kakao_map_user_id: "u2" },
+              { folderid: 9, status: "D", kakao_map_user_id: "u1" },
+            ],
+          }),
+        ),
+    });
+    for (const folderId of [8, 9, 10]) {
+      calls = [];
+      expect(await writeInPage({ op: "add", folderId, places: [place(1)] })).toEqual({
+        ok: false,
+        error: "not_found",
+        added: 0,
+      });
+      expect(calls.every((c) => c.path === "/folder/list")).toBe(true);
+    }
+  });
+
+  it("takes her own public list (flagged like a followed one) as hers by its owner id", async () => {
+    serve({
+      "GET /folder/list": () =>
+        json(
+          ok({
+            folders: [
+              { folderid: 0, kakao_map_user_id: "u1" },
+              { folderid: 11, subscribe: "Y", kakao_map_user_id: "u1" },
+            ],
+          }),
+        ),
+      "GET /favorite/mine/list": () => existing([]),
+      "POST /favorite/add": ({ body }) => added((body as { datas: unknown[] }).datas.length),
+    });
+    expect(await writeInPage({ op: "add", folderId: 11, places: [place(1)] })).toEqual({
+      ok: true,
+      added: 1,
+      skipped: 0,
+    });
+  });
+
+  it("looks again, briefly, for a list just made that Kakao's list doesn't show yet", async () => {
+    let reads = 0;
+    serve({
+      "GET /folder/list": () => {
+        reads += 1;
+        return reads < 3
+          ? json(ok({ folders: [{ folderid: 0, kakao_map_user_id: "u1" }] }))
+          : mine();
+      },
+      "GET /favorite/mine/list": () => existing([]),
+      "POST /favorite/add": ({ body }) => added((body as { datas: unknown[] }).datas.length),
+    });
+    expect(await writeInPage({ op: "add", folderId: 7, places: [place(1)] })).toEqual({
+      ok: true,
+      added: 1,
+      skipped: 0,
+    });
+    expect(reads).toBe(3);
+  });
+
+  it("is unavailable, sending nothing, when her lists can't be read", async () => {
+    serve({ "GET /folder/list": () => json({ status: { code: "FAIL" } }) });
+    expect(await writeInPage({ op: "add", folderId: 7, places: [place(1)] })).toEqual({
+      ok: false,
+      error: "kakao_unavailable",
+      added: 0,
+    });
+    expect(calls.map((c) => c.path)).toEqual(["/folder/list"]);
   });
 });
 
@@ -602,14 +690,19 @@ describe("writeInPage: its own deadline", () => {
               const size = isAdd
                 ? (JSON.parse(String(init?.body)) as { datas: unknown[] }).datas.length
                 : 0;
+              const isFolders = new URL(String(input)).pathname === "/folder/list";
               resolve(
-                isAdd
-                  ? json(
-                      ok({
-                        data: Array.from({ length: size }, () => ({ status: { code: "SUCCESS" } })),
-                      }),
-                    )
-                  : json({ favorites: [] }),
+                isFolders
+                  ? json(ok({ folders: [{ folderid: 7 }] }))
+                  : isAdd
+                    ? json(
+                        ok({
+                          data: Array.from({ length: size }, () => ({
+                            status: { code: "SUCCESS" },
+                          })),
+                        }),
+                      )
+                    : json({ favorites: [] }),
               );
             }, SLOW);
             init?.signal?.addEventListener("abort", () => {
@@ -628,8 +721,9 @@ describe("writeInPage: its own deadline", () => {
     await vi.advanceTimersByTimeAsync(WRITE_DEADLINE_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
-    // The list read (29 s) and two batches (58 s, 87 s) finished; the third was cut off at 90 s.
-    expect(await pending).toEqual({ ok: false, error: "kakao_unavailable", added: 40 });
+    // Her lists (29 s), the list's places (58 s) and one batch (87 s) finished; the second batch
+    // was cut off at 90 s.
+    expect(await pending).toEqual({ ok: false, error: "kakao_unavailable", added: 20 });
   });
 
   it("sends nothing more once the deadline has passed", async () => {
@@ -638,9 +732,9 @@ describe("writeInPage: its own deadline", () => {
     const fetchMock = vi.fn(async () => {
       if (first) {
         first = false;
-        // The list read answers, but only after the deadline.
+        // Her lists answer, but only after the deadline.
         vi.setSystemTime(Date.now() + WRITE_DEADLINE_MS + 1);
-        return json({ favorites: [] });
+        return json(ok({ folders: [{ folderid: 7 }] }));
       }
       return json(ok({ data: [{ status: { code: "SUCCESS" } }] }));
     });

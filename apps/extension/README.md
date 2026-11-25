@@ -75,7 +75,8 @@ These write to **her own** Kakao Map, inside the `map.kakao.com` tab, with the r
 - A failure is `{ ok: false, error }` with `kakao_signed_out`, `kakao_unavailable`, `busy`, or `invalid` (input refused before anything is sent). `addPlaces` failures may carry `added`: how many went in before it stopped. Without it, read the list again.
 - The page sends 20 places per request to Kakao Map. Kakao's own maximum isn't known, so that size is cautious.
 - A new list is created the way the page creates one (`status: "P"`, `icon: 10`). What `P` means for who can see the list isn't known: check a new list's visibility in Kakao Map.
-- A write stops by itself after 90 seconds (the worker waits 120), so a retry never runs beside one that is still going. If `createList` times out after Kakao has made the list, the answer has no `folderId` and a retry makes a second list: look for a list with the same name first.
+- A write stops by itself after 90 seconds (the worker waits 120), so a retry never runs beside one that is still going. If `createList` times out after Kakao has made the list, the answer has no `folderId` and a retry makes a second list: look for a list with the same name first. (The app does: after a create with no clear answer, its retry fills a single list by that exact name that wasn't there before, instead of making another.)
+- `addPlaces` adds only to one of her own lists, by the same rule as the app's sync: a list without Kakao's `subscribe` flag, or a flagged one (her own public list) that carries the owner id her unflagged lists carry. Any other list, a deleted one or one Kakao doesn't list answers `not_found`, and nothing is sent. A list made a moment ago is looked for a few times, 300 ms apart.
 - Each write picks the most recently used `map.kakao.com` tab. Check `magomap.account` right before writing; Chrome doesn't run extensions in incognito windows unless she allows it for this one.
 
 ### Real-browser check of the writes (owner)
