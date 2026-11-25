@@ -19,6 +19,7 @@ import {
   kakaoMapAccountsNamed,
 } from "@magomap/db/stores/kakaoMapAccounts";
 import { recordKakaoNoteEdit } from "@magomap/db/stores/kakaoNotes";
+import { fillDisplayName } from "@magomap/db/stores/users";
 import {
   type ApiErrorCode,
   type ImportListSummary,
@@ -369,6 +370,8 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
 
     const now = Date.now();
     await checkAccount(c, read.account, read.accountAlias, extras.data.confirmAccount, now);
+    // Her Kakao Map nickname names a new account; a name she typed is never replaced.
+    if (read.account.nickname) await fillDisplayName(c.var.db, c.var.userId, read.account.nickname);
     const providerOwnerIds = await ownerIdsOf(c, read);
     const { runId } = await startImportRun(
       c.var.db,

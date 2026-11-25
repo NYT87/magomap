@@ -285,6 +285,32 @@ describe("who may upload", () => {
 });
 
 describe("the Kakao Map account", () => {
+  it("a sync fills an empty account name from the Kakao Map nickname, never a typed one", async () => {
+    const cookie = await devLogin("km-name");
+    const name = async () =>
+      (
+        (await (await call("/api/me", { headers: { cookie } })).json()) as {
+          displayName: string | null;
+        }
+      ).displayName;
+    expect(await name()).toBeNull();
+    await upload(cookie, smallRead("u1-name-1234", 30701), "u1-name-1234");
+    expect(await name()).toBe("수지");
+    // A name she typed stays.
+    const typed = await call("/api/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ displayName: "지은" }),
+    });
+    expect(typed.status).toBeLessThan(300);
+    await upload(
+      cookie,
+      smallRead("u1-name-1234", 30701, { nickname: "다른 이름" }),
+      "u1-name-1234",
+    );
+    expect(await name()).toBe("지은");
+  }, 90_000); // two whole syncs
+
   it("first sync asks to confirm the account", async () => {
     const cookie = await devLogin("km-first");
     const user = await userIdOf(cookie);
