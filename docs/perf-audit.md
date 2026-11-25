@@ -36,3 +36,17 @@ Leaflet and markercluster stay out of the main chunk. Fonts are self-hosted, sub
 - **Low:** the OSM tile cache and the icon sizes are fine.
 
 **Not measured:** a Lighthouse score, INP, Kakao SDK loading, marker cost with thousands of places, and sync page sizes.
+
+## Re-audit, 2026-11-25 (go-live checklist, issue #64)
+
+The `auditor-performance` run on `main` (same throttled phone profile, Leaflet/OSM path, mocked API) found the first JavaScript had grown to **245.5 kB gzip** (from 177.7 kB): `apps/web/src/lists/duplicateToKakao.ts` imported the WCONGNAMUL conversion statically, which pulled proj4 into the entry.
+
+What was done:
+- The conversion is imported only when a copy to Kakao Map runs: 241,778 → 198,572 bytes gzip (level 9).
+- The pages beside or over the map (place details, lists, a list, account) load when first opened (`React.lazy` in `apps/web/src/routes.tsx`): 198,572 → **182,584 bytes**.
+- **A build gate:** `apps/web/scripts/check-bundle.mjs` runs after `vite build` and fails the build when the scripts `index.html` loads first are over **200,000 bytes gzip**, so a static import like this one can't slip through again.
+- Content-hashed files under `/assets/` are now served `Cache-Control: public, max-age=31536000, immutable` (`apps/web/public/_headers`); before, every asset was `max-age=0, must-revalidate`. `index.html`, `sw.js` and the manifest keep the default.
+
+Still open:
+- **LCP** was 4.5–4.6 s on the OSM path (the same as the earlier ruling). Production uses the Kakao map, which this lab run did not measure. Re-measure on the deployed Worker with Lighthouse (`npx lighthouse https://magomap.jmn8718.workers.dev --preset=perf --form-factor=mobile`) before ticking the checklist line. A preconnect to the OSM tile server was not added: it would only help the fallback.
+- **Medium:** the library live query recomputes the whole map on any change (`useLibrary`, `useMapData`); check with a thousand-place fixture.

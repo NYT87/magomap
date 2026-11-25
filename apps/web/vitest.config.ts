@@ -22,7 +22,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}", "build-info.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}", "build-info.test.ts", "scripts/**/*.test.ts"],
     testTimeout: 30_000,
   },
 });
