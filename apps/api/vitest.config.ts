@@ -15,13 +15,10 @@ export default defineConfig(async () => {
             TEST_MIGRATIONS: migrations,
             KAKAO_REST_API_KEY: "test-rest-key",
             KAKAO_CLIENT_SECRET: "test-client-secret",
-            MAGOMAP_IMPORT_SECRET: "m".repeat(48),
             SIGNING_SECRET: "s".repeat(48),
             ALLOWED_KAKAO_USER_IDS: "111,222",
             ALLOW_DEV_LOGIN: "true",
             KAKAO_JAVASCRIPT_KEY: "test-js-key",
-            // The d1 environment points at the deployed kakao-list; tests use the mocked one.
-            KAKAO_LIST_URL: "http://localhost:8788",
           },
         },
       }),

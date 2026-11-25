@@ -1,7 +1,8 @@
 # Copy to .dev.vars for `wrangler dev`. Never commit .dev.vars.
 KAKAO_REST_API_KEY=your-kakao-rest-api-key
 KAKAO_CLIENT_SECRET=your-kakao-client-secret
-MAGOMAP_IMPORT_SECRET=mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 ALLOW_DEV_LOGIN=true
+# Lets the dev-login test accounts upload a Kakao Map read (pnpm --filter @magomap/api dev:seed).
+ALLOW_DEV_UPLOAD=true
 # Signs search results; generate with: openssl rand -hex 32
 SIGNING_SECRET=change-me-to-32-or-more-random-characters-0000

@@ -158,7 +158,10 @@ function saveState(
 const isNewer = (snapshotAt: number, row: Row | undefined) =>
   !row || row.provider_snapshot_at == null || snapshotAt >= Number(row.provider_snapshot_at);
 
-/** Where a run's snapshot came from: kakao-list (server-fetched) or a direct Kakao Map upload. */
+/**
+ * Where a run's snapshot came from: a direct Kakao Map upload, or kakao-list (the server-fetched
+ * import magomap had before; its runs stay in the database, and nothing starts new ones).
+ */
 export type ImportSource = "kakao_list" | "kakao_map";
 
 /**

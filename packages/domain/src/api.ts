@@ -45,21 +45,15 @@ export interface ImportRunInfo {
   startedAt: number;
   finishedAt: number | null;
   summary: ImportSummary | null;
-  /** The kakao-list sync (epoch ms) the run was read from; for a Kakao Map sync, when it started. */
+  /**
+   * When the run's read was taken (epoch ms): for a Kakao Map sync, when it started; a run left
+   * by the old kakao-list import keeps that sync's time.
+   */
   snapshotAt: number;
-  /** Where the run read from: kakao-list, or Kakao Map through the extension (a direct sync). */
+  /** Where the run read from: Kakao Map through the extension, or (runs from before) kakao-list. */
   source?: "kakao_list" | "kakao_map";
   /** Only on a running run. */
   progress?: { listsDone: number; listCount: number };
-}
-
-export interface ImportStatus {
-  latest: ImportRunInfo | null;
-  /** kakao-list's current sync for this account; null when it has none or couldn't be reached. */
-  sourceSnapshotAt: number | null;
-  upToDate: boolean;
-  /** Why `sourceSnapshotAt` is null: kakao-list has no snapshot for this account, or couldn't be read. */
-  source: "ok" | "no_snapshot" | "unavailable";
 }
 
 export interface ResumeList {
@@ -76,12 +70,9 @@ export interface ResumeRun {
 }
 
 export type ApiErrorCode =
-  | "no_snapshot"
-  | "kakao_list_unavailable"
   | "search_unavailable"
   | "rate_limited"
   | "run_closed"
-  | "snapshot_changed"
   | "list_conflict"
   | "incomplete"
   | "account_gone"
@@ -89,7 +80,6 @@ export type ApiErrorCode =
   | "not_found"
   | "invalid"
   | "account_mismatch"
-  | "up_to_date"
   | "too_large"
   | "not_allowed"
   | "kakao_signed_out"
