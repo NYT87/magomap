@@ -171,15 +171,17 @@ test.describe("the phone's place peek", () => {
     const card = page.getByRole("region", { name });
     const box = await card.boundingBox();
     if (!box) throw new Error("no card");
-    // The map first glides to the place: measure the pin once it has stopped.
+    // The map first glides to the place: measure the pin once it has stood still for three
+    // readings in a row (one reading lost the race on a busy machine, mid-glide).
     const pin = page.locator(".mm-pin--selected");
     let before = await pin.boundingBox();
+    let stillFor = 0;
     await expect(async () => {
       const now = await pin.boundingBox();
-      const still = JSON.stringify(now) === JSON.stringify(before);
+      stillFor = JSON.stringify(now) === JSON.stringify(before) ? stillFor + 1 : 0;
       before = now;
-      expect(still).toBe(true);
-    }).toPass({ intervals: [400], timeout: 10_000 });
+      expect(stillFor).toBeGreaterThanOrEqual(3);
+    }).toPass({ intervals: [400], timeout: 20_000 });
     const x = box.x + box.width / 2;
     await page.mouse.move(x, box.y + 10);
     await page.mouse.down();
