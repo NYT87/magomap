@@ -51,8 +51,15 @@ if [[ "$mode" == deploy ]]; then
     fail "built-at '$APP_BUILT_AT' is not YYYY-MM-DDTHH:MM:SSZ"
   [[ -f apps/web/dist/index.html ]] || fail "apps/web/dist has no built app; run the build step first"
   # Cloudflare reads these from the asset folder as config (headers, redirects, ignore rules).
-  # The app ships none, so one appearing means the build was tampered with.
-  for control in _headers _redirects _routes.json .assetsignore; do
+  # The app ships only _headers (long caching for /assets/*), and it must be byte for byte the
+  # one committed in this release (apps/web/public/_headers, checked out here, not taken from
+  # the build artifact). Any other control file, or a different _headers, means the build was
+  # tampered with.
+  if [[ -e apps/web/dist/_headers ]]; then
+    [[ -f apps/web/public/_headers ]] && cmp -s apps/web/dist/_headers apps/web/public/_headers ||
+      fail "apps/web/dist/_headers is not the committed apps/web/public/_headers"
+  fi
+  for control in _redirects _routes.json .assetsignore; do
     [[ ! -e "apps/web/dist/$control" ]] || fail "apps/web/dist/$control is not expected in the built app"
   done
 else
