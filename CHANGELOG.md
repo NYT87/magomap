@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/NYT87/magomap/compare/magomap-v0.1.6...magomap-v0.1.7) (2026-11-25)
+
+
+### Bug Fixes
+
+* **ci:** the deploy accepts the committed _headers, still refuses any other ([200a94b](https://github.com/NYT87/magomap/commit/200a94beb9ed045b5b22773452ca729307ab2957))
+* **ci:** the deploy accepts the committed _headers, still refuses any other ([946d37e](https://github.com/NYT87/magomap/commit/946d37ea5ffef65414888aafa5f69b97f3e0c9f7))
+
 ## [0.1.6](https://github.com/NYT87/magomap/compare/magomap-v0.1.5...magomap-v0.1.6) (2026-11-25)
 
 
