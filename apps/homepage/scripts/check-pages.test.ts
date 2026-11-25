@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkPages } from "./check-pages";
+import { appUrlOf, checkPages } from "./check-pages";
 
 const dir = (name: string) => new URL(`./fixtures/${name}`, import.meta.url).pathname;
 
@@ -15,5 +15,17 @@ describe("check-pages", () => {
     expect(problems).toContain(
       "ko/privacy/index.html: an 'Open magomap' link goes to https://elsewhere.test/, not https://app.test/",
     );
+  });
+
+  it("names an app link with spaces around it, even when the app URL has the same spaces", () => {
+    expect(checkPages(dir("good"), " https://app.test/")).toContain(
+      "the app URL ' https://app.test/' has spaces around it",
+    );
+  });
+
+  it("trims the app URL taken from the environment, and falls back when it is blank", () => {
+    expect(appUrlOf(" https://app.test/ ")).toBe("https://app.test/");
+    expect(appUrlOf("   ")).toBe("http://localhost:8787/");
+    expect(appUrlOf(undefined)).toBe("http://localhost:8787/");
   });
 });

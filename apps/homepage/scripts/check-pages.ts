@@ -8,6 +8,12 @@ import { fileURLToPath } from "node:url";
 export const BASE = "/magomap/";
 export const DEFAULT_APP_URL = "http://localhost:8787/";
 
+/** The app URL from the environment, trimmed (a stray space in a CI variable once reached the
+ *  links), or the local default when it is unset or blank. */
+export function appUrlOf(raw: string | undefined): string {
+  return raw?.trim() || DEFAULT_APP_URL;
+}
+
 function htmlFiles(dir: string, root = dir): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -29,6 +35,7 @@ function target(href: string): string | null {
 
 export function checkPages(dir: string, appUrl: string): string[] {
   const problems: string[] = [];
+  if (appUrl !== appUrl.trim()) problems.push(`the app URL '${appUrl}' has spaces around it`);
   const pages = htmlFiles(dir).filter((p) => !p.startsWith("assets/"));
   for (const page of pages) {
     if (!pages.includes(twinOf(page))) {
@@ -59,7 +66,7 @@ export function checkPages(dir: string, appUrl: string): string[] {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dir = process.argv[2] ?? "dist";
-  const appUrl = process.env.APP_URL || DEFAULT_APP_URL;
+  const appUrl = appUrlOf(process.env.APP_URL);
   const problems = checkPages(dir, appUrl);
   for (const p of problems) console.error(`✗ ${p}`);
   if (problems.length > 0) process.exit(1);
