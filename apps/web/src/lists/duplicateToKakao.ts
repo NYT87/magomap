@@ -2,7 +2,6 @@
 // check which Kakao Map account is signed in, create the list, add the places in pages, then run
 // the usual sync so the new list comes in as his own Kakao list. Kakao Map is written first and
 // magomap only follows by that sync; nothing here writes magomap's own rows.
-import { latLngToWcongnamul } from "@magomap/domain/providers/wcongnamul";
 import { currentDb, dbUserId } from "../data/db";
 import { askExtension, runKakaoMapSync } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
@@ -84,6 +83,9 @@ async function placesOf(sourceListId: string): Promise<{ places: SendPlace[]; le
   const items = (await db.list_items.where("listId").equals(sourceListId).toArray())
     .filter((i) => i.deletedAt == null && i.removedAtProvider == null)
     .sort((a, b) => a.position - b.position);
+  // Loaded only for a copy: the conversion brings proj4 (about 44 kB gzip) along, which must not
+  // be in the first JavaScript every phone downloads (scripts/check-bundle.mjs).
+  const { latLngToWcongnamul } = await import("@magomap/domain/providers/wcongnamul");
   const places: SendPlace[] = [];
   let leftOut = 0;
   const seen = new Set<string>();
