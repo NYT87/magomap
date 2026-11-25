@@ -7,6 +7,7 @@ export const deviceKeys = {
   showPrevious: (userId: string) => `mm.showPrevious.${userId}`,
   mapProvider: (userId: string) => `mm.mapProvider.${userId}`,
   name: (userId: string) => `mm.name.${userId}`,
+  mapFit: (userId: string) => `mm.mapFit.${userId}`,
 };
 
 /** Every per-account key for this account. */

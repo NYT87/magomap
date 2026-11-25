@@ -2,7 +2,7 @@
 import { PLACE_ZOOM, wellInside } from "./applyFocus";
 import { watchLongPress } from "./longPress";
 import type { ContextPress, LatLng, MapAdapter, MapMarker } from "./MapAdapter";
-import { markerHtml } from "./markerHtml";
+import { markerElement } from "./markerHtml";
 
 // A minimal typing of the parts of the SDK we use.
 interface KakaoLatLng {
@@ -83,7 +83,7 @@ export function createKakaoAdapter(): MapAdapter {
     el.type = "button";
     el.className = `mm-pin-host mm-pin-host--${m.kind}`;
     el.setAttribute("aria-label", m.label);
-    el.innerHTML = markerHtml(m);
+    el.append(markerElement(m));
     el.addEventListener("click", () => select(m.id));
     return new k.CustomOverlay({
       position: new k.LatLng(m.position.lat, m.position.lng),
@@ -158,7 +158,7 @@ export function createKakaoAdapter(): MapAdapter {
     panTo(p) {
       map?.panTo(new k.LatLng(p.lat, p.lng));
     },
-    isWellInView(p) {
+    isWellInView(p, inset) {
       const b = map?.getBounds();
       if (!b) return false;
       const sw = b.getSouthWest();
@@ -166,6 +166,7 @@ export function createKakaoAdapter(): MapAdapter {
       return wellInside(
         { south: sw.getLat(), west: sw.getLng(), north: ne.getLat(), east: ne.getLng() },
         p,
+        inset,
       );
     },
     getCenter() {

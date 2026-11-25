@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { devLogin, syncFromKakao } from "./helpers";
+import { BADA, devLogin, syncFromKakao } from "./helpers";
 
 // The e2e server has no Kakao key, so Kakao Map is never available here: the map is
 // OpenStreetMap whatever the setting, and Account says so. Switching between the two
@@ -47,6 +47,10 @@ const FAKE_SDK = `
     setLevel(l) { this.level = l; this.moved(); }
     getLevel() { return this.level; }
     getCenter() { return this.center; }
+    // What's on screen: a square around the centre, wider at higher levels (farther out).
+    getBounds() { const c = this.center, d = 0.0005 * 2 ** this.level;
+      return { getSouthWest: () => new LatLng(c.lat - d, c.lng - d),
+               getNorthEast: () => new LatLng(c.lat + d, c.lng + d) }; }
     setBounds(b) { this.center = b.middle(); this.level = 14; window.__fakeFits += 1; this.moved(); }
     relayout() {}
   }
@@ -120,10 +124,11 @@ test("a switch keeps the places on the map, and Automatic returns to Kakao in Ko
   await page.goto("/");
   const caption = page.locator(".mm-map-caption");
   await expect(caption).toHaveText("Map: Kakao Map");
-  // The first fit to her places (in Korea) has happened and the map stayed on Kakao.
+  // The map is fitted to her places (in Korea; fitted during the sync, then opened there) and
+  // stayed on Kakao. The fake fits at level 14.
   await expect
-    .poll(() => page.evaluate(() => (window as unknown as FakeWindow).__fakeFits))
-    .toBeGreaterThan(0);
+    .poll(() => page.evaluate(() => (window as unknown as FakeWindow).__fakeKakaoMap.level))
+    .toBe(14);
   await expect(caption).toHaveText("Map: Kakao Map");
 
   // Forcing OpenStreetMap: the same places are drawn on the new map.
@@ -139,4 +144,55 @@ test("a switch keeps the places on the map, and Automatic returns to Kakao in Ko
   await page.goBack();
   await expect(caption).toHaveText("Map: Kakao Map");
   await expect(page.locator(".leaflet-container")).toHaveCount(0);
+});
+
+/** The signed-in account's remembered fit of the map (mm.mapFit.<user id>). */
+const fitMemo = () => {
+  const key = Object.keys(localStorage).find((k) => k.startsWith("mm.mapFit."));
+  return key
+    ? (JSON.parse(localStorage.getItem(key) ?? "null") as { view: { zoom: number } })
+    : null;
+};
+
+// Kakao reports a fit's move a moment later ("idle"), after a place opened by its link has
+// already moved the map: the place's close-up isn't remembered as the places' fit.
+test("on the Kakao map, a place opened by its link isn't remembered as the places' fit", async ({
+  page,
+  context,
+}) => {
+  await withFakeKakao(page);
+  await devLogin(context, "222");
+  await syncFromKakao(page);
+  // Forget the fit made during the sync, so this visit fits again.
+  await page.evaluate(() => {
+    for (const k of Object.keys(localStorage))
+      if (k.startsWith("mm.mapFit.")) localStorage.removeItem(k);
+  });
+  await page.goto(`/places/${BADA}`);
+  await expect(page.locator(".mm-map-caption")).toHaveText("Map: Kakao Map");
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as FakeWindow).__fakeFits))
+    .toBeGreaterThan(0);
+  await page.waitForTimeout(1_000);
+  // The fake fits at level 14, zoom 6; the place opens at zoom 16.
+  expect((await page.evaluate(fitMemo))?.view.zoom).toBe(6);
+});
+
+// Back on the map with the same places: it opens at the remembered fit and doesn't fit again.
+test("on the Kakao map, the next visit opens at the remembered fit without fitting", async ({
+  page,
+  context,
+}) => {
+  await withFakeKakao(page);
+  await devLogin(context, "222");
+  await syncFromKakao(page);
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(fitMemo)).not.toBeNull();
+  await page.reload();
+  await expect(page.locator(".mm-map-caption")).toHaveText("Map: Kakao Map");
+  await page.waitForTimeout(1_500);
+  expect(await page.evaluate(() => (window as unknown as FakeWindow).__fakeFits)).toBe(0);
+  expect(await page.evaluate(() => (window as unknown as FakeWindow).__fakeKakaoMap.level)).toBe(
+    14,
+  );
 });
