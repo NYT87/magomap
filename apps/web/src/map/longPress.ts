@@ -10,10 +10,11 @@ const NOT_THE_MAP = ".leaflet-control, a, input, textarea, select";
 /**
  * Calls `onPress` once when a single finger is held still on `el` for LONG_PRESS_MS (or when the
  * browser's own long-press menu comes first), at the client point where it went down. A pan, a
- * pinch or a tap never counts. After a press, the browser's menu is swallowed, and so is any click
- * while the finger is still down; lifting it sends no click (its touchend is cancelled), so the
- * press doesn't also open a place or close what it opened, and her next tap goes through.
- * Returns a cleanup.
+ * pinch or a tap never counts. After a press, the browser's menu is swallowed; while the finger
+ * stays down it can't drag the map under what the press opened; lifting it sends no click (its
+ * touchend is cancelled), so the press doesn't also open a place or close what it opened, and her
+ * next tap goes through. The lift is watched on the window: what the press opens may make the map
+ * inert, and the finger may lift anywhere. Returns a cleanup.
  */
 export function watchLongPress(
   el: HTMLElement,
@@ -21,9 +22,12 @@ export function watchLongPress(
 ): () => void {
   let held: { x: number; y: number } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** A press fired recently: a late browser menu for it is swallowed. */
   let pressed = false;
-  /** The pressing finger is still down. */
+  /** The pressing finger is still down: it mustn't move the map. */
   let holding = false;
+  /** The pressing finger's touchend is still to come: its click is cancelled. */
+  let liftPending = false;
   let afterPress: ReturnType<typeof setTimeout> | undefined;
 
   const cancel = () => {
@@ -36,11 +40,20 @@ export function watchLongPress(
     if (!at) return;
     pressed = true;
     holding = true;
+    liftPending = true;
     onPress(at);
   };
   const swallow = (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
+  };
+  const released = () => {
+    holding = false;
+    if (!pressed) return;
+    clearTimeout(afterPress);
+    afterPress = setTimeout(() => {
+      pressed = false;
+    }, AFTER_PRESS_MS);
   };
 
   const onStart = (e: TouchEvent) => {
@@ -60,44 +73,62 @@ export function watchLongPress(
     if (e.touches.length !== 1) return cancel();
     if (Math.hypot(now.clientX - held.x, now.clientY - held.y) > LONG_PRESS_SLOP_PX) cancel();
   };
-  const onEnd = (e: TouchEvent) => {
-    cancel();
-    holding = false;
-    if (!pressed) return;
-    // No click (and no mouse events) from lifting the finger after a press.
-    if (e.type === "touchend" && e.cancelable) e.preventDefault();
-    clearTimeout(afterPress);
-    afterPress = setTimeout(() => {
-      pressed = false;
-    }, AFTER_PRESS_MS);
+  // On the window, before anything else: the menu may land on what the press opened, and the
+  // finger may lift or move over it.
+  const onAnyStart = () => {
+    // A new touch: the pressing finger is up, whatever became of its touchend.
+    liftPending = false;
   };
-  // On the window, before anything else: the menu or click may land on what the press opened.
+  const onAnyMove = (e: Event) => {
+    if (!holding) return;
+    // Neither the browser nor the map (whose own listeners come later) moves for this finger.
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+  };
+  const onAnyEnd = (e: TouchEvent) => {
+    cancel();
+    // No click (and no mouse events) from lifting the finger after a press.
+    if (liftPending && e.type === "touchend" && e.cancelable) e.preventDefault();
+    liftPending = false;
+    released();
+  };
+  const onAnyPointerUp = () => {
+    if (holding) released();
+  };
   const onMenu = (e: Event) => {
     if (held) {
       swallow(e);
       fire();
     } else if (pressed) swallow(e);
   };
-  const onClick = (e: Event) => {
-    if (holding) swallow(e);
-  };
 
+  const capture = { capture: true };
+  const active = { capture: true, passive: false };
   el.addEventListener("touchstart", onStart, { passive: true });
   el.addEventListener("touchmove", onMove, { passive: true });
-  el.addEventListener("touchend", onEnd, { passive: false });
-  el.addEventListener("touchcancel", onEnd, { passive: true });
-  window.addEventListener("contextmenu", onMenu, { capture: true });
-  window.addEventListener("click", onClick, { capture: true });
+  window.addEventListener("touchstart", onAnyStart, { capture: true, passive: true });
+  window.addEventListener("touchmove", onAnyMove, active);
+  window.addEventListener("pointermove", onAnyMove, capture);
+  window.addEventListener("touchend", onAnyEnd, active);
+  window.addEventListener("touchcancel", onAnyEnd, active);
+  window.addEventListener("pointerup", onAnyPointerUp, capture);
+  window.addEventListener("pointercancel", onAnyPointerUp, capture);
+  window.addEventListener("contextmenu", onMenu, capture);
   return () => {
     cancel();
     clearTimeout(afterPress);
     pressed = false;
     holding = false;
+    liftPending = false;
     el.removeEventListener("touchstart", onStart);
     el.removeEventListener("touchmove", onMove);
-    el.removeEventListener("touchend", onEnd);
-    el.removeEventListener("touchcancel", onEnd);
-    window.removeEventListener("contextmenu", onMenu, { capture: true });
-    window.removeEventListener("click", onClick, { capture: true });
+    window.removeEventListener("touchstart", onAnyStart, capture);
+    window.removeEventListener("touchmove", onAnyMove, capture);
+    window.removeEventListener("pointermove", onAnyMove, capture);
+    window.removeEventListener("touchend", onAnyEnd, capture);
+    window.removeEventListener("touchcancel", onAnyEnd, capture);
+    window.removeEventListener("pointerup", onAnyPointerUp, capture);
+    window.removeEventListener("pointercancel", onAnyPointerUp, capture);
+    window.removeEventListener("contextmenu", onMenu, capture);
   };
 }

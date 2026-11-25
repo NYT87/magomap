@@ -99,12 +99,10 @@ describe("watchLongPress", () => {
     document.addEventListener("click", clicked);
     touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
     vi.advanceTimersByTime(500);
-    // While the finger is still down: no menu, no click.
+    // While the finger is still down: no menu.
     const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     document.body.dispatchEvent(menu);
     expect(menu.defaultPrevented).toBe(true);
-    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(clicked).not.toHaveBeenCalled();
     // Lifting it: its touchend is cancelled, so the browser sends no click for it.
     const end = touch(el, "touchend", [{ clientX: 100, clientY: 200 }]);
     expect(end.defaultPrevented).toBe(true);
@@ -113,6 +111,62 @@ describe("watchLongPress", () => {
     document.body.dispatchEvent(late);
     expect(late.defaultPrevented).toBe(true);
     document.removeEventListener("click", clicked);
+  });
+
+  it("lets a tap through when the finger lifts away from the map (the sheet made it inert)", () => {
+    const sheet = document.createElement("div");
+    const button = document.createElement("button");
+    sheet.append(button);
+    document.body.append(sheet);
+    const clicked = vi.fn();
+    button.addEventListener("click", clicked);
+    touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+    vi.advanceTimersByTime(500);
+    // The lift reaches the window (or another element), never the map itself.
+    const end = touch(sheet, "touchend", [{ clientX: 100, clientY: 200 }]);
+    expect(end.defaultPrevented).toBe(true);
+    // Her next tap, on the sheet: its lift is left alone, so the browser sends its click.
+    touch(button, "touchstart", [{ clientX: 10, clientY: 10 }]);
+    expect(touch(button, "touchend", [{ clientX: 10, clientY: 10 }]).defaultPrevented).toBe(false);
+    button.click();
+    expect(clicked).toHaveBeenCalledOnce();
+    sheet.remove();
+  });
+
+  it("lets a tap through after a pointer lift or cancel arrives instead of a touchend", () => {
+    for (const type of ["pointerup", "pointercancel"]) {
+      const button = document.createElement("button");
+      document.body.append(button);
+      const clicked = vi.fn();
+      button.addEventListener("click", clicked);
+      touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+      vi.advanceTimersByTime(500);
+      window.dispatchEvent(new Event(type));
+      touch(button, "touchstart", [{ clientX: 10, clientY: 10 }]);
+      expect(touch(button, "touchend", [{ clientX: 10, clientY: 10 }]).defaultPrevented).toBe(
+        false,
+      );
+      button.click();
+      expect(clicked).toHaveBeenCalledOnce();
+      button.remove();
+    }
+  });
+
+  it("keeps a finger held after the press from panning the map, until it lifts", () => {
+    const mapMoved = vi.fn();
+    el.addEventListener("touchmove", mapMoved);
+    el.addEventListener("pointermove", mapMoved);
+    touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+    vi.advanceTimersByTime(500);
+    const drag = touch(el, "touchmove", [{ clientX: 160, clientY: 260 }]);
+    expect(drag.defaultPrevented).toBe(true);
+    el.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "touch" }));
+    expect(mapMoved).not.toHaveBeenCalled();
+    touch(el, "touchend", [{ clientX: 160, clientY: 260 }]);
+    touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+    const pan = touch(el, "touchmove", [{ clientX: 160, clientY: 260 }]);
+    expect(pan.defaultPrevented).toBe(false);
+    expect(mapMoved).toHaveBeenCalledOnce();
   });
 
   it("lets her next tap through at once, on what the press opened", () => {
