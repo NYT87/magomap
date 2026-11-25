@@ -1199,7 +1199,7 @@ describe("pages are checked", () => {
     expect((await send(cookie, url, [favs])).status).toBe(400);
     const notJson = await call(url, { method: "POST", headers: { cookie }, body: "{" }, DEV);
     expect(notJson.status).toBe(400);
-    // Two favourites with one seq: kakao-list refuses such a read too.
+    // Two favourites with one seq: a broken read.
     const dup = await send(cookie, url, {
       favorites: [favs[0], { ...favs[1], seq: favs[0]?.seq }],
     });

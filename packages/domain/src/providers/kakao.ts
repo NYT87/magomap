@@ -29,7 +29,7 @@ export function usableNickname(value: unknown): string | undefined {
   return name && isStorableText(name) ? name : undefined;
 }
 
-/** Kakao Map's favourite colours, keyed by the item's colour code (from kakao-list). */
+/** Kakao Map's favourite colours, keyed by the favourite's `color` code. */
 export const KAKAO_PLACE_COLORS: Record<string, { name: string; value: string }> = {
   "01": { name: "red", value: "#c8373e" },
   "02": { name: "orange", value: "#bd5b00" },
