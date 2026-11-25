@@ -1,5 +1,5 @@
 import type { PlaceRow } from "@magomap/domain";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Router, useLocation } from "wouter";
@@ -105,6 +105,19 @@ describe("PlacePeek", () => {
     renderPeek(PLACE.id);
     await userEvent.click(await screen.findByText("베이커리"));
     expect(screen.getByTestId("location")).toHaveTextContent(`/places/${PLACE.id}/details`);
+  });
+
+  it("isn't draggable: no handle, and a drag neither moves it nor opens anything", async () => {
+    await seed(db);
+    const { container } = renderPeek(PLACE.id);
+    const region = await screen.findByRole("region", { name: PLACE.title });
+    expect(container.querySelector(".mm-place-peek__grip")).toBeNull();
+    fireEvent.pointerDown(region, { clientX: 100, clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(region, { clientX: 100, clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(region, { clientX: 100, clientY: 380, pointerId: 1 });
+    expect(region.style.transform).toBe("");
+    expect(screen.getByTestId("location")).toHaveTextContent(`/places/${PLACE.id}`);
+    expect(screen.getByTestId("location").textContent).not.toContain("details");
   });
 
   it("the X closes without also opening the details", async () => {
