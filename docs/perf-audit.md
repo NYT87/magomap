@@ -50,3 +50,28 @@ What was done:
 Still open:
 - **LCP** was 4.5–4.6 s on the OSM path (the same as the earlier ruling). Production uses the Kakao map, which this lab run did not measure. Re-measure on the deployed Worker with Lighthouse (`npx lighthouse https://magomap.jmn8718.workers.dev --preset=perf --form-factor=mobile`) before ticking the checklist line. A preconnect to the OSM tile server was not added: it would only help the fallback.
 - **Medium:** the library live query recomputes the whole map on any change (`useLibrary`, `useMapData`); check with a thousand-place fixture.
+
+## Lighthouse on production, 2026-11-25 (0.1.8, issue #64)
+
+The owner ran Lighthouse 13.5 (Mobile, simulated throttling, signed in) on `https://magomap.jmn8718.workers.dev/`, with the Kakao map. The run had a password-manager extension (about 0.5 s of long tasks) and stored IndexedDB data, so it is somewhat pessimistic. Unthrottled, the page's largest paint came at about 0.95 s.
+
+| | Score / value | Target |
+|---|---|---|
+| Performance | **26** | |
+| Accessibility / Best Practices / SEO | 96 / 100 / 92 | |
+| LCP | 6.5 s | ≤ 2.5 s |
+| CLS | 0.40 | ≤ 0.1 |
+| TBT | 1.8 s | ≤ 0.2 s |
+| FCP / Speed Index | 2.6 s / 3.9 s | |
+
+What it found, and what was done (branch `perf/lighthouse-fixes`):
+- **CLS 0.40, all from the Kakao map's tiles.** The map opened at the default view (Jeju, zoom 10), drew its tiles, then jumped to fit the saved places once they loaded. The Kakao map positions its tiles with `left`/`top`, so the jump counts as a layout shift. The LCP element was one of those first tiles, which then got thrown away. The map now remembers where it settled after fitting (`src/map/mapFitMemo.ts`, per account: `mm.mapFit.<userId>`, removed with the account's other device keys) and opens there on the next visit. It fits again when the saved places' bounds change, on another map, in a box of another size (a turned phone), or when on the Kakao map the places aren't actually on screen. The first visit on a device still fits once. The fit is remembered right after it is made, before a place opened by its link moves the map.
+- **TBT 1.8 s: one 0.77 s task** (≈1.5 s on the throttled CPU), mostly HTML parsing, style and layout. It came from building one Kakao overlay per place (~350), each parsed from an HTML string. Now each pin look is parsed once and copied (`markerElement`). Keeping overlays across redraws was tried and left out: the Kakao key refuses `localhost`, so how Kakao's clusterer treats a re-added overlay couldn't be checked.
+- **Preconnect** to `dapi.kakao.com`, `t1.kakaocdn.net` and `mts.kakaocdn.net` (Lighthouse estimated ~0.3 s off LCP).
+- **SEO: `robots.txt`** returned the app's HTML (the SPA fallback). There is now a real one, `Disallow: /`, because the app is private.
+
+Not changed, and why:
+- **Unused CSS (91% of 23 kB):** most of it is Pretendard's 92 `@font-face` subset rules plus `app.css` for screens that aren't open. Lighthouse puts the saving at ~150 ms. Splitting `app.css` by screen risks missing styles, so it is left for later.
+- **Third-party only:** Kakao tile caching, formats and sizes; the clusterer's legacy JS; the Kakao logo link's small tap target (their attribution, not ours to change); unminified JS from the browser extension.
+
+Re-run Lighthouse after this ships (incognito, so no extensions). Open the map once before measuring, so the remembered view applies.
