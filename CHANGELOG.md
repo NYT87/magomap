@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.1.6](https://github.com/NYT87/magomap/compare/magomap-v0.1.5...magomap-v0.1.6) (2026-11-25)
+
+
+### Features
+
+* **api:** nearby Kakao places for a map point ([0a570ca](https://github.com/NYT87/magomap/commit/0a570ca260b87d26f94db22893e7797724b99feb)), closes [#63](https://github.com/NYT87/magomap/issues/63)
+* save a place from the map (right-click, long-press or the phone button) ([aa62c50](https://github.com/NYT87/magomap/commit/aa62c50e8775c41133963bd7556d0271aac063c1))
+* **web:** a peek card with the place's name over the phone map ([e854199](https://github.com/NYT87/magomap/commit/e854199bcf945b7e61e51508c7b0a4e1d9ef1a0b))
+* **web:** a tap on the peek card opens the place's details, as in Kakao Map ([23a14f6](https://github.com/NYT87/magomap/commit/23a14f6e15c3ccf3a44b802fd55f8d1affb78474))
+* **web:** arrows move and +/- zoom the Kakao map while it has focus ([66f7cf6](https://github.com/NYT87/magomap/commit/66f7cf6b68fec12dacebb327a29b273dba261404))
+* **web:** confirm a save from the map with Undo, and a phone Save button ([7fd7cae](https://github.com/NYT87/magomap/commit/7fd7caeb1dbd6f72427641b0c324d9f700cc167e))
+* **web:** look up nearby places and save one to a list ([c9d8660](https://github.com/NYT87/magomap/commit/c9d86601a84b92180478231589b38ba6412544e4)), closes [#63](https://github.com/NYT87/magomap/issues/63)
+* **web:** maps report a right-click or long-press ([cd92053](https://github.com/NYT87/magomap/commit/cd92053a7db61312d33dda1bea4f8588fb7255e1)), closes [#63](https://github.com/NYT87/magomap/issues/63)
+* **web:** on a phone a place opens as a card over the map ([8cf5de5](https://github.com/NYT87/magomap/commit/8cf5de52ea358600d9b20156e0558298f248afe4))
+* **web:** on a phone a place opens over the map, details on their own route ([227a7de](https://github.com/NYT87/magomap/commit/227a7dedc0eefe5315ae447bb0d246cb5ff6e569))
+* **web:** save a place from the map with a right-click or long-press ([5999b4b](https://github.com/NYT87/magomap/commit/5999b4bd580ef40ad1bd503a35375b000dc35722)), closes [#63](https://github.com/NYT87/magomap/issues/63)
+
+
+### Bug Fixes
+
+* **api:** a nearby lookup charges the search limit once per Kakao call ([2893117](https://github.com/NYT87/magomap/commit/2893117bcbe587383e30d0e145a94ff8d4bbbc48))
+* **homepage:** trim the app URL, and fail the build on spaces around it ([c989f30](https://github.com/NYT87/magomap/commit/c989f30dca1b8818aa10ed05fa30e0fb38d44bab))
+* **homepage:** trim the app URL, and fail the build on spaces around it ([656e45e](https://github.com/NYT87/magomap/commit/656e45ea121448ed01459067a653af96a55c5848))
+* **web:** a long-press lift anywhere frees her next tap, and a held finger can't drag the map ([079280b](https://github.com/NYT87/magomap/commit/079280b2408fcfc91b928407b208c9fc17f58f2b))
+* **web:** a new touch frees moves a missing long-press lift left blocked ([15421c0](https://github.com/NYT87/magomap/commit/15421c0c349af31a3c2b114fc77ccec80d363269))
+* **web:** push holds are per account, time out on their own, and end with the menu ([8c96f5f](https://github.com/NYT87/magomap/commit/8c96f5f814bd27345a7e1e0d5387d3c6474aa237))
+* **web:** the peek's X and Back return where she came from; focus follows the card ([75c1ba6](https://github.com/NYT87/magomap/commit/75c1ba62b32b185c8b6928c3f90d00e6e742cddd))
+* **web:** the save-from-map menu retries, steps back on Escape and keeps focus ([abb16d9](https://github.com/NYT87/magomap/commit/abb16d96ce2ed1ad5cf92532799e0ad5024e8552))
+* **web:** Undo takes a save back only while nothing else touched it ([f0ea729](https://github.com/NYT87/magomap/commit/f0ea729f1742dd247217b91da64407efb8768a01))
+
+
+### Performance Improvements
+
+* **web:** first JavaScript back under budget, with a build gate; cache hashed assets ([4fc1c80](https://github.com/NYT87/magomap/commit/4fc1c8023f4d957496762594a7e03b0f6195182e))
+* **web:** first JavaScript back under budget, with a build gate; cache hashed assets ([52ab3ca](https://github.com/NYT87/magomap/commit/52ab3ca18ab7c348229abd62250c8e91d1e12da9))
+
 ## [0.1.5](https://github.com/NYT87/magomap/compare/magomap-v0.1.4...magomap-v0.1.5) (2026-11-23)
 
 
