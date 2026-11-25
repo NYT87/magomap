@@ -15,6 +15,8 @@ export type KakaoCopyCode =
   | "busy"
   | "offline"
   | "partial"
+  /** The list being filled is gone from her Kakao Map, or isn't one of her own lists. */
+  | "list_missing"
   | "not_kakao_list";
 
 export class KakaoCopyError extends Error {
@@ -23,6 +25,8 @@ export class KakaoCopyError extends Error {
     /** `partial` only: the Kakao list that was made, and how many places it holds from this copy. */
     readonly folderId?: number,
     readonly added?: number,
+    /** `partial` only: the request that failed gave no count, so more may have been added. */
+    readonly atLeast = false,
   ) {
     super(`Copy to Kakao Map failed: ${code}`);
     this.name = "KakaoCopyError";
@@ -112,8 +116,11 @@ async function placesOf(sourceListId: string): Promise<{ places: SendPlace[]; le
   return { places, leftOut };
 }
 
-/** Whether the Kakao Map account signed in on the page is the one linked to his magomap account. */
-export async function checkKakaoAccount(): Promise<void> {
+/**
+ * Whether the Kakao Map account signed in on the page is the one linked to his magomap account.
+ * Returns her folder records as the extension handed them over.
+ */
+export async function checkKakaoAccount(): Promise<unknown[]> {
   const answer = await ask({ type: "magomap.account" }, ACCOUNT_WAIT_MS);
   if (answer.ok !== true || !Array.isArray(answer.folders))
     throw new KakaoCopyError(failureOf(answer));
@@ -130,9 +137,37 @@ export async function checkKakaoAccount(): Promise<void> {
     // Anything else (an expired magomap session, a server error): nothing was written.
     throw new KakaoCopyError("kakao_unavailable");
   }
+  return answer.folders;
 }
 
 let working = false;
+
+/**
+ * A create that got no clear answer (none in time, or Kakao Map unavailable): Kakao may have made
+ * the list anyway. Kept in this page's memory only, for the magomap account and the name it was
+ * for, with the lists she had before it.
+ */
+let unsureCreate: { account: string; name: string; before: Set<number> } | null = null;
+
+const liveFolders = (folders: unknown[]) =>
+  folders.filter(
+    (f): f is Record<string, unknown> =>
+      isRecord(f) && typeof f.folderid === "number" && f.status !== "D",
+  );
+
+/**
+ * The list an unsure create made, if one did: a single list by that exact name that she didn't
+ * have before. Two, or none, and it can't be told; then a new list is made as usual.
+ */
+function madeByUnsureCreate(account: string, name: string, folders: unknown[]) {
+  const unsure = unsureCreate;
+  unsureCreate = null;
+  if (!unsure || unsure.account !== account || unsure.name !== name) return undefined;
+  const appeared = liveFolders(folders).filter(
+    (f) => f.title === name && !unsure.before.has(f.folderid as number),
+  );
+  return appeared.length === 1 ? (appeared[0]?.folderid as number) : undefined;
+}
 
 /**
  * Copies a Kakao list to a new Kakao Map list named `name`. Resuming with the `folderId` a
@@ -147,15 +182,32 @@ export async function duplicateToKakao(input: {
   working = true;
   try {
     const { places, leftOut } = await placesOf(input.sourceListId);
-    await checkKakaoAccount();
-    let folderId = input.resume?.folderId;
+    const account = dbUserId(currentDb());
+    const name = input.name.trim();
+    const folders = await checkKakaoAccount();
+    // Read (and so forgotten) on every copy, a resumed one too: it applies only to the next try.
+    const appeared = madeByUnsureCreate(account, name, folders);
+    let folderId = input.resume?.folderId ?? appeared;
     if (folderId === undefined) {
-      const made = await ask(
-        { type: "magomap.createList", name: input.name.trim() },
-        WRITE_WAIT_MS,
-      );
+      const unsure = {
+        account,
+        name,
+        before: new Set(liveFolders(folders).map((f) => f.folderid as number)),
+      };
+      let made: Record<string, unknown>;
+      try {
+        made = await ask({ type: "magomap.createList", name }, WRITE_WAIT_MS);
+      } catch (error) {
+        // No answer in time: the list may have been made all the same.
+        if (error instanceof KakaoCopyError && error.code === "extension_missing") {
+          unsureCreate = unsure;
+        }
+        throw error;
+      }
       if (made.ok !== true || typeof made.folderId !== "number") {
-        throw new KakaoCopyError(failureOf(made));
+        const code = failureOf(made);
+        if (code === "kakao_unavailable") unsureCreate = unsure;
+        throw new KakaoCopyError(code);
       }
       folderId = made.folderId;
     }
@@ -167,14 +219,17 @@ export async function duplicateToKakao(input: {
       try {
         answer = await ask({ type: "magomap.addPlaces", folderId, places: page }, WRITE_WAIT_MS);
       } catch (error) {
+        // No answer: some of this page may be in Kakao Map already.
         if (error instanceof KakaoCopyError) {
-          throw new KakaoCopyError("partial", folderId, added);
+          throw new KakaoCopyError("partial", folderId, added, true);
         }
         throw error;
       }
       if (answer.ok !== true) {
-        const some = typeof answer.added === "number" ? answer.added : 0;
-        throw new KakaoCopyError("partial", folderId, added + some);
+        if (answer.error === "not_found") throw new KakaoCopyError("list_missing");
+        const counted = typeof answer.added === "number";
+        const some = counted ? (answer.added as number) : 0;
+        throw new KakaoCopyError("partial", folderId, added + some, !counted);
       }
       added += typeof answer.added === "number" ? answer.added : 0;
       skipped += typeof answer.skipped === "number" ? answer.skipped : 0;

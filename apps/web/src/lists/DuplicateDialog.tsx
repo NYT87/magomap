@@ -24,7 +24,7 @@ type KakaoState =
   | { kind: "idle" }
   | { kind: "copying" }
   | { kind: "done"; result: KakaoCopyResult }
-  | { kind: "failed"; code: string; folderId?: number; added?: number };
+  | { kind: "failed"; code: string; folderId?: number; added?: number; atLeast?: boolean };
 
 const errorKey = (code: string) =>
   ({
@@ -35,7 +35,16 @@ const errorKey = (code: string) =>
     busy: "lists.duplicate.errBusy",
     offline: "lists.duplicate.errOffline",
     partial: "lists.duplicate.errPartial",
+    list_missing: "lists.duplicate.errListMissing",
   })[code] ?? "lists.duplicate.errUnavailable";
+
+/** A stopped copy's message: the count when it's known, a lower bound, or none at all. */
+const failedKey = (state: Extract<KakaoState, { kind: "failed" }>) => {
+  if (state.code !== "partial" || !state.atLeast) return errorKey(state.code);
+  return (state.added ?? 0) > 0
+    ? "lists.duplicate.errPartialAtLeast"
+    : "lists.duplicate.errPartialUnknown";
+};
 
 /** Names a copy of `list` and makes it as a new own list in magomap, then opens it. */
 export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () => void }) {
@@ -55,6 +64,14 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
   // The Kakao list a stopped copy made: kept until a copy finishes, so every retry fills it.
   const resumeFolder = useRef<number | undefined>(undefined);
   const copying = kakao.kind === "copying";
+  // The copy button is disabled while copying, which drops focus. When the copy finishes, that
+  // button is gone and Close takes focus; when it stops, focus returns to it (now "Try again").
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const kakaoRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (kakao.kind === "done") closeRef.current?.focus();
+    if (kakao.kind === "failed") kakaoRef.current?.focus();
+  }, [kakao]);
 
   // Copying to Kakao Map is offered only where the extension answers.
   useEffect(() => {
@@ -88,6 +105,10 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
         if (error instanceof KakaoCopyError && error.folderId !== undefined) {
           resumeFolder.current = error.folderId;
         }
+        // The list it was filling is gone (or isn't hers): the next try makes a new one.
+        if (error instanceof KakaoCopyError && error.code === "list_missing") {
+          resumeFolder.current = undefined;
+        }
         setKakao(
           error instanceof KakaoCopyError
             ? {
@@ -95,6 +116,7 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
                 code: error.code,
                 ...(error.folderId === undefined ? {} : { folderId: error.folderId }),
                 ...(error.added === undefined ? {} : { added: error.added }),
+                ...(error.atLeast ? { atLeast: true } : {}),
               }
             : { kind: "failed", code: "kakao_unavailable" },
         );
@@ -127,7 +149,12 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
       onCancel={onClose}
       actions={
         kakao.kind === "done" ? (
-          <button type="button" className="mm-button mm-button--primary" onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className="mm-button mm-button--primary"
+            onClick={onClose}
+          >
             {t("lists.duplicate.close")}
           </button>
         ) : (
@@ -142,12 +169,13 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
             </button>
             {isKakao && extension === "ready" && (
               <button
+                ref={kakaoRef}
                 type="button"
                 className="mm-button mm-button--primary"
                 disabled={blank || busy || copying}
                 onClick={copyToKakao}
               >
-                {resumeFolder.current !== undefined
+                {kakao.kind === "failed" || resumeFolder.current !== undefined
                   ? t("lists.duplicate.tryAgain")
                   : t("lists.duplicate.copyKakao")}
               </button>
@@ -201,7 +229,7 @@ export function DuplicateDialog({ list, onClose }: { list: ListRow; onClose: () 
         )}
         {kakao.kind === "failed" && (
           <p role="alert" className="mm-error">
-            {t(errorKey(kakao.code), { count: kakao.added ?? 0 })}
+            {t(failedKey(kakao), { count: kakao.added ?? 0 })}
           </p>
         )}
         {failed && (

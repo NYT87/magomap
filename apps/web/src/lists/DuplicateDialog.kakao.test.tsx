@@ -16,6 +16,7 @@ vi.mock("./duplicateToKakao", async () => {
       readonly code: string,
       readonly folderId?: number,
       readonly added?: number,
+      readonly atLeast = false,
     ) {
       super(code);
     }
@@ -110,7 +111,10 @@ describe("DuplicateDialog: Copy to Kakao Map", () => {
     await open(kakao);
     await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/different Kakao Map account/i);
-    expect(screen.getByRole("button", { name: "Copy to Kakao Map" })).toBeEnabled();
+    const again = screen.getByRole("button", { name: "Try again" });
+    expect(again).toBeEnabled();
+    // The button was disabled while copying, which dropped focus: it gets it back.
+    await waitFor(() => expect(again).toHaveFocus());
   });
 
   it("after a partial failure shows how many were added, and Try again resumes the same list", async () => {
@@ -143,6 +147,55 @@ describe("DuplicateDialog: Copy to Kakao Map", () => {
     await user.click(screen.getByRole("button", { name: /Try again|Copy to Kakao Map/ }));
     await waitFor(() => expect(copy).toHaveBeenCalledTimes(3));
     expect(copy.mock.calls[2]?.[0]).toMatchObject({ resume: { folderId: 9 } });
+  });
+
+  it("moves focus to Close when a copy finishes, so the keyboard isn't left on a removed button", async () => {
+    detect.mockResolvedValue("ready");
+    copy.mockResolvedValue({ folderId: 9, added: 1, skipped: 0, leftOut: 0, synced: true });
+    const user = userEvent.setup();
+    await open(kakao);
+    await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
+    const close = await screen.findByRole("button", { name: "Close" });
+    await waitFor(() => expect(close).toHaveFocus());
+  });
+
+  it("says 'at least' when the count of a stopped copy is only a lower bound", async () => {
+    detect.mockResolvedValue("ready");
+    copy.mockRejectedValueOnce(new KakaoCopyError("partial", 9, 50, true));
+    const user = userEvent.setup();
+    await open(kakao);
+    await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/At least 50 places/);
+  });
+
+  it("doesn't name a count when none is known, and still resumes the same list", async () => {
+    detect.mockResolvedValue("ready");
+    copy.mockRejectedValueOnce(new KakaoCopyError("partial", 9, 0, true));
+    copy.mockResolvedValueOnce({ folderId: 9, added: 3, skipped: 0, leftOut: 0, synced: true });
+    const user = userEvent.setup();
+    await open(kakao);
+    await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/may already be/);
+    expect(alert).not.toHaveTextContent(/\d/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(copy).toHaveBeenCalledTimes(2));
+    expect(copy.mock.calls[1]?.[0]).toMatchObject({ resume: { folderId: 9 } });
+  });
+
+  it("when the list being filled is gone, says so and the next try makes a new list", async () => {
+    detect.mockResolvedValue("ready");
+    copy.mockRejectedValueOnce(new KakaoCopyError("partial", 9, 53));
+    copy.mockRejectedValueOnce(new KakaoCopyError("list_missing"));
+    copy.mockResolvedValueOnce({ folderId: 10, added: 60, skipped: 0, leftOut: 0, synced: true });
+    const user = userEvent.setup();
+    await open(kakao);
+    await user.click(await screen.findByRole("button", { name: "Copy to Kakao Map" }));
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/gone/);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(copy).toHaveBeenCalledTimes(3));
+    expect(copy.mock.calls[2]?.[0]).toEqual({ sourceListId: "l1", name: "제주 카페 (copy)" });
   });
 
   it("can't be cancelled while a copy is running", async () => {

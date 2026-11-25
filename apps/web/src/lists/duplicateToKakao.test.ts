@@ -248,6 +248,152 @@ describe("duplicateToKakao", () => {
     expect(done.folderId).toBe(777);
   });
 
+  /** Her lists as the account check hands them over. */
+  const folders = (...lists: { folderid: number; title?: string; status?: string }[]) => ({
+    ok: true,
+    folders: [{ folderid: 0 }, ...lists],
+  });
+
+  it("after a create that got no answer, a retry fills the same-named list that appeared, not a second one", async () => {
+    await seed();
+    behaves({
+      "magomap.account": () => folders({ folderid: 5, title: "사본" }),
+      "magomap.createList": () => undefined,
+    });
+    expect(
+      await duplicateToKakao({ sourceListId: "L", name: "사본" }).catch((e) => e),
+    ).toMatchObject({
+      code: "extension_missing",
+    });
+    ask.mockClear();
+    behaves({
+      "magomap.account": () =>
+        folders({ folderid: 5, title: "사본" }, { folderid: 888, title: "사본" }),
+    });
+    const done = await duplicateToKakao({ sourceListId: "L", name: " 사본 " });
+    expect(types()).not.toContain("magomap.createList");
+    expect(ask.mock.calls.find(([m]) => m.type === "magomap.addPlaces")?.[0].folderId).toBe(888);
+    expect(done.folderId).toBe(888);
+  });
+
+  it("takes the appeared list after Kakao Map answered the create as unavailable too", async () => {
+    await seed();
+    behaves({
+      "magomap.account": () => folders(),
+      "magomap.createList": () => ({ ok: false, error: "kakao_unavailable" }),
+    });
+    await duplicateToKakao({ sourceListId: "L", name: "x" }).catch(() => undefined);
+    ask.mockClear();
+    behaves({ "magomap.account": () => folders({ folderid: 888, title: "x" }) });
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    expect(types()).not.toContain("magomap.createList");
+  });
+
+  it("makes a new list when nothing new by that exact name appeared, or two did, or the name changed", async () => {
+    for (const [after, name] of [
+      [folders({ folderid: 5, title: "x" }), "x"],
+      [folders({ folderid: 5, title: "x" }, { folderid: 888, title: "x " }), "x"],
+      [
+        folders(
+          { folderid: 5, title: "x" },
+          { folderid: 888, title: "x" },
+          { folderid: 889, title: "x" },
+        ),
+        "x",
+      ],
+      [folders({ folderid: 5, title: "x" }, { folderid: 888, title: "x", status: "D" }), "x"],
+      [folders({ folderid: 5, title: "x" }, { folderid: 888, title: "x" }), "y"],
+    ] as const) {
+      await seed();
+      ask.mockReset();
+      behaves({
+        "magomap.account": () => folders({ folderid: 5, title: "x" }),
+        "magomap.createList": () => undefined,
+      });
+      await duplicateToKakao({ sourceListId: "L", name: "x" }).catch(() => undefined);
+      ask.mockClear();
+      behaves({ "magomap.account": () => after });
+      const done = await duplicateToKakao({ sourceListId: "L", name });
+      expect(types()).toContain("magomap.createList");
+      expect(done.folderId).toBe(777);
+    }
+  });
+
+  it("doesn't look for an appeared list after a create Kakao Map refused outright", async () => {
+    await seed();
+    behaves({
+      "magomap.account": () => folders(),
+      "magomap.createList": () => ({ ok: false, error: "kakao_signed_out" }),
+    });
+    await duplicateToKakao({ sourceListId: "L", name: "x" }).catch(() => undefined);
+    ask.mockClear();
+    behaves({ "magomap.account": () => folders({ folderid: 888, title: "x" }) });
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    expect(types()).toContain("magomap.createList");
+  });
+
+  it("looks for an appeared list only once: a later copy by the same name makes its own list", async () => {
+    await seed();
+    behaves({ "magomap.account": () => folders(), "magomap.createList": () => undefined });
+    await duplicateToKakao({ sourceListId: "L", name: "x" }).catch(() => undefined);
+    behaves({ "magomap.account": () => folders({ folderid: 888, title: "x" }) });
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    ask.mockClear();
+    behaves({ "magomap.account": () => folders({ folderid: 888, title: "x" }) });
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    expect(types()).toContain("magomap.createList");
+  });
+
+  it("forgets an unsure create once a resumed copy runs, so a later copy makes its own list", async () => {
+    await seed();
+    behaves({ "magomap.account": () => folders(), "magomap.createList": () => undefined });
+    await duplicateToKakao({ sourceListId: "L", name: "x" }).catch(() => undefined);
+    behaves({ "magomap.account": () => folders() });
+    await duplicateToKakao({ sourceListId: "L", name: "x", resume: { folderId: 42 } });
+    ask.mockClear();
+    behaves({ "magomap.account": () => folders({ folderid: 888, title: "x" }) });
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    expect(types()).toContain("magomap.createList");
+  });
+
+  it("stops with list_missing, and no list to resume, when the list isn't one of hers any more", async () => {
+    await seed();
+    behaves({ "magomap.addPlaces": () => ({ ok: false, error: "not_found", added: 0 }) });
+    const failure = await duplicateToKakao({
+      sourceListId: "L",
+      name: "x",
+      resume: { folderId: 777 },
+    }).catch((e) => e);
+    expect(failure).toMatchObject({ code: "list_missing", folderId: undefined });
+  });
+
+  it("says the count is only a lower bound when the failed page gave none", async () => {
+    await seed();
+    await db.places.bulkPut(Array.from({ length: 60 }, (_, i) => place(`m${i}`)));
+    await db.place_sources.bulkPut(
+      Array.from({ length: 60 }, (_, i) => source(`m${i}`, `${9000 + i}`)),
+    );
+    await db.list_items.bulkPut(Array.from({ length: 60 }, (_, i) => item("L", `m${i}`, 10 + i)));
+    for (const [second, expected] of [
+      [() => undefined, { added: 50, atLeast: true }],
+      [() => ({ ok: false, error: "kakao_unavailable" }), { added: 50, atLeast: true }],
+      [() => ({ ok: false, error: "kakao_unavailable", added: 2 }), { added: 52, atLeast: false }],
+    ] as const) {
+      let adds = 0;
+      ask.mockReset();
+      behaves({
+        "magomap.addPlaces": (m) => {
+          adds += 1;
+          return adds === 2
+            ? second()
+            : { ok: true, added: (m.places as unknown[]).length, skipped: 0 };
+        },
+      });
+      const failure = await duplicateToKakao({ sourceListId: "L", name: "x" }).catch((e) => e);
+      expect(failure).toMatchObject({ code: "partial", folderId: 777, ...expected });
+    }
+  });
+
   it("makes one list when called twice at once", async () => {
     await seed();
     behaves();
