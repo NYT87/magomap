@@ -1,5 +1,6 @@
 // Kakao Maps JS SDK. https://apis.map.kakao.com/web/documentation/
-import type { LatLng, MapAdapter, MapMarker } from "./MapAdapter";
+import { watchLongPress } from "./longPress";
+import type { ContextPress, LatLng, MapAdapter, MapMarker } from "./MapAdapter";
 import { markerHtml } from "./markerHtml";
 
 // A minimal typing of the parts of the SDK we use.
@@ -7,8 +8,18 @@ interface KakaoLatLng {
   getLat(): number;
   getLng(): number;
 }
+interface KakaoPoint {
+  x: number;
+  y: number;
+}
+/** What a map mouse event (such as "rightclick") passes: the point on the map and in the box. */
+interface KakaoMouseEvent {
+  latLng: KakaoLatLng;
+  point: KakaoPoint;
+}
 interface KakaoMaps {
   LatLng: new (lat: number, lng: number) => KakaoLatLng;
+  Point: new (x: number, y: number) => KakaoPoint;
   LatLngBounds: new () => { extend(p: KakaoLatLng): void };
   Map: new (
     el: HTMLElement,
@@ -21,6 +32,7 @@ interface KakaoMaps {
     getCenter(): KakaoLatLng;
     setBounds(b: unknown): void;
     relayout(): void;
+    getProjection(): { coordsFromContainerPoint(p: KakaoPoint): KakaoLatLng };
   };
   CustomOverlay: new (opts: {
     position: KakaoLatLng;
@@ -30,7 +42,10 @@ interface KakaoMaps {
     zIndex?: number;
     map?: unknown;
   }) => { setMap(m: unknown): void };
-  event: { addListener(target: unknown, type: string, cb: () => void): void };
+  event: {
+    addListener(target: unknown, type: "rightclick", cb: (e: KakaoMouseEvent) => void): void;
+    addListener(target: unknown, type: string, cb: () => void): void;
+  };
   MarkerClusterer: new (opts: {
     map: unknown;
     averageCenter?: boolean;
@@ -55,6 +70,9 @@ export function createKakaoAdapter(): MapAdapter {
   let me: { setMap(m: unknown): void } | null = null;
   let select: (id: string) => void = () => {};
   let viewChange: () => void = () => {};
+  let contextPress: (press: ContextPress) => void = () => {};
+  let stopLongPress: (() => void) | null = null;
+  const noBrowserMenu = (e: Event) => e.preventDefault();
   let host: HTMLElement | null = null;
   let myLoc: LatLng | null = null;
 
@@ -85,6 +103,23 @@ export function createKakaoAdapter(): MapAdapter {
       cluster = new k.MarkerClusterer({ map, averageCenter: true, minLevel: 7 });
       // "idle" fires once the map has stopped moving, not while dragging.
       k.event.addListener(map, "idle", () => viewChange());
+      // https://apis.map.kakao.com/web/documentation/#Map_rightclick
+      k.event.addListener(map, "rightclick", (e) => {
+        const box = el.getBoundingClientRect();
+        contextPress({
+          point: { lat: e.latLng.getLat(), lng: e.latLng.getLng() },
+          at: { x: box.left + e.point.x, y: box.top + e.point.y },
+        });
+      });
+      el.addEventListener("contextmenu", noBrowserMenu);
+      stopLongPress = watchLongPress(el, (client) => {
+        if (!map) return;
+        const box = el.getBoundingClientRect();
+        const p = map
+          .getProjection()
+          .coordsFromContainerPoint(new k.Point(client.x - box.left, client.y - box.top));
+        contextPress({ point: { lat: p.getLat(), lng: p.getLng() }, at: client });
+      });
     },
     setMarkers(markers) {
       if (!map || !cluster) return;
@@ -129,6 +164,9 @@ export function createKakaoAdapter(): MapAdapter {
     onViewChange(cb) {
       viewChange = cb;
     },
+    onContextPress(cb) {
+      contextPress = cb;
+    },
     showMyLocation(p, opts = {}) {
       myLoc = p;
       if (!map) return;
@@ -149,6 +187,10 @@ export function createKakaoAdapter(): MapAdapter {
       cluster?.clear();
       map = null;
       viewChange = () => {};
+      contextPress = () => {};
+      stopLongPress?.();
+      stopLongPress = null;
+      host?.removeEventListener("contextmenu", noBrowserMenu);
       // Kakao leaves its own elements behind: clear them so another map can mount here.
       host?.replaceChildren();
       host = null;

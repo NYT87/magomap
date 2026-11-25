@@ -1,6 +1,7 @@
 // Leaflet + OpenStreetMap: the fallback map. https://leafletjs.com/reference.html
 import type * as Leaflet from "leaflet";
-import type { LatLng, MapAdapter, MapMarker } from "./MapAdapter";
+import { watchLongPress } from "./longPress";
+import type { ContextPress, LatLng, MapAdapter, MapMarker } from "./MapAdapter";
 import { HIT, markerHtml } from "./markerHtml";
 
 let leafletModule: Promise<typeof import("leaflet")> | null = null;
@@ -19,6 +20,9 @@ export function createLeafletAdapter(): MapAdapter {
   let me: Leaflet.Marker | null = null;
   let select: (id: string) => void = () => {};
   let viewChange: () => void = () => {};
+  let contextPress: (press: ContextPress) => void = () => {};
+  let stopLongPress: (() => void) | null = null;
+  const noBrowserMenu = (e: Event) => e.preventDefault();
   let zoom = 10;
   let destroyed = false;
   let host: HTMLElement | null = null;
@@ -95,6 +99,15 @@ export function createLeafletAdapter(): MapAdapter {
       host = el;
       center = view.center;
       zoom = view.zoom;
+      el.addEventListener("contextmenu", noBrowserMenu);
+      stopLongPress = watchLongPress(el, (client) => {
+        if (!map || !L) return;
+        const box = el.getBoundingClientRect();
+        const p = map.containerPointToLatLng(
+          L.point(client.x - box.left - el.clientLeft, client.y - box.top - el.clientTop),
+        );
+        contextPress({ point: { lat: p.lat, lng: p.lng }, at: client });
+      });
       void (async () => {
         const mod = await preloadLeaflet();
         L = ((mod as { default?: typeof Leaflet }).default ?? mod) as typeof Leaflet;
@@ -114,6 +127,13 @@ export function createLeafletAdapter(): MapAdapter {
         if (desktop) L.control.zoom({ position: "bottomright" }).addTo(map);
         // "moveend" fires once a drag, zoom or fit has finished.
         map.on("moveend", () => viewChange());
+        // A right-click on the map (a touch's long-press is watched above, on its own).
+        map.on("contextmenu", (e) =>
+          contextPress({
+            point: { lat: e.latlng.lat, lng: e.latlng.lng },
+            at: { x: e.originalEvent.clientX, y: e.originalEvent.clientY },
+          }),
+        );
         tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           crossOrigin: true,
@@ -156,6 +176,9 @@ export function createLeafletAdapter(): MapAdapter {
     onViewChange(cb) {
       viewChange = cb;
     },
+    onContextPress(cb) {
+      contextPress = cb;
+    },
     showMyLocation(p, opts = {}) {
       myLoc = p;
       if (!map || !L) {
@@ -176,6 +199,10 @@ export function createLeafletAdapter(): MapAdapter {
       destroyed = true;
       clearTimeout(tileTimer);
       viewChange = () => {};
+      contextPress = () => {};
+      stopLongPress?.();
+      stopLongPress = null;
+      host?.removeEventListener("contextmenu", noBrowserMenu);
       map?.remove();
       map = null;
       // Leaflet leaves its classes and leftovers on the container: clear them for the next map.
