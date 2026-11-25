@@ -11,6 +11,7 @@ vi.mock("../api/client", async (orig) => {
 const { closeUserDb, defineUserDb, forgetAccountOnDevice, openUserDb } = await import("./db");
 const { addVisitNote, editVisitNote } = await import("./writes");
 const { startSyncTriggers, syncNow, syncState } = await import("./sync");
+const { holdPushes } = await import("./events");
 
 let n = 0;
 beforeEach(() => {
@@ -67,6 +68,34 @@ describe("sync", () => {
     expect(res.pushed).toBe(1);
     expect(await db.outbox.count()).toBe(0);
     expect(syncState().state).toBe("idle");
+  });
+
+  it("sends nothing while pushes are held (an undo may still take it back), then sends it", async () => {
+    const db = open();
+    await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+    const release = holdPushes();
+    const held = await syncNow();
+    expect(held.pushed).toBe(0);
+    expect(server.pushes).toHaveLength(0);
+    expect(await db.outbox.count()).toBe(1);
+    release();
+    // Releasing twice does no harm.
+    release();
+    expect((await syncNow()).pushed).toBe(1);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it("lets go of a forgotten hold after a while", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      open();
+      await addVisitNote("p_kakao_1", { visitedOn: null, body: "a" });
+      holdPushes();
+      vi.setSystemTime(Date.now() + 60_000);
+      expect((await syncNow()).pushed).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("replaces the local row with the server's on ignored_stale", async () => {

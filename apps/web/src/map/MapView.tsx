@@ -3,8 +3,10 @@ import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } f
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
+import type { SavedFromMap } from "../data/saveFromMap";
 import { switchesPlace } from "../layout/placeRoute";
 import { applyFocus } from "./applyFocus";
+import { centrePress } from "./centrePress";
 import { redrawKeepingFocus } from "./keepFocus";
 import { preloadLeaflet } from "./leafletAdapter";
 import { createAdapter, loadKakaoSdk } from "./loadMapAdapter";
@@ -14,6 +16,7 @@ import { useMapStage } from "./MapStage";
 import { useMapPrefs } from "./mapPrefs";
 import { PreviousLocationCard } from "./PreviousLocationCard";
 import { providerFor } from "./providerChoice";
+import { SaveConfirmation } from "./SaveConfirmation";
 import { swapAdapter } from "./swapAdapter";
 import type { useMapData } from "./useMapData";
 
@@ -45,6 +48,13 @@ export function MapView({ data }: { data: Data | null }) {
   // A right-click or long-press opens the menu that saves a place from the map.
   const [press, setPress] = useState<ContextPress | null>(null);
   const keyboardPressAt = useRef(0);
+  // The latest save from the menu, confirmed with Undo; a newer one replaces it.
+  const [saved, setSaved] = useState<{
+    saved: SavedFromMap;
+    release: () => void;
+    n: number;
+  } | null>(null);
+  const savedCount = useRef(0);
 
   // When the map will be Leaflet, start its download now, not after config and data.
   useEffect(() => {
@@ -119,12 +129,20 @@ export function MapView({ data }: { data: Data | null }) {
     if (!current || !el.current) return;
     e.preventDefault();
     keyboardPressAt.current = Date.now();
-    const box = el.current.getBoundingClientRect();
-    setPress({
-      point: current.getCenter(),
-      at: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
-    });
+    setPress(centrePress(current, el.current));
   };
+
+  // The phone's Save button opens it at the centre too, as the keyboard does.
+  useEffect(() => {
+    const saveHere = stage.saveHere;
+    saveHere.current = () => {
+      const current = stage.map.current;
+      if (current && el.current) setPress(centrePress(current, el.current));
+    };
+    return () => {
+      saveHere.current = null;
+    };
+  }, [stage.saveHere, stage.map]);
 
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -191,7 +209,24 @@ export function MapView({ data }: { data: Data | null }) {
           onClose={() => setPrevious(null)}
         />
       )}
-      {press && <MapContextMenu press={press} onClose={() => setPress(null)} />}
+      {press && (
+        <MapContextMenu
+          press={press}
+          onClose={() => setPress(null)}
+          onSaved={(s, release) => {
+            savedCount.current += 1;
+            setSaved({ saved: s, release, n: savedCount.current });
+          }}
+        />
+      )}
+      {saved && (
+        <SaveConfirmation
+          key={saved.n}
+          saved={saved.saved}
+          release={saved.release}
+          onDone={() => setSaved(null)}
+        />
+      )}
     </div>
   );
 }

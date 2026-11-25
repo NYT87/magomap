@@ -7,6 +7,8 @@ import { Router, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { ApiError, NetworkError } from "../api/client";
 import { openUserDb } from "../data/db";
+import { pushesHeld } from "../data/events";
+import type { SavedFromMap } from "../data/saveFromMap";
 import { addToList, createList, savePlaceFromSearch } from "../data/writes";
 import i18n from "../i18n";
 import { setViewportWidth } from "../test/setup";
@@ -17,7 +19,7 @@ vi.mock("./nearby", async (orig) => ({
   ...(await orig<typeof import("./nearby")>()),
   fetchNearby: (point: { lat: number; lng: number }) => fetchNearby(point),
 }));
-const savePlaceToList = vi.fn<(input: unknown) => Promise<string>>();
+const savePlaceToList = vi.fn<(input: unknown) => Promise<SavedFromMap>>();
 vi.mock("../data/saveFromMap", () => ({
   savePlaceToList: (input: unknown) => savePlaceToList(input),
 }));
@@ -52,6 +54,18 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+/** What a save reports (only the place id matters to the menu). */
+const record = (placeId: string, listName: string | null = null): SavedFromMap => ({
+  placeId,
+  listId: null,
+  listName,
+  changed: true,
+  rows: [],
+  outbox: [],
+  createdListId: null,
+  addedItemId: null,
+});
 
 const PRESS: ContextPress = { point: { lat: 33.46, lng: 126.31 }, at: { x: 300, y: 200 } };
 
@@ -177,7 +191,7 @@ describe("MapContextMenu", () => {
     expect(screen.getByRole("button", { name: /Bakeries/ })).not.toHaveTextContent("Already in");
   });
 
-  it("offers only her own lists, then No list and New list", async () => {
+  it("offers only her own lists, then Save without a list and New list", async () => {
     await createList({ name: "Cafés", color: null });
     await db.lists.put({
       id: "l_kakao_9",
@@ -197,7 +211,7 @@ describe("MapContextMenu", () => {
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
     expect(await screen.findByRole("button", { name: /Cafés/ })).toBeVisible();
-    expect(screen.getByRole("button", { name: "No list" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save without a list" })).toBeVisible();
     expect(screen.getByRole("button", { name: "New list" })).toBeVisible();
     expect(screen.queryByText("Kakao favourites")).toBeNull();
   });
@@ -205,7 +219,7 @@ describe("MapContextMenu", () => {
   it("saving calls savePlaceToList with the chosen list, then opens the place", async () => {
     const cafes = await createList({ name: "Cafés", color: null });
     fetchNearby.mockResolvedValue([near("1", 5)]);
-    savePlaceToList.mockResolvedValue("p_kakao_1");
+    savePlaceToList.mockResolvedValue(record("p_kakao_1"));
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Cafés/ }));
@@ -219,12 +233,12 @@ describe("MapContextMenu", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("No list passes listId null", async () => {
+  it("Save without a list passes listId null", async () => {
     fetchNearby.mockResolvedValue([near("1", 5)]);
-    savePlaceToList.mockResolvedValue("p_kakao_1");
+    savePlaceToList.mockResolvedValue(record("p_kakao_1"));
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "No list" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
     await waitFor(() =>
       expect(screen.getByTestId("location")).toHaveTextContent("/places/p_kakao_1"),
     );
@@ -233,7 +247,7 @@ describe("MapContextMenu", () => {
 
   it("New list passes the trimmed name", async () => {
     fetchNearby.mockResolvedValue([near("1", 5)]);
-    savePlaceToList.mockResolvedValue("p_kakao_1");
+    savePlaceToList.mockResolvedValue(record("p_kakao_1"));
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
     await userEvent.click(await screen.findByRole("button", { name: "New list" }));
@@ -267,7 +281,7 @@ describe("MapContextMenu", () => {
     savePlaceToList.mockRejectedValue(new Error("disk full"));
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "No list" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't save this place. Try again.",
     );
@@ -422,7 +436,7 @@ describe("MapContextMenu", () => {
   it("while saving, the lists stay focusable (aria-disabled) and a second tap saves nothing", async () => {
     const cafes = await createList({ name: "Cafés", color: null });
     fetchNearby.mockResolvedValue([near("1", 5)]);
-    const pending = deferred<string>();
+    const pending = deferred<SavedFromMap>();
     savePlaceToList.mockReturnValue(pending.promise);
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
@@ -431,7 +445,7 @@ describe("MapContextMenu", () => {
     expect(row).toHaveAttribute("aria-disabled", "true");
     expect(row).not.toBeDisabled();
     expect(row).toHaveFocus();
-    await userEvent.click(screen.getByRole("button", { name: "No list" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save without a list" }));
     await userEvent.click(screen.getByRole("button", { name: "Back to the places" }));
     await userEvent.click(row);
     expect(savePlaceToList).toHaveBeenCalledExactlyOnceWith({ result: result("1"), listId: cafes });
@@ -447,7 +461,7 @@ describe("MapContextMenu", () => {
     fetchNearby.mockResolvedValue([near("1", 5), near("2", 9)]);
     renderMenu();
     await userEvent.click(await screen.findByRole("button", { name: /Place 2/ }));
-    await screen.findByRole("button", { name: "No list" });
+    await screen.findByRole("button", { name: "Save without a list" });
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeVisible();
     await waitFor(() => expect(screen.getByRole("button", { name: /Place 2/ })).toHaveFocus());
@@ -457,7 +471,7 @@ describe("MapContextMenu", () => {
 
   it("a save still running when a newer press replaces the menu neither opens it nor closes the new one", async () => {
     fetchNearby.mockResolvedValueOnce([near("1", 5)]).mockResolvedValueOnce([near("2", 7)]);
-    const pending = deferred<string>();
+    const pending = deferred<SavedFromMap>();
     savePlaceToList.mockReturnValue(pending.promise);
     const onClose = vi.fn();
     const { hook } = memoryLocation({ path: "/" });
@@ -468,7 +482,7 @@ describe("MapContextMenu", () => {
       </Router>,
     );
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "No list" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
     // The same menu, given a newer press.
     view.rerender(
       <Router hook={hook}>
@@ -477,9 +491,10 @@ describe("MapContextMenu", () => {
       </Router>,
     );
     expect(await screen.findByRole("button", { name: /Place 2/ })).toBeVisible();
-    await act(async () => pending.resolve("p_kakao_1"));
+    await act(async () => pending.resolve(record("p_kakao_1")));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    expect(pushesHeld()).toBe(false);
     expect(screen.getByRole("button", { name: /Place 2/ })).toBeVisible();
     // Nor does a late failure show on the newer menu.
     expect(screen.queryByRole("alert")).toBeNull();
@@ -487,7 +502,7 @@ describe("MapContextMenu", () => {
 
   it("a save failing after a newer press says nothing on the newer menu", async () => {
     fetchNearby.mockResolvedValueOnce([near("1", 5)]).mockResolvedValueOnce([near("2", 7)]);
-    const pending = deferred<string>();
+    const pending = deferred<SavedFromMap>();
     savePlaceToList.mockReturnValue(pending.promise);
     const { hook } = memoryLocation({ path: "/" });
     const view = render(
@@ -496,7 +511,7 @@ describe("MapContextMenu", () => {
       </Router>,
     );
     await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
-    await userEvent.click(await screen.findByRole("button", { name: "No list" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
     view.rerender(
       <Router hook={hook}>
         <MapContextMenu press={{ ...PRESS, point: { lat: 1, lng: 2 } }} onClose={() => {}} />
@@ -505,7 +520,51 @@ describe("MapContextMenu", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Place 2/ }));
     await act(async () => pending.reject(new Error("disk full")));
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByRole("button", { name: "No list" })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: "Save without a list" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+  });
+
+  it("sets Save without a list apart from her lists", async () => {
+    await createList({ name: "Cafés", color: null });
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    renderMenu();
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    const mine = await screen.findByRole("list", { name: "Save to…" });
+    expect(within(mine).getByRole("button", { name: /Cafés/ })).toBeVisible();
+    expect(within(mine).queryByRole("button", { name: "Save without a list" })).toBeNull();
+    expect(within(mine).queryByRole("button", { name: "New list" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save without a list" })).toBeVisible();
+  });
+
+  it("hands what it saved on, holding the sending until the confirmation lets go", async () => {
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    const saved = record("p_kakao_1", "Cafés");
+    savePlaceToList.mockResolvedValue(saved);
+    const onSaved = vi.fn<(s: SavedFromMap, release: () => void) => void>();
+    const { hook } = memoryLocation({ path: "/" });
+    render(
+      <Router hook={hook}>
+        <MapContextMenu press={PRESS} onClose={() => {}} onSaved={onSaved} />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(onSaved.mock.calls[0]?.[0]).toBe(saved);
+    expect(pushesHeld()).toBe(true);
+    onSaved.mock.calls[0]?.[1]();
+    expect(pushesHeld()).toBe(false);
+  });
+
+  it("lets go of the hold when the save fails", async () => {
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    savePlaceToList.mockRejectedValue(new Error("disk full"));
+    renderMenu();
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save without a list" }));
+    await screen.findByRole("alert");
+    expect(pushesHeld()).toBe(false);
   });
 
   it("Escape closes it and returns focus", async () => {
@@ -564,7 +623,7 @@ describe("MapContextMenu", () => {
       fetchNearby.mockResolvedValue([near("1", 5)]);
       renderMenu();
       await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
-      await screen.findByRole("button", { name: "No list" });
+      await screen.findByRole("button", { name: "Save without a list" });
       await userEvent.keyboard("{Escape}");
       expect(await screen.findByRole("button", { name: /Place 1/ })).toBeVisible();
       await userEvent.keyboard("{Escape}");

@@ -1,4 +1,4 @@
-import { Layers, List as ListIcon, LocateFixed, Map as MapIcon } from "lucide-react";
+import { Layers, List as ListIcon, LocateFixed, Map as MapIcon, MapPinPlus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
@@ -44,6 +44,7 @@ export function MapScreen() {
   const data = useMapData(selectedId);
   const [asList, setAsList] = useState(false);
   const { locate, denied } = useLocate();
+  const { saveHere } = useMapStage();
   const phoneRoot = layout === "phone" && location === "/";
 
   return (
@@ -64,6 +65,11 @@ export function MapScreen() {
               <button type="button" className="mm-fab" onClick={locate}>
                 <LocateFixed aria-hidden size={22} strokeWidth={1.75} />
                 <span className="mm-visually-hidden">{t("map.myLocation")}</span>
+              </button>
+              {/* Without a long-press: the save menu at the map's centre. */}
+              <button type="button" className="mm-fab" onClick={() => saveHere.current?.()}>
+                <MapPinPlus aria-hidden size={22} strokeWidth={1.75} />
+                <span className="mm-visually-hidden">{t("map.save.title")}</span>
               </button>
               <button
                 type="button"

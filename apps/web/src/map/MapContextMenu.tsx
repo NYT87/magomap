@@ -6,9 +6,10 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { Sheet } from "../components/Sheet";
+import { holdPushes } from "../data/events";
 import { type PlaceState, placeStatesOf } from "../data/placeState";
 import { useLists } from "../data/queries";
-import { savePlaceToList } from "../data/saveFromMap";
+import { type SavedFromMap, savePlaceToList } from "../data/saveFromMap";
 import { switchesPlace } from "../layout/placeRoute";
 import { useLayout } from "../layout/useLayout";
 import type { ContextPress } from "./MapAdapter";
@@ -135,10 +136,20 @@ function Popover({
 
 /**
  * After a right-click or long-press on the map: the Kakao places nearest the spot, then which of
- * her own lists to save the chosen one to (or none, or a new one). Saving opens the place.
- * A sheet on a phone, a popover on a desktop. A newer press replaces what it shows.
+ * her own lists to save the chosen one to (or none, or a new one). Saving opens the place and
+ * hands what it did to `onSaved` (for its confirmation and Undo), with sending held back until
+ * `release` is called. A sheet on a phone, a popover on a desktop. A newer press replaces what
+ * it shows.
  */
-export function MapContextMenu({ press, onClose }: { press: ContextPress; onClose: () => void }) {
+export function MapContextMenu({
+  press,
+  onClose,
+  onSaved,
+}: {
+  press: ContextPress;
+  onClose: () => void;
+  onSaved?: (saved: SavedFromMap, release: () => void) => void;
+}) {
   const { t } = useTranslation();
   const layout = useLayout();
   const [location, navigate] = useLocation();
@@ -235,16 +246,23 @@ export function MapContextMenu({ press, onClose }: { press: ContextPress; onClos
     savingNow.current = true;
     setSaving(true);
     setFailed(false);
+    // Nothing of it is sent while its Undo is offered.
+    const release = holdPushes();
     try {
-      const id = await savePlaceToList(
+      const saved = await savePlaceToList(
         "newListName" in target
           ? { result: chosen.result, listId: null, newListName: target.newListName }
           : { result: chosen.result, listId: target.listId },
       );
-      if (token !== pressToken.current) return;
-      navigate(`/places/${encodeURIComponent(id)}`, { replace: switchesPlace(location) });
+      if (token !== pressToken.current) return release();
+      navigate(`/places/${encodeURIComponent(saved.placeId)}`, {
+        replace: switchesPlace(location),
+      });
+      if (onSaved) onSaved(saved, release);
+      else release();
       onClose();
     } catch {
+      release();
       if (token !== pressToken.current) return;
       savingNow.current = false;
       setFailed(true);
@@ -375,18 +393,6 @@ export function MapContextMenu({ press, onClose }: { press: ContextPress; onClos
           <button
             type="button"
             className="mm-map-menu__row"
-            aria-disabled={busy}
-            onClick={() => void save({ listId: null })}
-          >
-            <span className="mm-map-menu__text">
-              <span className="mm-map-menu__name">{t("map.save.noList")}</span>
-            </span>
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            className="mm-map-menu__row"
             aria-expanded={naming}
             aria-disabled={busy}
             onClick={() => {
@@ -428,6 +434,21 @@ export function MapContextMenu({ press, onClose }: { press: ContextPress; onClos
           </button>
         </form>
       )}
+      {/* Apart from her lists: saving with no list at all. */}
+      <ul className="mm-map-menu__list mm-map-menu__list--apart">
+        <li>
+          <button
+            type="button"
+            className="mm-map-menu__row"
+            aria-disabled={busy}
+            onClick={() => void save({ listId: null })}
+          >
+            <span className="mm-map-menu__text">
+              <span className="mm-map-menu__name">{t("map.save.noList")}</span>
+            </span>
+          </button>
+        </li>
+      </ul>
       {/* Seen, not read: the status region above says it. */}
       {saving && !naming && (
         <p className="mm-muted" aria-hidden>

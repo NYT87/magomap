@@ -1092,6 +1092,12 @@ a {
   overflow-wrap: break-word;
 }
 
+/* Saving with no list: its own group, set apart from her lists by a line above. */
+.mm-map-menu__list--apart {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-xs);
+}
+
 .mm-map-menu__retry {
   align-self: flex-start;
 }
@@ -1100,6 +1106,34 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+}
+
+/* After a save from the map: a short confirmation with Undo, at the top, over everything. */
+.mm-save-confirmation {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + var(--space-md));
+  left: 50%;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--space-md));
+  min-height: 56px;
+  padding: var(--space-xs) var(--space-md);
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.mm-save-confirmation__text {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-md);
+  overflow-wrap: break-word;
 }
 
 /* ---------- Search ---------- */

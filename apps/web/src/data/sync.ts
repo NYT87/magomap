@@ -11,7 +11,7 @@ import { userPlaceRowId } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
 import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
 import { dbUserId, type MagomapDexie, type OutboxEntry, openDbOrNull, ROW_TABLES } from "./db";
-import { onWrite } from "./events";
+import { onWrite, pushesHeld } from "./events";
 
 export type SyncStateName =
   | "idle"
@@ -359,7 +359,8 @@ async function run(
   try {
     // A removal (another tab) during the push leaves nothing for the pull to refill.
     const removal = await removalMark(db);
-    const entries = await db.outbox.orderBy("seq").toArray();
+    // While an Undo is offered, nothing is sent; it goes out once the hold is let go.
+    const entries = pushesHeld() ? [] : await db.outbox.orderBy("seq").toArray();
     for (const batch of batches(entries)) await pushBatch(db, batch, t);
     await db.transaction("rw", db.meta, async () => {
       if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");

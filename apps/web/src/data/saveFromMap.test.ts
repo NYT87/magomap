@@ -2,8 +2,8 @@ import type { SearchResult } from "@magomap/domain";
 import { placeRowId, userPlaceRowId } from "@magomap/domain/ids";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openUserDb } from "./db";
-import { savePlaceToList } from "./saveFromMap";
-import { addToList, createList, savePlaceFromSearch } from "./writes";
+import { savePlaceToList, undoSave } from "./saveFromMap";
+import { addToList, createList, removeFromList, savePlaceFromSearch } from "./writes";
 
 const result = (extra: Partial<SearchResult> = {}): SearchResult => ({
   provider: "kakao",
@@ -34,7 +34,11 @@ describe("savePlaceToList", () => {
   it("saves a new place with its source, and puts it in the chosen list", async () => {
     const db = openUserDb(user());
     const listId = await createList({ name: "카페", color: null });
-    await expect(savePlaceToList({ result: result(), listId })).resolves.toBe(ID);
+    await expect(savePlaceToList({ result: result(), listId })).resolves.toMatchObject({
+      placeId: ID,
+      listId,
+      listName: "카페",
+    });
     expect((await db.places.get(ID))?.title).toBe("바다정원 카페");
     expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
     expect(await db.place_sources.where("placeId").equals(ID).count()).toBe(1);
@@ -81,7 +85,11 @@ describe("savePlaceToList", () => {
     const db = openUserDb(user());
     await savePlaceFromSearch(result());
     const before = await db.outbox.count();
-    await expect(savePlaceToList({ result: result(), listId: null })).resolves.toBe(ID);
+    await expect(savePlaceToList({ result: result(), listId: null })).resolves.toMatchObject({
+      placeId: ID,
+      listId: null,
+      listName: null,
+    });
     expect(await db.outbox.count()).toBe(before);
   });
 
@@ -135,5 +143,88 @@ describe("savePlaceToList", () => {
     expect(await db.places.count()).toBe(0);
     expect(await db.list_items.count()).toBe(0);
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+/** Every row an undo could touch, and the outbox, as plain data. */
+async function snapshot(db: ReturnType<typeof openUserDb>) {
+  const tables = ["places", "user_places", "place_sources", "lists", "user_lists", "list_items"];
+  const out: Record<string, unknown[]> = {};
+  for (const t of tables) out[t] = await db.table(t).toArray();
+  out.outbox = await db.outbox.toArray();
+  return out;
+}
+
+describe("undoSave", () => {
+  it("takes back a new place in a new list: no place, no list, nothing to send", async () => {
+    const db = openUserDb(user());
+    const before = await snapshot(db);
+    const saved = await savePlaceToList({ result: result(), listId: null, newListName: "Cafés" });
+    expect(saved.listName).toBe("Cafés");
+    expect(saved.listId).not.toBeNull();
+    expect(saved.changed).toBe(true);
+    await undoSave(saved);
+    expect(await snapshot(db)).toEqual(before);
+  });
+
+  it("takes a saved place back out of the list it was added to, and only that", async () => {
+    const db = openUserDb(user());
+    const listId = await createList({ name: "카페", color: null });
+    await savePlaceFromSearch(result());
+    const before = await snapshot(db);
+    const saved = await savePlaceToList({ result: result(), listId });
+    expect(await liveItems(db)).toHaveLength(1);
+    await undoSave(saved);
+    expect(await snapshot(db)).toEqual(before);
+    // Still saved, as it was.
+    expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
+  });
+
+  it("takes back a membership it restored, back to removed", async () => {
+    const db = openUserDb(user());
+    const listId = await createList({ name: "카페", color: null });
+    await savePlaceFromSearch(result());
+    await removeFromList(await addToList(listId, ID));
+    const before = await snapshot(db);
+    await undoSave(await savePlaceToList({ result: result(), listId }));
+    expect(await snapshot(db)).toEqual(before);
+  });
+
+  it("has nothing to undo when the place was already in the list", async () => {
+    const db = openUserDb(user());
+    const listId = await createList({ name: "카페", color: null });
+    await savePlaceFromSearch(result());
+    await addToList(listId, ID);
+    const before = await snapshot(db);
+    const saved = await savePlaceToList({ result: result(), listId });
+    expect(saved.changed).toBe(false);
+    await undoSave(saved);
+    expect(await snapshot(db)).toEqual(before);
+  });
+
+  it("leaves other changes alone", async () => {
+    const db = openUserDb(user());
+    const saved = await savePlaceToList({ result: result(), listId: null, newListName: "Cafés" });
+    const other = await createList({ name: "Later", color: null });
+    await undoSave(saved);
+    expect((await db.lists.get(other))?.name).toBe("Later");
+    expect((await db.outbox.toArray()).map((e) => e.id)).toEqual([other]);
+  });
+
+  it("when the save already went out, takes the place out of the list and the list away", async () => {
+    const db = openUserDb(user());
+    const saved = await savePlaceToList({ result: result(), listId: null, newListName: "Cafés" });
+    // As if pushed.
+    await db.outbox.clear();
+    await undoSave(saved);
+    expect(await liveItems(db)).toEqual([]);
+    expect((await db.lists.get(saved.listId as string))?.deletedAt).not.toBeNull();
+    const sent = (await db.outbox.toArray()).map((e) => [e.table, e.op]);
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        ["list_items", "delete"],
+        ["lists", "delete"],
+      ]),
+    );
   });
 });

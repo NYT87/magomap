@@ -94,6 +94,7 @@ test("a press on the map saves a nearby place to a new list and opens it", async
 
   await expect(page).toHaveURL(new RegExp(`/places/p_kakao_${id}$`));
   await expect(page.getByRole("dialog", { name: MENU })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: `Saved to ${listName}` })).toBeVisible();
   await page.goto(`/places/p_kakao_${id}/details`);
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(page.locator(".mm-membership").filter({ hasText: listName })).toBeVisible();
@@ -128,13 +129,17 @@ test("a normal tap or click on the map opens nothing", async ({ page, context },
   expect(asked).toBe(0);
 });
 
-test("with nothing nearby it says so, saves nothing, and Escape closes it", async ({
+test("with nothing nearby it says so, Try again asks again, and Escape closes it", async ({
   page,
   context,
 }, info) => {
   await openMap(page, context, { results: [] });
   await press(page, info.project.name);
   const menu = page.getByRole("dialog", { name: MENU });
+  await expect(menu.getByText("No Kakao place found here.")).toBeVisible();
+  const again = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/search/nearby");
+  await menu.getByRole("button", { name: "Try again" }).click();
+  await again;
   await expect(menu.getByText("No Kakao place found here.")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
@@ -169,7 +174,7 @@ test("a long-press on the place card isn't a press on the map", async ({ page, c
   await press(page, "phone");
   const menu = page.getByRole("dialog", { name: MENU });
   await menu.getByRole("button", { name: new RegExp(title) }).click();
-  await menu.getByRole("button", { name: "No list" }).click();
+  await menu.getByRole("button", { name: "Save without a list" }).click();
   await expect(page).toHaveURL(new RegExp(`/places/p_kakao_${id}$`));
   const card = page.locator(".mm-place-peek");
   await expect(card).toBeVisible();
@@ -184,4 +189,34 @@ test("a long-press on the place card isn't a press on the map", async ({ page, c
   await page.waitForTimeout(500);
   await expect(page.getByRole("dialog", { name: MENU })).toHaveCount(0);
   expect(asked).toBe(0);
+});
+
+test("on a phone, the Save button opens the menu at the map's centre, and Undo takes it back", async ({
+  page,
+  context,
+}, info) => {
+  // Desktop has right-click and the keyboard instead.
+  if (info.project.name !== "phone") {
+    await openMap(page, context, { results: [] });
+    await expect(page.getByRole("button", { name: MENU })).toHaveCount(0);
+    return;
+  }
+  const id = freshId();
+  const title = `Button Cafe ${id}`;
+  await openMap(page, context, nearbyAnswer(id, title));
+  const asked = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/search/nearby");
+  await page.getByRole("button", { name: MENU }).click();
+  const url = new URL((await asked).url());
+  expect(Number(url.searchParams.get("lat"))).toBeCloseTo(33.4, 0);
+  expect(Number(url.searchParams.get("lng"))).toBeCloseTo(126.55, 0);
+  const menu = page.getByRole("dialog", { name: MENU });
+  await menu.getByRole("button", { name: new RegExp(title) }).click();
+  await menu.getByRole("button", { name: "Save without a list" }).click();
+  await expect(page).toHaveURL(new RegExp(`/places/p_kakao_${id}$`));
+  await expect(page.getByRole("status").filter({ hasText: /^Saved$/ })).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  // The place wasn't saved before: it is gone again, and she is back on the map.
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("button", { name: MENU }).click();
+  await expect(menu.getByRole("button", { name: new RegExp(title) })).not.toContainText("Saved");
 });

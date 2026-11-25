@@ -117,13 +117,17 @@
       "retry": "Try again",
       "saved": "Saved",
       "chooseList": "Save to…",
-      "noList": "No list",
+      "noList": "Save without a list",
       "newList": "New list",
       "newListName": "List name",
       "alreadyIn": "Already in this list",
       "confirm": "Save",
       "saving": "Saving…",
       "saveFailed": "Couldn't save this place. Try again.",
+      "savedTo": "Saved to {{list}}",
+      "savedNoList": "Saved",
+      "undo": "Undo",
+      "undoFailed": "Couldn't undo it.",
       "back": "Back to the places",
       "close": "Close"
     }
