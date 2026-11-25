@@ -1,12 +1,10 @@
-// The imports in flight, kept outside any screen: leaving Account and coming back must not
-// make a running import look stopped, and the screen stays awake until the import really ends.
-// One job per account and kind, so signing in as someone else never shows (or blocks on)
-// another's import. Two kinds share this: the kakao-list import and the Kakao Map sync.
+// The Kakao Map syncs in flight, kept outside any screen: leaving Account and coming back must
+// not make a running sync look stopped, and the screen stays awake until the sync really ends.
+// One job per account, so signing in as someone else never shows (or blocks on) another's sync.
 import type { ImportSummary } from "@magomap/domain";
 import { notifyMeChanged } from "../auth/useMe";
 import { dbUserId, openDbOrNull } from "../data/db";
 import { forgetKakaoMapRead, KakaoMapSyncError, runKakaoMapSync } from "./kakaoMap";
-import { ImportError, runImport } from "./runImport";
 import { holdScreenOn } from "./wakeLock";
 
 /** What every job shows while it runs. */
@@ -15,15 +13,6 @@ interface JobBase {
   account: string;
   current: number;
   total: number;
-}
-
-export interface ImportJob extends JobBase {
-  /** Known once the server has started or continued the run. */
-  runId: string | null;
-  /** The run was started again from the beginning because kakao-list synced since. */
-  freshStart: boolean;
-  /** Settles when the import ends; `freshStart` is the final value. */
-  promise: Promise<{ summary: ImportSummary; freshStart: boolean }>;
 }
 
 export interface KakaoMapJob extends JobBase {
@@ -37,7 +26,7 @@ const accountNow = () => {
 };
 
 /**
- * A store of running jobs of one kind, by account, with the shared run: the screen held on from
+ * A store of running jobs, by account, with the shared run: the screen held on from
  * start to end, the job published as it goes and dropped when it ends, and "who is signed in"
  * asked again afterwards.
  */
@@ -89,9 +78,9 @@ function jobStore<J extends JobBase & { promise: Promise<unknown> }>() {
         } finally {
           release();
           publish(account, null);
-          // An import may have filled an empty nickname (even one that stopped, or was refused
-          // as up to date): show it now. Not when signed out: asking again would leave whatever
-          // screen is open for the sign-in page, instead of the import saying so.
+          // Show what the sync may have changed about the account now. Not when signed out:
+          // asking again would leave whatever screen is open for the sign-in page, instead of
+          // the sync saying so.
           if (!wasSignedOut) notifyMeChanged();
         }
       });
@@ -102,44 +91,13 @@ function jobStore<J extends JobBase & { promise: Promise<unknown> }>() {
   };
 }
 
-const imports = jobStore<ImportJob>();
 const syncs = jobStore<KakaoMapJob>();
-
-export const subscribeImportJob = imports.subscribe;
-
-/** The signed-in account's import, if one is running. */
-export const currentImportJob = imports.current;
-
-/** Starts an import (or continues a stopped run) for the signed-in account, or returns the one running. */
-export function startImportJob(resumeRunId?: string): ImportJob {
-  return imports.start(
-    { runId: null, current: 0, total: 0, freshStart: false },
-    async (account, patch) => {
-      let freshStart = false;
-      const summary = await runImport(
-        ({ listIndex, listCount }) => patch({ current: listIndex + 1, total: listCount }),
-        {
-          account,
-          ...(resumeRunId ? { resumeRunId } : {}),
-          onRun: (runId) => patch({ runId }),
-          onFreshStart: () => {
-            freshStart = true;
-            patch({ freshStart });
-          },
-        },
-      );
-      return { summary, freshStart };
-    },
-    (error) => error instanceof ImportError && error.code === "signed_out",
-  );
-}
 
 /**
  * Forgets every job without waiting for them, and a Kakao Map read kept for a confirmation
  * (signing out; tests, which never let one finish).
  */
 export const forgetImportJob = () => {
-  imports.forget();
   syncs.forget();
   forgetKakaoMapRead();
 };

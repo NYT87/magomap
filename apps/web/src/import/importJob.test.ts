@@ -1,19 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const runImport = vi.fn();
-vi.mock("./runImport", async (original) => ({
-  ...(await original<typeof import("./runImport")>()),
-  runImport: (...args: unknown[]) => runImport(...args),
+const runKakaoMapSync = vi.fn();
+vi.mock("./kakaoMap", async (original) => ({
+  ...(await original<typeof import("./kakaoMap")>()),
+  runKakaoMapSync: (...args: unknown[]) => runKakaoMapSync(...args),
 }));
 const release = vi.fn();
 const holdScreenOn = vi.fn(() => release);
 vi.mock("./wakeLock", () => ({ holdScreenOn: () => holdScreenOn() }));
 const { openUserDb } = await import("../data/db");
 const { ME_CHANGED } = await import("../auth/useMe");
-const { ImportError } = await import("./runImport");
-const { currentImportJob, forgetImportJob, startImportJob, subscribeImportJob } = await import(
-  "./importJob"
-);
+const { KakaoMapSyncError } = await import("./kakaoMap");
+const { currentKakaoMapJob, forgetImportJob, startKakaoMapJob, subscribeKakaoMapJob } =
+  await import("./importJob");
 
 beforeEach(() => {
   openUserDb("A");
@@ -21,95 +20,92 @@ beforeEach(() => {
 
 afterEach(() => {
   forgetImportJob();
-  runImport.mockReset();
+  runKakaoMapSync.mockReset();
   holdScreenOn.mockClear();
   release.mockClear();
 });
 
-describe("importJob", () => {
+describe("the Kakao Map sync job", () => {
   it("holds the screen on from start to end, whoever is looking", async () => {
     let finish: (v: unknown) => void = () => {};
-    runImport.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    const job = startImportJob();
-    expect(currentImportJob()).toBe(job);
+    runKakaoMapSync.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const job = startKakaoMapJob();
+    expect(currentKakaoMapJob()).toBe(job);
     await Promise.resolve();
     expect(holdScreenOn).toHaveBeenCalledTimes(1);
     expect(release).not.toHaveBeenCalled();
     finish({ placesAdded: 1 });
-    await expect(job.promise).resolves.toMatchObject({ summary: { placesAdded: 1 } });
+    await expect(job.promise).resolves.toMatchObject({ placesAdded: 1 });
     expect(release).toHaveBeenCalledTimes(1);
-    expect(currentImportJob()).toBeNull();
+    expect(currentKakaoMapJob()).toBeNull();
   });
 
   it("keeps one job: a second start returns the running one", () => {
-    runImport.mockReturnValue(new Promise(() => {}));
-    const first = startImportJob();
-    expect(startImportJob("r9")).toBe(first);
+    runKakaoMapSync.mockReturnValue(new Promise(() => {}));
+    const first = startKakaoMapJob();
+    expect(startKakaoMapJob("1234")).toBe(first);
     expect(holdScreenOn).toHaveBeenCalledTimes(1);
   });
 
-  it("publishes the run id and progress as they become known", async () => {
-    runImport.mockImplementation(
-      async (
-        onProgress: (p: { listIndex: number; listCount: number }) => void,
-        opts: { onRun: (id: string) => void },
-      ) => {
-        opts.onRun("r1");
+  it("publishes its progress as it goes, and acts for the account it started in", async () => {
+    runKakaoMapSync.mockImplementation(
+      async (onProgress: (p: { listIndex: number; listCount: number }) => void) => {
         onProgress({ listIndex: 1, listCount: 3 });
         return {};
       },
     );
     const seen = vi.fn();
-    const stop = subscribeImportJob(() => seen(currentImportJob()));
-    await startImportJob().promise;
+    const stop = subscribeKakaoMapJob(() => seen(currentKakaoMapJob()));
+    await startKakaoMapJob().promise;
     stop();
     expect(seen.mock.calls.map((c) => c[0])).toContainEqual(
-      expect.objectContaining({ runId: "r1", current: 2, total: 3 }),
+      expect.objectContaining({ account: "A", current: 2, total: 3 }),
     );
+    expect(runKakaoMapSync).toHaveBeenCalledWith(expect.any(Function), { account: "A" });
   });
 
-  it("lets go of the screen when the import fails", async () => {
-    runImport.mockRejectedValue(new Error("boom"));
-    await expect(startImportJob().promise).rejects.toThrow("boom");
+  it("lets go of the screen when the sync fails", async () => {
+    runKakaoMapSync.mockRejectedValue(new Error("boom"));
+    await expect(startKakaoMapJob().promise).rejects.toThrow("boom");
     expect(release).toHaveBeenCalledTimes(1);
-    expect(currentImportJob()).toBeNull();
+    expect(currentKakaoMapJob()).toBeNull();
   });
 
   it("keeps each account's job apart, so another account can start its own", async () => {
     let finishA: (v: unknown) => void = () => {};
-    runImport.mockReturnValueOnce(new Promise((resolve) => (finishA = resolve)));
-    const a = startImportJob();
+    runKakaoMapSync.mockReturnValueOnce(new Promise((resolve) => (finishA = resolve)));
+    const a = startKakaoMapJob();
     openUserDb("B");
-    expect(currentImportJob()).toBeNull();
-    runImport.mockReturnValueOnce(new Promise(() => {}));
-    const b = startImportJob();
+    expect(currentKakaoMapJob()).toBeNull();
+    runKakaoMapSync.mockReturnValueOnce(new Promise(() => {}));
+    const b = startKakaoMapJob();
     expect(b).not.toBe(a);
-    expect(currentImportJob()).toBe(b);
+    expect(currentKakaoMapJob()).toBe(b);
     await Promise.resolve();
     expect(holdScreenOn).toHaveBeenCalledTimes(2);
     openUserDb("A");
-    expect(currentImportJob()).toBe(a);
+    expect(currentKakaoMapJob()).toBe(a);
     finishA({});
     await a.promise;
     expect(release).toHaveBeenCalledTimes(1);
-    expect(currentImportJob()).toBeNull();
+    expect(currentKakaoMapJob()).toBeNull();
     openUserDb("B");
-    expect(currentImportJob()).toBe(b);
+    expect(currentKakaoMapJob()).toBe(b);
   });
 
-  it("asks again who is signed in when an import ends, so a filled nickname shows", async () => {
+  it("asks again who is signed in when a sync ends, unless she was signed out", async () => {
     const changed = vi.fn();
     window.addEventListener(ME_CHANGED, changed);
     try {
-      runImport.mockResolvedValueOnce({ placesAdded: 1 });
-      await startImportJob().promise;
+      runKakaoMapSync.mockResolvedValueOnce({ placesAdded: 1 });
+      await startKakaoMapJob().promise;
       expect(changed).toHaveBeenCalledTimes(1);
-      runImport.mockRejectedValueOnce(new ImportError("start", "up_to_date"));
-      await startImportJob().promise.catch(() => {});
+      runKakaoMapSync.mockRejectedValueOnce(new KakaoMapSyncError("kakao_signed_out"));
+      await startKakaoMapJob().promise.catch(() => {});
       expect(changed).toHaveBeenCalledTimes(2);
-      // Signed out: the import says so; nothing sends the open screen to sign-in.
-      runImport.mockRejectedValueOnce(new ImportError("list", "signed_out"));
-      await startImportJob().promise.catch(() => {});
+      // Signed out of magomap: the sync says so; nothing sends the open screen to sign-in.
+      runKakaoMapSync.mockRejectedValueOnce(new KakaoMapSyncError("signed_out"));
+      await startKakaoMapJob().promise.catch(() => {});
       expect(changed).toHaveBeenCalledTimes(2);
     } finally {
       window.removeEventListener(ME_CHANGED, changed);

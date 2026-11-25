@@ -8,8 +8,7 @@ vi.mock("../api/client", async (orig) => {
 });
 const sync = vi.fn(async () => ({ pushed: 0, pulled: 0, rejected: 0 }));
 vi.mock("../data/sync", () => ({ syncNow: () => sync() }));
-const { ImportError, runImport } = await import("./runImport");
-const { openUserDb } = await import("../data/db");
+const { driveRun, ImportError, post } = await import("./runImport");
 
 const summary = {
   listsAdded: 1,
@@ -22,216 +21,102 @@ const summary = {
   notesImported: 0,
 };
 
-/** A fake server: lists with item counts; `fail` decides which call errors. */
-function server(
-  lists: { externalId: string; itemCount: number }[],
-  fail?: (path: string) => unknown,
-  resume?: { externalId: string; pagesDone: number; finished: boolean }[],
-) {
-  api.mockImplementation(async (path: string) => {
-    const err = fail?.(path);
-    if (err) throw err;
-    if (path === "/api/import/runs") return { runId: "r1", lists };
-    if (path.endsWith("/resume")) {
-      return {
-        runId: "r1",
-        lists: lists.map((l) => ({
-          name: l.externalId,
-          pagesDone: 0,
-          finished: false,
-          ...resume?.find((r) => r.externalId === l.externalId),
-          ...l,
-        })),
-      };
-    }
-    const page = /\/lists\/([^/]+)\/pages\/(\d+)$/.exec(path);
-    if (page) {
-      const list = lists.find((l) => l.externalId === page[1]);
-      const pages = Math.max(1, Math.ceil((list?.itemCount ?? 0) / 500));
-      return { ...summary, done: Number(page[2]) + 1 >= pages };
-    }
-    if (path.endsWith("/finish")) return summary;
-    if (path.endsWith("/complete")) return summary;
-    throw new Error(`unexpected ${path}`);
+type Lists = { externalId: string; itemCount: number }[];
+
+/** Sends each page through `post`, as the Kakao Map sync does, and says when a list is done. */
+function drive(lists: Lists, account = "acct", onProgress = vi.fn()) {
+  const run = { runId: "r1", lists: lists.map((l) => ({ ...l, name: l.externalId })) };
+  return driveRun(account, run, onProgress, async (at, page, list) => {
+    await post(account, `${at}/pages/${page}`, { favorites: [] });
+    return { done: page + 1 >= Math.max(1, Math.ceil(list.itemCount / 500)) };
   });
 }
 
 beforeEach(() => {
   api.mockReset();
   sync.mockClear();
-  // An import acts for the signed-in account, whose database is open.
-  openUserDb("imp");
 });
 
-describe("runImport", () => {
-  it("asks for each page in order, finishes each list, then completes and syncs", async () => {
-    server([{ externalId: "101", itemCount: 1200 }]);
+describe("driveRun", () => {
+  it("sends each page in order, finishes each list, then completes and syncs", async () => {
+    api.mockImplementation(async (path: string) =>
+      path.includes("/pages/") ? { done: false } : summary,
+    );
     const progress = vi.fn();
-    const result = await runImport(progress);
+    const result = await drive([{ externalId: "101", itemCount: 1200 }], "acct", progress);
     expect(api.mock.calls.map((c) => c[0])).toEqual([
-      "/api/import/runs",
       "/api/import/runs/r1/lists/101/pages/0",
       "/api/import/runs/r1/lists/101/pages/1",
       "/api/import/runs/r1/lists/101/pages/2",
       "/api/import/runs/r1/lists/101/finish",
       "/api/import/runs/r1/complete",
     ]);
-    expect(api.mock.calls[0]?.[1]).toMatchObject({
-      method: "POST",
-      body: JSON.stringify({ provider: "kakao" }),
-    });
     expect(result).toEqual(summary);
     expect(sync).toHaveBeenCalledTimes(1);
     expect(progress).toHaveBeenLastCalledWith({ listIndex: 0, listCount: 1 });
   });
 
-  it("stops at a failing list and never completes, so nothing is marked removed", async () => {
-    server(
-      [
-        { externalId: "1", itemCount: 3 },
-        { externalId: "2", itemCount: 3 },
-        { externalId: "3", itemCount: 3 },
-      ],
-      (path) =>
-        path.includes("/lists/2/") ? new ApiError(409, { error: "snapshot_changed" }) : null,
+  it("sends one page for an empty list", async () => {
+    api.mockImplementation(async (path: string) =>
+      path.includes("/pages/") ? { done: true } : summary,
     );
-    await expect(runImport(() => {})).rejects.toMatchObject({
-      step: "list",
-      listIndex: 1,
-      code: "snapshot_changed",
+    await drive([{ externalId: "7", itemCount: 0 }]);
+    expect(api.mock.calls.map((c) => c[0])).toEqual([
+      "/api/import/runs/r1/lists/7/pages/0",
+      "/api/import/runs/r1/lists/7/finish",
+      "/api/import/runs/r1/complete",
+    ]);
+  });
+
+  it("stops at a failing list and never completes, so nothing is marked removed", async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.includes("/lists/2/")) throw new ApiError(409, { error: "run_closed" });
+      return path.includes("/pages/") ? { done: true } : summary;
     });
+    const error = await drive([
+      { externalId: "1", itemCount: 3 },
+      { externalId: "2", itemCount: 3 },
+      { externalId: "3", itemCount: 3 },
+    ]).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ImportError);
+    expect(error).toMatchObject({ step: "list", listIndex: 1, code: "run_closed" });
     expect(api.mock.calls.some((c) => String(c[0]).endsWith("/complete"))).toBe(false);
     expect(sync).not.toHaveBeenCalled();
   });
 
-  it("reports when kakao-list has nothing for this account", async () => {
-    server([], (path) =>
-      path === "/api/import/runs" ? new ApiError(404, { error: "no_snapshot" }) : null,
-    );
-    const error = await runImport(() => {}).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ImportError);
-    expect(error).toMatchObject({ step: "start", code: "no_snapshot" });
+  it("reports a refused complete", async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.endsWith("/complete")) throw new ApiError(409, { error: "incomplete" });
+      return path.includes("/pages/") ? { done: true } : summary;
+    });
+    await expect(drive([{ externalId: "1", itemCount: 1 }])).rejects.toMatchObject({
+      step: "complete",
+      code: "incomplete",
+    });
   });
 
-  it("retries a page once when the connection drops", async () => {
+  it("retries a request once when the connection drops or the server is busy", async () => {
     let failed = false;
-    server([{ externalId: "101", itemCount: 1 }], (path) => {
+    api.mockImplementation(async (path: string) => {
       if (path.endsWith("/pages/0") && !failed) {
         failed = true;
-        return new ApiError(503, { error: "busy" });
+        throw new ApiError(503, { error: "busy" });
       }
-      return null;
+      return path.includes("/pages/") ? { done: true } : summary;
     });
-    await runImport(() => {});
+    await drive([{ externalId: "101", itemCount: 1 }]);
     expect(api.mock.calls.filter((c) => String(c[0]).endsWith("/pages/0"))).toHaveLength(2);
   });
 
-  it("keeps acting for the account it started for, even if another one opens meanwhile", async () => {
-    openUserDb("imp-a");
-    let first = true;
-    server([{ externalId: "a", itemCount: 1 }], (path) => {
-      if (path.endsWith("/pages/0") && first) {
-        first = false;
-        openUserDb("imp-b");
-        return new (class extends Error {})();
-      }
-      return undefined;
-    });
-    await runImport(() => {}).catch(() => {});
+  it("acts for the account it was given on every request", async () => {
+    api.mockImplementation(async (path: string) =>
+      path.includes("/pages/") ? { done: true } : summary,
+    );
+    await drive([{ externalId: "a", itemCount: 1 }], "imp-a");
     const accounts = api.mock.calls.map(([, init]) =>
       new Headers((init as RequestInit).headers).get("x-magomap-user"),
     );
-    expect(accounts.length).toBeGreaterThan(0);
+    expect(accounts.length).toBe(3);
     expect(new Set(accounts)).toEqual(new Set(["imp-a"]));
-  });
-
-  describe("continuing a run", () => {
-    const lists = [
-      { externalId: "A", itemCount: 3 },
-      { externalId: "B", itemCount: 1200 },
-      { externalId: "C", itemCount: 3 },
-    ];
-    const done = [
-      { externalId: "A", pagesDone: 1, finished: true },
-      { externalId: "B", pagesDone: 1, finished: false },
-    ];
-
-    it("continues a run: skips finished lists and starts a half-done list at its next page", async () => {
-      server(lists, undefined, done);
-      await runImport(() => {}, { resumeRunId: "r1" });
-      expect(api.mock.calls.map((c) => c[0])).toEqual([
-        "/api/import/runs/r1/resume",
-        "/api/import/runs/r1/lists/B/pages/1",
-        "/api/import/runs/r1/lists/B/pages/2",
-        "/api/import/runs/r1/lists/B/finish",
-        "/api/import/runs/r1/lists/C/pages/0",
-        "/api/import/runs/r1/lists/C/finish",
-        "/api/import/runs/r1/complete",
-      ]);
-      expect(sync).toHaveBeenCalledTimes(1);
-    });
-
-    it("finishes a list whose pages were all sent before it stopped", async () => {
-      server([{ externalId: "B", itemCount: 1200 }], undefined, [
-        { externalId: "B", pagesDone: 3, finished: false },
-      ]);
-      await runImport(() => {}, { resumeRunId: "r1" });
-      expect(api.mock.calls.map((c) => c[0])).toEqual([
-        "/api/import/runs/r1/resume",
-        "/api/import/runs/r1/lists/B/finish",
-        "/api/import/runs/r1/complete",
-      ]);
-    });
-
-    it("counts progress from the lists already done", async () => {
-      server(lists, undefined, done);
-      const progress = vi.fn();
-      await runImport(progress, { resumeRunId: "r1" });
-      expect(progress.mock.calls[0]?.[0]).toEqual({ listIndex: 1, listCount: 3 });
-    });
-
-    it("starts fresh when kakao-list synced since the run stopped", async () => {
-      server([{ externalId: "101", itemCount: 1 }], (path) =>
-        path.endsWith("/resume") ? new ApiError(409, { error: "snapshot_changed" }) : null,
-      );
-      const onFreshStart = vi.fn();
-      await runImport(() => {}, { resumeRunId: "r1", onFreshStart });
-      expect(onFreshStart).toHaveBeenCalledTimes(1);
-      expect(api.mock.calls.map((c) => c[0])).toEqual([
-        "/api/import/runs/r1/resume",
-        "/api/import/runs",
-        "/api/import/runs/r1/lists/101/pages/0",
-        "/api/import/runs/r1/lists/101/finish",
-        "/api/import/runs/r1/complete",
-      ]);
-    });
-
-    it("tells which run it works on, whether continued or started", async () => {
-      server([{ externalId: "101", itemCount: 1 }]);
-      const onRun = vi.fn();
-      await runImport(() => {}, { resumeRunId: "r1", onRun });
-      await runImport(() => {}, { onRun });
-      expect(onRun.mock.calls).toEqual([["r1"], ["r1"]]);
-    });
-
-    it("starts fresh without saying 'newer sync' when the run was already closed", async () => {
-      server([{ externalId: "101", itemCount: 1 }], (path) =>
-        path.endsWith("/resume") ? new ApiError(409, { error: "run_closed" }) : null,
-      );
-      const onFreshStart = vi.fn();
-      await runImport(() => {}, { resumeRunId: "r1", onFreshStart });
-      expect(onFreshStart).not.toHaveBeenCalled();
-      expect(api.mock.calls[1]?.[0]).toBe("/api/import/runs");
-    });
-
-    it("reports other resume errors as a failed start", async () => {
-      server(lists, (path) =>
-        path.endsWith("/resume") ? new ApiError(502, { error: "kakao_list_unavailable" }) : null,
-      );
-      await expect(runImport(() => {}, { resumeRunId: "r1" })).rejects.toMatchObject({
-        step: "start",
-        code: "kakao_list_unavailable",
-      });
-    });
   });
 });

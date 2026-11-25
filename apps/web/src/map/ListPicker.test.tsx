@@ -105,7 +105,7 @@ describe("ListPicker", () => {
       </MapPrefsProvider>,
     );
     expect(screen.queryAllByRole("group")).toHaveLength(0);
-    expect(screen.getByText(/from kakao-list in Account/)).toBeInTheDocument();
+    expect(screen.getByText(/from Kakao Map in Account/)).toBeInTheDocument();
   });
 
   it("says a Kakao list without places yet is still downloading while a sync runs", async () => {
