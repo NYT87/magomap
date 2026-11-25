@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { BADA, devLogin, importFromKakao, setVariant } from "./helpers";
+import { BADA, devLogin, syncFromKakao } from "./helpers";
 
 // Opening a place: zoomed out it zooms in to 16 on it; closer than that the map stays put when
 // the place is on screen, and otherwise moves to it keeping the zoom (src/map/applyFocus.ts).
@@ -40,9 +40,8 @@ const openInApp = (page: Page, id: string) =>
   }, `/places/${id}`);
 
 test.beforeEach(async ({ page, context }) => {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
   await page.goto("/");
   // Zoomed out, nearby places are merged into clusters: wait for any pin or cluster.
   await expect(page.locator(".mm-pin-host--saved, .marker-cluster").first()).toBeAttached({
