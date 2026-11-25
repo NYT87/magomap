@@ -44,12 +44,15 @@ test.beforeEach(async ({ page, context }) => {
   await devLogin(context, "222");
   await importFromKakao(page);
   await page.goto("/");
-  await expect(pin(page, "바다정원 카페")).toBeAttached({ timeout: 20_000 });
+  // Zoomed out, nearby places are merged into clusters: wait for any pin or cluster.
+  await expect(page.locator(".mm-pin-host--saved, .marker-cluster").first()).toBeAttached({
+    timeout: 20_000,
+  });
 });
 
 test("zoomed out, opening a place zooms in to it", async ({ page }) => {
   await expect.poll(() => zoomOf(page)).toBeLessThan(16);
-  await pin(page, "바다정원 카페").dispatchEvent("click");
+  await openInApp(page, BADA);
   await expect.poll(() => zoomOf(page), { timeout: 15_000 }).toBe(16);
 });
 
