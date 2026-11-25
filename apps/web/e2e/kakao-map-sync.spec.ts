@@ -208,7 +208,7 @@ test("Korean: the same states read naturally", async ({ page, context }, info) =
   const phone = info.project.name === "phone";
   await signIn(context, phone ? "446" : "447", "호세");
   await page.addInitScript(() => localStorage.setItem("mm.lang", "ko"));
-  // No extension yet: both sections, the kakao-list import as the fallback.
+  // No extension yet: how to get it.
   await page.goto("/account");
   await expect(page.getByRole("region", { name: "카카오맵에서 동기화" })).toContainText(
     phone ? "카카오맵 동기화는 컴퓨터에서 해요." : "magomap 확장 프로그램 받기",

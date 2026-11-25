@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { BADA, devLogin, importFromKakao, setRootSize, setVariant } from "./helpers";
+import { BADA, devLogin, setRootSize, syncFromKakao } from "./helpers";
 
 // (The phone's bottom nav isn't on the Account page, so its label is read on the map.)
 // Text sizes at the default root size (16px), as computed before text followed the device.
@@ -39,9 +39,8 @@ async function sizesAt(page: Page, rootPx: number, list: Probe[]) {
 }
 
 test.beforeEach(async ({ page, context }) => {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
 });
 
 test("text sizes match today at the default size", async ({ page }, info) => {

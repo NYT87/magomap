@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { devLogin, importFromKakao, setVariant } from "./helpers";
+import { devLogin, syncFromKakao } from "./helpers";
 
 const JEJU = "Show 제주 카페 on the map";
 const BADA_TITLE = "바다정원 카페";
@@ -8,9 +8,8 @@ test("the Lists tab is where lists are switched on and off the map", async ({
   page,
   context,
 }, info) => {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "111");
-  await importFromKakao(page);
+  await syncFromKakao(page);
 
   if (info.project.name === "phone") {
     await page.goto("/");
@@ -44,7 +43,7 @@ test("an old link to the import page lands on Account", async ({ page, context }
   await devLogin(context, "111");
   await page.goto("/import");
   await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByRole("heading", { name: "Import from kakao-list" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sync from Kakao Map" })).toBeVisible();
 });
 
 test("the account actions are outlined buttons, at the bottom of the panel on desktop", async ({

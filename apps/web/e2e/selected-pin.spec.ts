@@ -1,10 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
-import { BADA, devLogin, importFromKakao, setVariant } from "./helpers";
+import { BADA, devLogin, syncFromKakao } from "./helpers";
 
 test.beforeEach(async ({ page, context }) => {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
 });
 
 const selectedPin = (page: Page) => page.locator(".mm-pin--selected");
