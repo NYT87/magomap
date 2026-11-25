@@ -26,3 +26,25 @@ export function markerHtml(m: MapMarker): string {
 
 /** Every marker is a 44 px target. */
 export const HIT = 44;
+
+// Pins differ only in kind, colour and label: each look is parsed once, then copied.
+const looks = new Map<string, HTMLElement>();
+
+/**
+ * The pin markerHtml draws, as an element. Building hundreds of them from HTML strings meant
+ * parsing each one (most of a 0.8 s task at startup); a copy of a parsed pin with its own title
+ * costs far less.
+ */
+export function markerElement(m: MapMarker): HTMLElement {
+  const html = markerHtml({ ...m, label: "" });
+  let look = looks.get(html);
+  if (!look) {
+    const t = document.createElement("template");
+    t.innerHTML = html;
+    look = t.content.firstElementChild as HTMLElement;
+    looks.set(html, look);
+  }
+  const el = look.cloneNode(true) as HTMLElement;
+  el.title = m.label;
+  return el;
+}
