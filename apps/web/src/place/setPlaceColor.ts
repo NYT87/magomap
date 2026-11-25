@@ -8,6 +8,7 @@ import { setOwnItemColor } from "../data/writes";
 import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
 import { checkKakaoAccount, KakaoCopyError } from "../lists/duplicateToKakao";
+import { favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
 
 export type ColorErrorCode =
   | "extension_missing"
@@ -19,6 +20,8 @@ export type ColorErrorCode =
   | "not_owner"
   | "busy"
   | "offline"
+  | "sync_first"
+  | "check_failed"
   | "invalid"
   | "server_failed";
 
@@ -55,7 +58,9 @@ export async function setPlaceColor(input: { itemId: string; color: string }): P
   const folderId = list.externalId === null ? undefined : kakaoFolderIdOf(list.externalId);
   const sources = await db.place_sources.where("placeId").equals(item.placeId).toArray();
   const key = sources.find((s) => s.provider === "kakao" && s.deletedAt == null)?.externalId;
-  if (!folderId || !key) throw new ColorError("not_found");
+  // The favourite itself, by its own Kakao id: a place can be in one list twice.
+  const seq = favoriteSeqOf(item.externalId);
+  if (!folderId || !key || seq === undefined) throw new ColorError("not_found");
 
   if (working) throw new ColorError("busy");
   working = true;
@@ -72,9 +77,16 @@ export async function setPlaceColor(input: { itemId: string; color: string }): P
       }
       throw new ColorError("kakao_unavailable");
     }
+    // The server is asked first: if it wouldn't record the change, Kakao Map isn't touched.
+    const refusal = await refusalBeforeKakao(dbUserId(db), "/api/kakao-colors", {
+      listId: list.id,
+      itemId: item.id,
+      color: input.color,
+    });
+    if (refusal) throw new ColorError(refusal);
     // Kakao Map first; nothing is recorded anywhere unless it took the change.
     const answer = await askExtension(
-      { type: "magomap.setColor", folderId, key, color: input.color },
+      { type: "magomap.setColor", folderId, key, seq, color: input.color },
       WRITE_WAIT_MS,
     );
     if (answer === undefined) throw new ColorError("extension_missing");

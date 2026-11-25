@@ -14,6 +14,8 @@ const errorKey = (code: string) =>
     busy: "place.color.errBusy",
     offline: "place.color.errOffline",
     server_failed: "place.color.errServer",
+    sync_first: "place.color.errSyncFirst",
+    check_failed: "place.color.errCheck",
   })[code] ?? "place.color.errUnavailable";
 
 /**

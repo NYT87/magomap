@@ -15,6 +15,8 @@ const errorKey = (code: string) =>
     offline: "place.kakaoNoteEdit.errOffline",
     too_long: "place.kakaoNoteEdit.errTooLong",
     server_failed: "place.kakaoNoteEdit.errServer",
+    sync_first: "place.kakaoNoteEdit.errSyncFirst",
+    check_failed: "place.kakaoNoteEdit.errCheck",
   })[code] ?? "place.kakaoNoteEdit.errUnavailable";
 
 /**

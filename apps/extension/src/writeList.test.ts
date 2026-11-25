@@ -311,6 +311,21 @@ describe("writeInPage: color", () => {
     ]);
   });
 
+  it("with the favourite's own seq, a place twice in one list changes only that favourite", async () => {
+    list([fav("1002", 11, "01"), fav("1002", 12, "02")]);
+    expect(await writeInPage({ ...req, seq: 12 })).toEqual({ ok: true });
+    const sent = calls.find((c) => c.path === "/favorite/update")?.body as
+      | { datas: { seq: number }[] }
+      | undefined;
+    expect(sent?.datas[0]?.seq).toBe(12);
+  });
+
+  it("a seq that belongs to another place is not found, and nothing is sent", async () => {
+    list([fav("1001", 11, "01"), fav("1002", 12, "02")]);
+    expect(await writeInPage({ ...req, seq: 11 })).toEqual({ ok: false, error: "not_found" });
+    expect(calls.some((c) => c.path === "/favorite/update")).toBe(false);
+  });
+
   it("finds the favourite on a later page of the list", async () => {
     serve({
       "GET /favorite/mine/list": (call) =>

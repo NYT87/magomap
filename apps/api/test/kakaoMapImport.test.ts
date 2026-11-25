@@ -78,8 +78,18 @@ const pageUrl = (runId: string, externalId: string, index: number) =>
   `${RUNS}/${runId}/lists/${encodeURIComponent(externalId)}/pages/${index}`;
 
 /** Start (confirming the account), every page, finish, complete. */
-async function upload(cookie: string, read: Read, account: string, overrides = DEV) {
-  const started = await startRun(cookie, startBody(read, { confirmAccount: account }), overrides);
+async function upload(
+  cookie: string,
+  read: Read,
+  account: string,
+  overrides = DEV,
+  extra: Raw = {},
+) {
+  const started = await startRun(
+    cookie,
+    startBody(read, { confirmAccount: account, ...extra }),
+    overrides,
+  );
   expect(started.res.status).toBe(200);
   const { runId, lists } = started.body;
   for (const l of lists) {
@@ -527,6 +537,65 @@ describe("changing a Kakao colour from magomap", () => {
     expect(Number(after?.seq)).toBeGreaterThan(Number(seq));
   });
 
+  it("a sync whose Kakao read began before the edit doesn't put the old colour back", async () => {
+    // First sync, read two minutes ago: snapshot S0 = now - 120 s.
+    const cookie = await devLogin("km-col-race");
+    await upload(cookie, smallRead("u1-col-race", 34051), "u1-col-race", DEV, {
+      readAgeMs: 120_000,
+    });
+    const row = await itemOf(34051, "first");
+    if (!row) throw new Error("no item");
+    // The colour is changed from magomap now (E = now).
+    const res = await call(
+      COLORS,
+      post(cookie, { listId: row.list, itemId: row.item, color: "05" }),
+      DEV,
+    );
+    expect(res.status).toBe(200);
+    // A sync read a minute ago (still "01"), uploaded only now: S0 < S1 = now - 60 s < E, so it
+    // is newer than the last sync (its other changes apply) but older than the edit.
+    await upload(cookie, smallRead("u1-col-race", 34051), "u1-col-race", DEV, {
+      readAgeMs: 60_000,
+    });
+    expect((await itemOf(34051, "first"))?.color).toBe("05");
+    // A read that began after the edit is believed: Kakao Map had it back at "01".
+    await upload(cookie, smallRead("u1-col-race", 34051), "u1-col-race");
+    expect((await itemOf(34051, "first"))?.color).toBe("01");
+  });
+
+  it("refuses a read age that isn't a duration in the last hour", async () => {
+    const cookie = await devLogin("km-col-age");
+    for (const readAgeMs of [-1, 3_600_001, 1.5, "60"]) {
+      const { res } = await startRun(
+        cookie,
+        startBody(smallRead("u1-col-age", 34061), { confirmAccount: "u1-col-age", readAgeMs }),
+      );
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("answers whether the colour may be changed before Kakao Map is, writing nothing", async () => {
+    const { cookie, item, list, seq } = await owned("km-col-check", 34071, "u1-col-chck");
+    const ok = await call(
+      COLORS,
+      post(cookie, { listId: list, itemId: item, color: "05", check: true }),
+      DEV,
+    );
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ allowed: true });
+    const after = await itemOf(34071, "first");
+    expect(after?.color).toBe("01");
+    expect(Number(after?.seq)).toBe(Number(seq));
+    const other = await devLogin("km-col-check2");
+    await upload(other, smallRead("u1-col-chk2", 34072), "u1-col-chk2");
+    const refused = await call(
+      COLORS,
+      post(other, { listId: list, itemId: item, color: "05", check: true }),
+      DEV,
+    );
+    expect([403, 404]).toContain(refused.status);
+  });
+
   it("refuses someone who doesn't own the list, writing nothing", async () => {
     const { item, list } = await owned("km-col-own2", 34101, "u1-col-bbbb");
     const other = await devLogin("km-col-other");
@@ -593,6 +662,21 @@ describe("changing a Kakao note from magomap", () => {
     const cleared = await call(NOTES, post(cookie, { listId: list, itemId: item, note: "" }), DEV);
     expect(cleared.status).toBe(200);
     expect((await itemOf(35001))?.note ?? "").toBe("");
+  });
+
+  it("answers whether the note may be changed before Kakao Map is, writing nothing", async () => {
+    const { cookie, item, list, seq } = await owned("km-note-check", 35071, "u1-note-chck");
+    const before = await itemOf(35071);
+    const ok = await call(
+      NOTES,
+      post(cookie, { listId: list, itemId: item, note: "새 메모", check: true }),
+      DEV,
+    );
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ allowed: true });
+    const after = await itemOf(35071);
+    expect(after?.note).toBe(before?.note);
+    expect(Number(after?.seq)).toBe(Number(seq));
   });
 
   it("refuses someone who doesn't own the list, writing nothing", async () => {
