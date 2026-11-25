@@ -163,32 +163,21 @@ test.describe("the phone's place peek", () => {
     await expect(page.getByRole("region", { name })).toHaveCount(0);
   });
 
-  test("dragging the card up opens the details page, and doesn't pan the map", async ({ page }) => {
+  test("the card doesn't drag: pulling it up neither moves it nor opens the details", async ({
+    page,
+  }) => {
     const name = await openFirstPin(page);
     const card = page.getByRole("region", { name });
     const box = await card.boundingBox();
     if (!box) throw new Error("no card");
-    // The map first glides to the place: measure the pin once it has stood still for three
-    // readings in a row (one reading lost the race on a busy machine, mid-glide).
-    const pin = page.locator(".mm-pin--selected");
-    let before = await pin.boundingBox();
-    let stillFor = 0;
-    await expect(async () => {
-      const now = await pin.boundingBox();
-      stillFor = JSON.stringify(now) === JSON.stringify(before) ? stillFor + 1 : 0;
-      before = now;
-      expect(stillFor).toBeGreaterThanOrEqual(3);
-    }).toPass({ intervals: [400], timeout: 20_000 });
     const x = box.x + box.width / 2;
     await page.mouse.move(x, box.y + 10);
     await page.mouse.down();
-    await page.mouse.move(x, box.y - 20, { steps: 4 });
-    // Still down: the card follows, the map stays.
-    await expect.poll(async () => (await card.boundingBox())?.y).toBeLessThan(box.y);
-    expect(await page.locator(".mm-pin--selected").boundingBox()).toEqual(before);
     await page.mouse.move(x, box.y - 120, { steps: 6 });
+    expect((await card.boundingBox())?.y).toBe(box.y);
     await page.mouse.up();
-    await expect(page).toHaveURL(/\/details$/);
+    // A press that moved isn't a tap on the card either.
+    await expect(page).toHaveURL(/\/places\/[^/]+$/);
   });
 
   test("a tap on the card opens the details page, as in Kakao Map", async ({ page }) => {

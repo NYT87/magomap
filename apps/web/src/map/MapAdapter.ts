@@ -32,6 +32,8 @@ export interface MapAdapter {
   setMarkers(markers: MapMarker[]): void;
   fitTo(points: LatLng[]): void;
   panTo(point: LatLng): void;
+  /** Whether a point is well inside what's on screen (not near an edge, under the controls). */
+  isWellInView(point: LatLng): boolean;
   getCenter(): LatLng;
   /** Leaflet-style zoom (0–19), whichever map this is. */
   getZoom(): number;

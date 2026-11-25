@@ -11,6 +11,7 @@ const fake = (provider: MapAdapter["provider"], at = { lat: 35.68, lng: 139.69 }
     setMarkers: vi.fn(),
     fitTo: vi.fn(),
     panTo: vi.fn(),
+    isWellInView: vi.fn(() => false),
     getCenter: vi.fn(() => at),
     getZoom: vi.fn(() => zoom),
     pendingFit: vi.fn((): { lat: number; lng: number }[] | null => null),

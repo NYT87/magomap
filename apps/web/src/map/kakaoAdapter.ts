@@ -1,4 +1,5 @@
 // Kakao Maps JS SDK. https://apis.map.kakao.com/web/documentation/
+import { PLACE_ZOOM, wellInside } from "./applyFocus";
 import { watchLongPress } from "./longPress";
 import type { ContextPress, LatLng, MapAdapter, MapMarker } from "./MapAdapter";
 import { markerHtml } from "./markerHtml";
@@ -31,6 +32,7 @@ interface KakaoMaps {
     getLevel(): number;
     getCenter(): KakaoLatLng;
     setBounds(b: unknown): void;
+    getBounds(): { getSouthWest(): KakaoLatLng; getNorthEast(): KakaoLatLng };
     relayout(): void;
     getProjection(): { coordsFromContainerPoint(p: KakaoPoint): KakaoLatLng };
   };
@@ -146,7 +148,7 @@ export function createKakaoAdapter(): MapAdapter {
       if (points.length === 1) {
         const p = points[0] as LatLng;
         map.setCenter(new k.LatLng(p.lat, p.lng));
-        map.setLevel(4);
+        map.setLevel(20 - PLACE_ZOOM);
         return;
       }
       const b = new k.LatLngBounds();
@@ -155,6 +157,16 @@ export function createKakaoAdapter(): MapAdapter {
     },
     panTo(p) {
       map?.panTo(new k.LatLng(p.lat, p.lng));
+    },
+    isWellInView(p) {
+      const b = map?.getBounds();
+      if (!b) return false;
+      const sw = b.getSouthWest();
+      const ne = b.getNorthEast();
+      return wellInside(
+        { south: sw.getLat(), west: sw.getLng(), north: ne.getLat(), east: ne.getLng() },
+        p,
+      );
     },
     getCenter() {
       const c = map?.getCenter();

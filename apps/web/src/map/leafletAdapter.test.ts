@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PLACE_ZOOM } from "./applyFocus";
 import { createLeafletAdapter } from "./leafletAdapter";
 import type { ContextPress } from "./MapAdapter";
 
@@ -42,6 +43,20 @@ describe("Leaflet adapter", () => {
     await vi.waitFor(() => expect(seenDuringMove.length).toBeGreaterThan(0), { timeout: 5_000 });
     expect(seenDuringMove.at(-1)).toBeNull();
     expect(map.pendingFit()).toBeNull();
+    map.destroy();
+    el.remove();
+  });
+
+  it("brings one place to the place zoom, the same close-up as the Kakao map", async () => {
+    const el = document.createElement("div");
+    Object.defineProperty(el, "clientWidth", { value: 400 });
+    Object.defineProperty(el, "clientHeight", { value: 400 });
+    document.body.append(el);
+    const map = createLeafletAdapter();
+    map.mount(el, { center: { lat: 35.68, lng: 139.69 }, zoom: 10 });
+    await vi.waitFor(() => expect(map.getZoom()).toBe(10), { timeout: 5_000 });
+    map.fitTo([{ lat: 37.57, lng: 126.98 }]);
+    await vi.waitFor(() => expect(map.getZoom()).toBe(PLACE_ZOOM), { timeout: 5_000 });
     map.destroy();
     el.remove();
   });

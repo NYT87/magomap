@@ -7,12 +7,12 @@ import { currentDb } from "../data/db";
 import { usePlaceMemberships } from "../data/queries";
 import { goBackOr } from "../layout/appHistory";
 import { useMapStage } from "../map/MapStage";
+import { cardTap } from "./cardTap";
 import { peekNoteOf } from "./kakaoNotes";
-import { useDragUp } from "./useDragUp";
 
 /**
  * A phone's place, over the map: a small card with the name that opens the details page when
- * tapped, from its arrow button (the keyboard's way), or by dragging it up. The X goes back
+ * tapped, or from its arrow button (the keyboard's way); it doesn't drag. The X goes back
  * where she came from (else the map).
  */
 export function PlacePeek({ id }: { id: string }) {
@@ -26,7 +26,7 @@ export function PlacePeek({ id }: { id: string }) {
   const { setFocus } = useMapStage();
   const headingId = useId();
   const openDetails = () => navigate(`/places/${encodeURIComponent(id)}/details`);
-  const { handlers, offset, dragging } = useDragUp({ onOpen: openDetails, openOnTap: true });
+  const tap = cardTap(openDetails);
 
   const heading = useRef<HTMLHeadingElement>(null);
   const focusedFor = useRef<string | null>(null);
@@ -90,18 +90,7 @@ export function PlacePeek({ id }: { id: string }) {
   const muted = place.category ?? place.roadAddress ?? place.address;
   const note = peekNoteOf(memberships ?? []);
   return (
-    <section
-      ref={card}
-      className="mm-place-peek"
-      data-dragging={dragging || undefined}
-      aria-labelledby={headingId}
-      {...handlers}
-      style={{
-        ...handlers.style,
-        transform: offset === 0 ? undefined : `translateY(${offset}px)`,
-      }}
-    >
-      <span className="mm-place-peek__grip" aria-hidden />
+    <section ref={card} className="mm-place-peek" aria-labelledby={headingId} {...tap}>
       <div className="mm-place-peek__row">
         <div className="mm-place-peek__text">
           <h2 id={headingId} ref={heading} tabIndex={-1} className="mm-place-peek__name">
