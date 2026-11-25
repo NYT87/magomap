@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/NYT87/magomap/compare/extension-v0.1.3...extension-v0.1.4) (2026-11-25)
+
+
+### Features
+
+* remove the kakao-list import (Sync from Kakao Map replaces it) ([aaebbba](https://github.com/NYT87/magomap/commit/aaebbba0a454f740e4fa87ce30adbf6f3ada1e10))
+
 ## [0.1.3](https://github.com/NYT87/magomap/compare/extension-v0.1.2...extension-v0.1.3) (2026-11-23)
 
 
