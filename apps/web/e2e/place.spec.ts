@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { BADA, devLogin, importFromKakao, setVariant } from "./helpers";
+import { BADA, devLogin, syncFromKakao } from "./helpers";
 
 const LONG_NAME = `Restaurants-cafes-and-viewpoints-${"x".repeat(60)}`;
 const LONG_NOTE = `예약 필수, 창가 자리 추천. https://place.map.kakao.com/${"a".repeat(92)}`;
@@ -8,9 +8,8 @@ test("a long list name and a long note stay inside their Kakao note card", async
   page,
   context,
 }) => {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
   await page.goto(`/places/${BADA}/details`);
   await expect(page.locator(".mm-kakao-note").first()).toBeVisible();
   // Give the place's Kakao list a long unbroken name and its note a long link, straight in
@@ -67,9 +66,8 @@ test("the Kakao colour rule on a note stays visible in the dark theme", async ({
   page,
   context,
 }) => {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto(`/places/${BADA}/details`);
   const text = page.locator(".mm-kakao-note__text").first();
@@ -120,9 +118,8 @@ async function openFirstPin(page: import("@playwright/test").Page) {
 test.describe("the phone's place peek", () => {
   test.beforeEach(async ({ page, context }, info) => {
     test.skip(info.project.name !== "phone", "the peek is phone only");
-    await setVariant(page, { name: "base" });
     await devLogin(context, "222");
-    await importFromKakao(page);
+    await syncFromKakao(page);
   });
 
   test("a tapped pin shows the map with the name above the nav, and the pin above the card", async ({

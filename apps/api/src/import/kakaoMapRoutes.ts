@@ -1,7 +1,8 @@
 // The upload run: magomap's page sends what the magomap extension read from Kakao Map in her
 // browser (raw folders, then each folder's raw favourites), and the Worker maps it with the Kakao
-// Map adapter and imports it through the same import runs as kakao-list. Only allowlisted users
-// may upload, and only from the Kakao Map account bound to them. Never log a raw read.
+// Map adapter and imports it through the import runs (routes.ts finishes and completes them).
+// Only allowlisted users may upload, and only from the Kakao Map account bound to them. Never log
+// a raw read.
 import {
   importListChunk,
   RunNotFoundError,
@@ -18,6 +19,7 @@ import {
   kakaoMapAccountsNamed,
 } from "@magomap/db/stores/kakaoMapAccounts";
 import { recordKakaoNoteEdit } from "@magomap/db/stores/kakaoNotes";
+import { fillDisplayName } from "@magomap/db/stores/users";
 import {
   type ApiErrorCode,
   type ImportListSummary,
@@ -368,6 +370,8 @@ kakaoMapRoutes.post("/import/kakao-map/runs", (c) =>
 
     const now = Date.now();
     await checkAccount(c, read.account, read.accountAlias, extras.data.confirmAccount, now);
+    // Her Kakao Map nickname names a new account; a name she typed is never replaced.
+    if (read.account.nickname) await fillDisplayName(c.var.db, c.var.userId, read.account.nickname);
     const providerOwnerIds = await ownerIdsOf(c, read);
     const { runId } = await startImportRun(
       c.var.db,
@@ -417,7 +421,7 @@ kakaoMapRoutes.post("/import/kakao-map/runs/:runId/lists/:externalId/pages/:inde
     const externalId = c.req.param("externalId");
     const index = Number(c.req.param("index"));
     const run = await runSnapshot(c.var.db, c.var.userId, runId);
-    // An upload page never feeds a kakao-list run (its pages come from kakao-list only).
+    // An upload page never feeds a run left by the old kakao-list import.
     if (run.source !== "kakao_map") throw new RunNotFoundError();
     const meta = run.lists.find((l) => l.externalId === externalId);
     const pages = Math.max(1, Math.ceil((meta?.itemCount ?? 0) / PAGE));
@@ -434,7 +438,7 @@ kakaoMapRoutes.post("/import/kakao-map/runs/:runId/lists/:externalId/pages/:inde
       kakaoMapItemsToImport(folderId, offset, favorites),
     );
     if (!items.success) throw invalid();
-    // Two favourites with one id (seq) are a broken read; kakao-list refuses it too.
+    // Two favourites with one id (seq) are a broken read.
     if (new Set(items.data.map((i) => i.externalId)).size !== items.data.length) throw invalid();
 
     const summary = await importListChunk(

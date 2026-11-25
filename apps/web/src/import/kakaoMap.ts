@@ -11,7 +11,7 @@ import {
 import { kakaoFolderIdOf } from "@magomap/domain/providers/kakao";
 import { ApiError } from "../api/client";
 import { currentDb, dbUserId } from "../data/db";
-import { codeOf, driveRun, ImportError, post, type ResumeLists } from "./runImport";
+import { codeOf, driveRun, ImportError, post } from "./runImport";
 
 /** The extension's id (apps/extension/src/extensionId.ts); overridable for a differently keyed build. */
 const EXTENSION_ID =
@@ -158,7 +158,7 @@ const hintOf = (value: unknown): KakaoMapAccountHint | undefined =>
 /**
  * Reads her Kakao Map once through the extension and uploads it: the start, each list's pages
  * (that folder's favourites, 500 at a time, in order), finish and complete, then a sync, with the
- * same single retry per request as runImport. A `kakao_account_*` refusal throws with the account
+ * same single retry per request as every import request (`post`). A `kakao_account_*` refusal throws with the account
  * it names; calling again with `confirmAccount` (the last 4 characters she was shown) reuses that
  * read and confirms its account, whose full id never leaves this module.
  */
@@ -208,10 +208,9 @@ export async function runKakaoMapSync(
     throw new KakaoMapSyncError(code);
   }
 
-  const lists: ResumeLists = run.lists.map((l) => ({ ...l, pagesDone: 0, finished: false }));
   const runPath = `/api/import/kakao-map/runs/${encodeURIComponent(run.runId)}`;
   try {
-    return await driveRun(account, { runId: run.runId, lists }, onProgress, (_at, page, list) => {
+    return await driveRun(account, run, onProgress, (_at, page, list) => {
       // The server reads a page as the favourites of the folder its list id names.
       const folderId = kakaoFolderIdOf(list.externalId);
       const all = folderId === undefined ? [] : (read.favorites[String(folderId)] ?? []);

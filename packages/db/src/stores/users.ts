@@ -49,7 +49,7 @@ export async function fillDisplayName(db: Db, userId: string, name: string): Pro
     .execute();
 }
 
-/** Sets the account's name, or clears it (null) so the next import may fill it again. */
+/** Sets the account's name, or clears it (null) so the next Kakao Map sync may fill it again. */
 export async function setDisplayName(db: Db, userId: string, name: string | null): Promise<void> {
   await db.kysely
     .updateTable("users")

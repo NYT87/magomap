@@ -1,22 +1,11 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { devLogin, setVariant } from "./helpers";
+import { devLogin, syncFromKakao } from "./helpers";
 
 const GUTTER = 16;
 
-/** The e2e database keeps its places between tests, and a second import has nothing new to bring. */
-async function ensureImported(page: Page) {
-  const statusLoaded = page.waitForResponse("**/api/import/status");
-  await page.goto("/account");
-  const status: { upToDate?: boolean } = await (await statusLoaded).json();
-  if (status.upToDate === true) return;
-  await page.getByRole("button", { name: /Import (from kakao-list|again)/ }).click();
-  await page.getByText("Import finished").waitFor({ timeout: 30_000 });
-}
-
 async function openMap(page: Page, context: BrowserContext) {
-  await setVariant(page, { name: "base" });
   await devLogin(context, "111");
-  await ensureImported(page);
+  await syncFromKakao(page);
   await page.goto("/");
   await expect(page.locator(".mm-map-top .mm-search__box")).toBeVisible();
 }

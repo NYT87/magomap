@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { BADA, devLogin, importFromKakao, setLanguage, setRootSize, setVariant } from "./helpers";
+import { BADA, devLogin, setLanguage, setRootSize, syncFromKakao } from "./helpers";
 
 // Layouts at the cap (a 32px root = 2x text), phone only, in English and Korean.
 const CAP = 32;
@@ -57,9 +57,8 @@ for (const lang of ["en", "ko"] as const) {
   test.describe(`at the cap, ${lang}`, () => {
     test.beforeEach(async ({ page, context }, info) => {
       if (info.project.name !== "phone") return;
-      await setVariant(page, { name: "base" });
       await devLogin(context, "222");
-      await importFromKakao(page);
+      await syncFromKakao(page);
       await setLanguage(page, lang);
     });
 

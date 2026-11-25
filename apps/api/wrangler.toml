@@ -4,7 +4,7 @@ compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Every environment declares all of its vars and bindings: Wrangler does not inherit them.
-# Secrets (KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET, MAGOMAP_IMPORT_SECRET) go in .dev.vars
+# Secrets (KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET, SIGNING_SECRET) go in .dev.vars
 # locally and `wrangler secret put --env <env>` when deployed.
 
 [env.d1]
@@ -28,7 +28,6 @@ DB_DRIVER = "d1"
 KAKAO_REDIRECT_URI = "https://magomap.jmn8718.workers.dev/api/auth/kakao/callback"
 KAKAO_JAVASCRIPT_KEY = "8b9138ecff36eeb1966216f7b8b1bd1a"
 ALLOWED_KAKAO_USER_IDS = "4897793509,4891281929"
-KAKAO_LIST_URL = "https://kakao-list-api.vercel.app"
 ALLOW_DEV_LOGIN = "false"
 ALLOW_DEV_UPLOAD = "false"
 [[env.d1.d1_databases]]
@@ -58,7 +57,6 @@ DB_DRIVER = "postgres"
 KAKAO_REDIRECT_URI = "http://localhost:8787/api/auth/kakao/callback"
 KAKAO_JAVASCRIPT_KEY = ""
 ALLOWED_KAKAO_USER_IDS = ""
-KAKAO_LIST_URL = "http://localhost:8788"
 ALLOW_DEV_LOGIN = "false"
 # Local dev only: uploads from Kakao Map are allowed with an empty allowlist. Never in d1.
 ALLOW_DEV_UPLOAD = "true"

@@ -7,8 +7,7 @@
     "dev": "wrangler dev --env d1",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "dev:seed": "tsx scripts/dev-seed.ts",
-    "dev:fake-kakao-list": "tsx scripts/fake-kakao-list.ts"
+    "dev:seed": "tsx scripts/dev-seed.ts"
   },
   "dependencies": {
     "@magomap/db": "workspace:*",

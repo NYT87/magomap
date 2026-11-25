@@ -1,6 +1,5 @@
 // "Sync from Kakao Map" in Account: the magomap extension reads her Kakao Map lists in this
-// browser and the sync uploads them. Above the kakao-list import (now the fallback), with the
-// same kind of progress, summary, error and last-run parts.
+// browser and the sync uploads them, with its progress, summary, errors and last run.
 import type { ImportRunInfo, ImportSummary, KakaoMapAccountHint, Me } from "@magomap/domain";
 import type { TFunction } from "i18next";
 import {
@@ -16,13 +15,10 @@ import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { formatDateTime } from "../i18n";
-import { summaryText } from "../import/ImportSection";
 import {
-  currentImportJob,
   currentKakaoMapJob,
   type KakaoMapJob,
   startKakaoMapJob,
-  subscribeImportJob,
   subscribeKakaoMapJob,
 } from "../import/importJob";
 import {
@@ -82,6 +78,18 @@ function errorKey(code: KakaoMapSyncCode | undefined): string {
   }
 }
 
+/** A sync's summary in a line: what changed, or that nothing did. */
+export function summaryText(t: TFunction, s: ImportSummary) {
+  const parts = [
+    s.placesAdded && t("kakaoMap.summaryAdded", { count: s.placesAdded }),
+    s.membershipsRemoved && t("kakaoMap.summaryRemoved", { count: s.membershipsRemoved }),
+    s.membershipsRestored && t("kakaoMap.summaryRestored", { count: s.membershipsRestored }),
+    s.placesMoved && t("kakaoMap.summaryMoved", { count: s.placesMoved }),
+    s.notesImported && t("kakaoMap.summaryNotes", { count: s.notesImported }),
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : t("kakaoMap.nothingChanged");
+}
+
 /** An account in words: "수지's Kakao Map account ending in 1234" (no bullets to read out). */
 const accountText = (t: TFunction, a: KakaoMapAccountHint) =>
   a.nickname
@@ -125,15 +133,12 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
   const { t } = useTranslation();
   const headingId = useId();
   const offlineId = useId();
-  const importingId = useId();
   const dialogReasonId = useId();
   const online = useOnline();
   const layout = useLayout();
   const [extension, setExtension] = useState<ExtensionState | "checking">("checking");
   // The sync itself lives outside this screen, so leaving Account and coming back finds it running.
   const job = useSyncExternalStore(subscribeKakaoMapJob, currentKakaoMapJob);
-  // A kakao-list import running meanwhile: starting a sync would stop it.
-  const importing = useSyncExternalStore(subscribeImportJob, currentImportJob) !== null;
   const [followed, setFollowed] = useState<KakaoMapJob | null>(null);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [last, setLast] = useState<ImportRunInfo | null>(null);
@@ -145,7 +150,8 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
   const shown = useRef<Outcome>(outcome);
   shown.current = outcome;
 
-  // The latest read wins, as in the import section.
+  // The latest read wins: one that started before a newer one (or before a sync began) can't
+  // change what is on screen when it lands.
   const readLast = useCallback(async () => {
     const mine = ++reads.current;
     try {
@@ -262,9 +268,9 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
   const idle = !running && outcome.kind === "none";
   const interrupted = idle && last?.status === "running";
   const ready = extension === "ready";
-  const blocked = !online || importing;
+  const blocked = !online;
   // Why the button is off, read out with it.
-  const reason = !online ? offlineId : importing && !running ? importingId : undefined;
+  const reason = !online ? offlineId : undefined;
   const syncAction = (o: ConfirmOutcome, label: string) => (
     <button
       type="button"
@@ -290,11 +296,6 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
       {!online && (
         <p className="mm-note" id={offlineId}>
           {t("kakaoMap.offline")}
-        </p>
-      )}
-      {online && importing && !running && (
-        <p className="mm-note" id={importingId}>
-          {t("kakaoMap.importRunning")}
         </p>
       )}
       {!running && extension === "checking" && <p className="mm-muted">{t("kakaoMap.checking")}</p>}
@@ -332,7 +333,7 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
         {outcome.kind === "done" && (
           <div>
             <p className="mm-strong">{t("kakaoMap.done")}</p>
-            <p>{summaryText(t, outcome.summary, "kakaoMap")}</p>
+            <p>{summaryText(t, outcome.summary)}</p>
           </div>
         )}
       </div>
@@ -366,9 +367,7 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
               <p className="mm-strong">
                 {t("kakaoMap.last", { date: formatDateTime(last.finishedAt) })}
               </p>
-              {last.summary && (
-                <p className="mm-muted">{summaryText(t, last.summary, "kakaoMap")}</p>
-              )}
+              {last.summary && <p className="mm-muted">{summaryText(t, last.summary)}</p>}
             </>
           ) : last.status !== "running" ? (
             <p className="mm-muted">{t("kakaoMap.lastFailed")}</p>
@@ -438,7 +437,7 @@ export function KakaoMapSyncSection({ me }: { me: Me }) {
           )}
           {blocked && (
             <p className="mm-note" id={dialogReasonId}>
-              {!online ? t("kakaoMap.offline") : t("kakaoMap.importRunning")}
+              {t("kakaoMap.offline")}
             </p>
           )}
         </ConfirmDialog>

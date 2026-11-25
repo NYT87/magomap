@@ -17,7 +17,7 @@
 **The balance:**
 - **Use** should feel as easy as Kakao Map. People shouldn't have to learn anything new.
 - **Identity** is its own: earthy, hand-made and personal, drawn from the Mago story.
-- It must never look like Kakao. **No Kakao yellow (#FEE500)**, Kakao logos or Kakao fonts. kakao-list and Kakao Map are referred to, not imitated.
+- It must never look like Kakao. **No Kakao yellow (#FEE500)**, Kakao logos or Kakao fonts. Kakao Map is referred to, not imitated.
 
 ---
 

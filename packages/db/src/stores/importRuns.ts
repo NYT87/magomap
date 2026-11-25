@@ -5,7 +5,6 @@ import type {
   ImportRunInfo,
   ImportSummary,
   PlaceRow,
-  ResumeList,
   SyncTable,
 } from "@magomap/domain";
 import {
@@ -158,7 +157,10 @@ function saveState(
 const isNewer = (snapshotAt: number, row: Row | undefined) =>
   !row || row.provider_snapshot_at == null || snapshotAt >= Number(row.provider_snapshot_at);
 
-/** Where a run's snapshot came from: kakao-list (server-fetched) or a direct Kakao Map upload. */
+/**
+ * Where a run's snapshot came from: a direct Kakao Map upload, or kakao-list (the server-fetched
+ * import magomap had before; its runs stay in the database, and nothing starts new ones).
+ */
 export type ImportSource = "kakao_list" | "kakao_map";
 
 /**
@@ -1172,41 +1174,6 @@ export async function latestImportRun(db: Db, userId: string): Promise<ImportRun
     source: run.source === "kakao_map" ? "kakao_map" : "kakao_list",
     ...(progress ? { progress } : {}),
   };
-}
-
-/** Where the running run stands, list by list, so an interrupted import can be continued. */
-export async function runProgress(
-  db: Db,
-  userId: string,
-  runId: string,
-): Promise<{ snapshotAt: number; lists: ResumeList[] }> {
-  const { run } = await runningRun(db, userId, runId);
-  const lists = (await runLists(db, userId, runId)).map((l) => ({
-    externalId: l.external_id,
-    name: l.name,
-    itemCount: l.item_count,
-    pagesDone: l.pages_done,
-    finished: l.finished === 1,
-  }));
-  return { snapshotAt: Number(run.snapshot_at), lists };
-}
-
-/** True when the user has a completed import of exactly this kakao-list sync. */
-export async function importedSnapshot(
-  db: Db,
-  userId: string,
-  snapshotAt: number,
-): Promise<boolean> {
-  const row = await db.kysely
-    .selectFrom("import_runs")
-    .select("id")
-    .where("user_id", "=", userId)
-    .where("source", "=", "kakao_list")
-    .where("status", "=", "completed")
-    .where("snapshot_at", "=", snapshotAt)
-    .limit(1)
-    .executeTakeFirst();
-  return row !== undefined;
 }
 
 /** The running run's snapshot time and fetched list summaries (for the server-driven import). */

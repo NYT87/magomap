@@ -1,21 +1,17 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// End-to-end: the built app served by a local Worker (fresh D1 each run) and the fake kakao-list.
+// End-to-end: the built app served by a local Worker (fresh D1 each run). Tests that need her
+// lists sync them from Kakao Map through a fake magomap extension (e2e/helpers.ts).
 // https://playwright.dev/docs/test-webserver
 // Overridable so two checkouts can run their end-to-end tests at the same time.
 const PORT = Number(process.env.E2E_PORT ?? 8790);
-const FAKE_PORT = Number(process.env.E2E_FAKE_PORT ?? 8788);
-// The fake kakao-list and the Worker must share this secret. Passed to both here, so the
-// tests never depend on what apps/api/.dev.vars holds (a real secret there broke every import test).
-const IMPORT_SECRET = "m".repeat(48);
 
 // The d1 environment holds the deployed settings; the e2e server uses local stand-ins instead:
-// the fake kakao-list, the dev-login test accounts, and no Kakao map key (OpenStreetMap).
+// the dev-login test accounts and no Kakao map key (OpenStreetMap).
 const E2E_VARS = [
   "ALLOW_DEV_LOGIN:true",
-  `KAKAO_LIST_URL:http://localhost:${FAKE_PORT}`,
-  `MAGOMAP_IMPORT_SECRET:${IMPORT_SECRET}`,
-  // 444–447: the Kakao Map sync tests, which upload (uploads need a non-empty allowlist).
+  // Uploads from Kakao Map need a non-empty allowlist: 111 and 222 sync the shared test lists,
+  // 444–447 are the Kakao Map sync tests'.
   "ALLOWED_KAKAO_USER_IDS:111,222,333,444,445,446,447",
   `KAKAO_REDIRECT_URI:http://localhost:${PORT}/api/auth/kakao/callback`,
   "KAKAO_JAVASCRIPT_KEY:",
@@ -45,12 +41,6 @@ export default defineConfig({
     { name: "desktop", use: { browserName: "chromium", viewport: { width: 1440, height: 900 } } },
   ],
   webServer: [
-    {
-      command: `MAGOMAP_IMPORT_SECRET=${IMPORT_SECRET} FAKE_KAKAO_LIST_PORT=${FAKE_PORT} pnpm --filter @magomap/api dev:fake-kakao-list`,
-      url: `http://localhost:${FAKE_PORT}/__health`,
-      reuseExistingServer: true,
-      ignoreHTTPSErrors: true,
-    },
     {
       command: `rm -rf ../../tmp/e2e-state && pnpm build && cd ../api && npx wrangler d1 migrations apply DB --env d1 --local --persist-to ../../tmp/e2e-state && npx wrangler dev --env d1 --persist-to ../../tmp/e2e-state --port ${PORT} ${E2E_VARS}`,
       url: `http://localhost:${PORT}/api/health`,

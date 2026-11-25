@@ -94,4 +94,4 @@ With Kakao Map signed in, on a throwaway list only (all six from the page's cons
 pnpm --filter @magomap/extension test
 ```
 
-The reader is ported from kakao-list's `apps/extension/src/kakaoMapsExtractor.ts` (kakao-list commit `730ee2d`): only the read path, with records returned unchanged but for the fields magomap doesn't read.
+The reader was ported from the owner's earlier kakao-list extension, which magomap no longer uses (`apps/extension/src/kakaoMapsExtractor.ts` at commit `730ee2d`): only the read path, with records returned unchanged but for the fields magomap doesn't read.

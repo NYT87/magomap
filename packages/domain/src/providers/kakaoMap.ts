@@ -1,8 +1,8 @@
 // The Kakao Map adapter: raw Kakao Map records (folders and favourites, as magomap's extension
-// reads them) into the neutral import format. While kakao-list's import runs beside it, it must
-// give exactly the ids and fields kakao-list's deployed mapping gives (kakao-list 730ee2d:
-// extractor `normalizeFavoriteItem` and list mapping, server `magomapIntegration.ts`), so both
-// sources update the same rows. kakaoMap.test.ts checks that against a copy of kakao-list's code.
+// reads them) into the neutral import format. It gives exactly the ids and fields the earlier
+// kakao-list import gave (kakao-list 730ee2d: extractor `normalizeFavoriteItem` and list mapping,
+// server `magomapIntegration.ts`), so rows that import created keep being updated, not duplicated.
+// kakaoMap.test.ts checks that against a copy of kakao-list's code.
 // The one difference: coordinates prefer Kakao's own lat/lon (kakaoFavoritePoint).
 // Raw records are read leniently: an odd value is ignored, never thrown on.
 import { z } from "zod";

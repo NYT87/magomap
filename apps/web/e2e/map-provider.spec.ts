@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { devLogin, importFromKakao, setVariant } from "./helpers";
+import { devLogin, syncFromKakao } from "./helpers";
 
 // The e2e server has no Kakao key, so Kakao Map is never available here: the map is
 // OpenStreetMap whatever the setting, and Account says so. Switching between the two
@@ -115,9 +115,8 @@ test("a switch keeps the places on the map, and Automatic returns to Kakao in Ko
   context,
 }) => {
   await withFakeKakao(page);
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
   await page.goto("/");
   const caption = page.locator(".mm-map-caption");
   await expect(caption).toHaveText("Map: Kakao Map");

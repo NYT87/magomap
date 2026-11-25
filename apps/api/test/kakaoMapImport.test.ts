@@ -1,15 +1,18 @@
 // The upload run: magomap's page sends a raw Kakao Map read (folders, then each folder's
 // favourites), and the Worker maps it, checks who may upload and which Kakao Map account it is,
-// and imports it through the same import runs as kakao-list.
+// and imports it through the import runs (the same ones the old kakao-list import used).
 import { env } from "cloudflare:workers";
-import { HttpResponse, http } from "msw";
+import { dbFromD1 } from "@magomap/db/d1";
+import {
+  completeImportRun,
+  finishImportList,
+  importListChunk,
+  startImportRun,
+} from "@magomap/db/stores/importRuns";
+import type { ImportItem } from "@magomap/domain";
 import { describe, expect, it } from "vitest";
-import { baseContract } from "./fixtures/contract";
-import { itemsBody, listsBody } from "./fixtures/pages";
 import { call, devLogin, type TestEnv } from "./helpers";
-import { network } from "./msw";
 
-const KL = "http://localhost:8788/api/integrations/magomap";
 const RUNS = "/api/import/kakao-map/runs";
 /** Uploads allowed for any signed-in user (tests use many accounts; the allowlist has two). */
 const DEV: Partial<TestEnv> = { ALLOW_DEV_UPLOAD: "true" };
@@ -122,6 +125,118 @@ const bindingOf = async (userId: string) =>
     .bind(userId)
     .first<{ id: string; nickname: string | null }>();
 
+/**
+ * Lists as the old kakao-list import brought them in (its contract fixture, already mapped):
+ * two own folders and one followed.
+ */
+const KAKAO_LIST: {
+  folderId: number;
+  name: string;
+  followed: boolean;
+  ownerName?: string;
+  items: (ImportItem & { placeExternalId: string; lat: number; lng: number })[];
+}[] = [
+  {
+    folderId: 101,
+    name: "제주 카페",
+    followed: false,
+    items: [
+      {
+        externalId: "9001",
+        placeExternalId: "27324155",
+        title: "바다정원 카페",
+        address: "제주 애월읍",
+        lat: 33.4627,
+        lng: 126.3095,
+        providerNote: "창가 자리",
+        providerColor: "01",
+        localNote: "주차 어려움",
+        position: 0,
+      },
+      {
+        externalId: "9002",
+        placeExternalId: "8125123",
+        title: "돌담 브런치",
+        address: "제주 한림읍",
+        lat: 33.4101,
+        lng: 126.2659,
+        providerColor: "03",
+        position: 1,
+      },
+    ],
+  },
+  {
+    folderId: 102,
+    name: "서울 맛집",
+    followed: false,
+    items: [
+      {
+        externalId: "9101",
+        placeExternalId: "11223344",
+        title: "명동 칼국수",
+        address: "서울 중구 명동",
+        lat: 37.5636,
+        lng: 126.9852,
+        providerColor: "05",
+        position: 0,
+      },
+    ],
+  },
+  {
+    folderId: 205,
+    name: "민수의 부산 여행",
+    followed: true,
+    ownerName: "민수",
+    items: [
+      {
+        externalId: "9201",
+        placeExternalId: "55667788",
+        title: "해운대 시장",
+        address: "부산 해운대구",
+        lat: 35.1631,
+        lng: 129.1636,
+        providerColor: "02",
+        position: 0,
+      },
+    ],
+  },
+];
+
+/** A kakao-list run's start, as the old import made it. */
+const KAKAO_LIST_RUN = {
+  provider: "kakao",
+  source: "kakao_list" as const,
+  complete: true,
+  subscriptionKnown: true,
+  importedAt: "2026-11-19T00:00:00.000Z",
+};
+
+/** Imports KAKAO_LIST for `userId` the way the old kakao-list import did, through the store. */
+async function importAsKakaoList(userId: string) {
+  const db = dbFromD1(env.DB);
+  const { runId } = await startImportRun(
+    db,
+    userId,
+    {
+      ...KAKAO_LIST_RUN,
+      lists: KAKAO_LIST.map((l) => ({
+        externalId: String(l.folderId),
+        name: l.name,
+        followed: l.followed,
+        ...(l.ownerName ? { ownerName: l.ownerName } : {}),
+        itemCount: l.items.length,
+      })),
+    },
+    Date.now(),
+  );
+  for (const l of KAKAO_LIST) {
+    const externalId = String(l.folderId);
+    await importListChunk(db, userId, runId, externalId, 0, l.items, Date.now());
+    await finishImportList(db, userId, runId, externalId, Date.now());
+  }
+  await completeImportRun(db, userId, runId, Date.now());
+}
+
 /** One own folder with two favourites, read from Kakao Map account `account`. */
 const smallRead = (account: string, folderid: number, extra: Raw = {}): Read => ({
   folders: [ownFolder(folderid, account, extra)],
@@ -170,6 +285,32 @@ describe("who may upload", () => {
 });
 
 describe("the Kakao Map account", () => {
+  it("a sync fills an empty account name from the Kakao Map nickname, never a typed one", async () => {
+    const cookie = await devLogin("km-name");
+    const name = async () =>
+      (
+        (await (await call("/api/me", { headers: { cookie } })).json()) as {
+          displayName: string | null;
+        }
+      ).displayName;
+    expect(await name()).toBeNull();
+    await upload(cookie, smallRead("u1-name-1234", 30701), "u1-name-1234");
+    expect(await name()).toBe("수지");
+    // A name she typed stays.
+    const typed = await call("/api/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ displayName: "지은" }),
+    });
+    expect(typed.status).toBeLessThan(300);
+    await upload(
+      cookie,
+      smallRead("u1-name-1234", 30701, { nickname: "다른 이름" }),
+      "u1-name-1234",
+    );
+    expect(await name()).toBe("지은");
+  }, 90_000); // two whole syncs
+
   it("first sync asks to confirm the account", async () => {
     const cookie = await devLogin("km-first");
     const user = await userIdOf(cookie);
@@ -713,71 +854,49 @@ describe("importing", () => {
     expect(counted.written()).toBeLessThanOrEqual(10 + 6 * lists + 5 * pages);
   });
 
-  it("the same favourite from kakao-list then Kakao Map is one place", async () => {
+  it("a favourite imported earlier from kakao-list and then synced from Kakao Map is one place", async () => {
     const login = "km-parity";
-    const contract = baseContract(login);
-    network.use(
-      http.get(`${KL}/lists`, () => HttpResponse.json(listsBody(contract))),
-      http.get(`${KL}/lists/:folderId/items`, ({ request, params }) =>
-        HttpResponse.json(
-          itemsBody(
-            contract,
-            Number(params.folderId),
-            Number(new URL(request.url).searchParams.get("offset") ?? 0),
-          ),
-        ),
-      ),
-    );
     const cookie = await devLogin(login);
-    const started = (await (
-      await call("/api/import/runs", post(cookie, { provider: "kakao" }))
-    ).json()) as Started;
-    for (const l of started.lists) {
-      const at = `/api/import/runs/${started.runId}/lists/${l.externalId}`;
-      expect((await call(`${at}/pages/0`, post(cookie, {}))).status).toBe(200);
-      expect((await call(`${at}/finish`, post(cookie, {}))).status).toBe(200);
-    }
-    expect(
-      (await call(`/api/import/runs/${started.runId}/complete`, post(cookie, {}))).status,
-    ).toBe(200);
-
+    await importAsKakaoList(await userIdOf(cookie));
     const places = await count("SELECT COUNT(*) AS n FROM places");
     const items = await count("SELECT COUNT(*) AS n FROM list_items");
     const pins = await count("SELECT COUNT(*) AS n FROM places WHERE id LIKE 'pin_%'");
 
-    // The raw Kakao Map records kakao-list's mapping turns into that fixture.
+    // The raw Kakao Map records kakao-list's mapping turned into those lists.
     const read: Read = {
-      folders: contract.lists.map((l) =>
-        l.subscribed
+      folders: KAKAO_LIST.map((l) =>
+        l.followed
           ? {
-              folderid: l.kakaoFolderId,
+              folderid: l.folderId,
               title: l.name,
               status: "O",
               subscribe: "Y",
               kakao_map_user_id: "minsu-kakao-map",
               nickname: l.ownerName,
             }
-          : ownFolder(l.kakaoFolderId, "parity-acct", { title: l.name }),
+          : ownFolder(l.folderId, "parity-acct", { title: l.name }),
       ),
       favorites: Object.fromEntries(
-        contract.lists.map((l) => [
-          l.kakaoFolderId,
+        KAKAO_LIST.map((l) => [
+          l.folderId,
           l.items.map((i) => ({
-            seq: Number(i.favoriteSeq),
-            key: i.placeKey,
+            seq: Number(i.externalId),
+            key: i.placeExternalId,
             type: "PLACE",
             display1: i.title,
             display2: i.address,
             lat: i.lat,
             lon: i.lng,
-            memo: i.kakaoNote,
-            color: i.kakaoColor,
+            memo: i.providerNote,
+            color: i.providerColor,
           })),
         ]),
       ),
     };
     const uploaded = await upload(cookie, read, "parity-acct");
-    expect(uploaded.lists.map((l) => l.externalId)).toEqual(started.lists.map((l) => l.externalId));
+    expect(uploaded.lists.map((l) => l.externalId)).toEqual(
+      KAKAO_LIST.map((l) => String(l.folderId)),
+    );
     expect(await count("SELECT COUNT(*) AS n FROM places")).toBe(places);
     expect(await count("SELECT COUNT(*) AS n FROM list_items")).toBe(items);
     expect(await count("SELECT COUNT(*) AS n FROM places WHERE id LIKE 'pin_%'")).toBe(pins);
@@ -1106,7 +1225,7 @@ describe("pages are checked", () => {
     expect((await send(cookie, url, [favs])).status).toBe(400);
     const notJson = await call(url, { method: "POST", headers: { cookie }, body: "{" }, DEV);
     expect(notJson.status).toBe(400);
-    // Two favourites with one seq: kakao-list refuses such a read too.
+    // Two favourites with one seq: a broken read.
     const dup = await send(cookie, url, {
       favorites: [favs[0], { ...favs[1], seq: favs[0]?.seq }],
     });
@@ -1235,24 +1354,24 @@ describe("pages are checked", () => {
 
   it("an upload page can't feed a kakao-list run, nor another user's run", async () => {
     const login = "km-cross";
-    const contract = baseContract(login);
-    network.use(http.get(`${KL}/lists`, () => HttpResponse.json(listsBody(contract))));
     const cookie = await devLogin(login);
-    const started = (await (
-      await call("/api/import/runs", post(cookie, { provider: "kakao" }))
-    ).json()) as Started;
-    const res = await send(cookie, pageUrl(started.runId, "101", 0), {
+    // A kakao-list run left from before the import was removed.
+    const { runId } = await startImportRun(
+      dbFromD1(env.DB),
+      await userIdOf(cookie),
+      {
+        ...KAKAO_LIST_RUN,
+        lists: [{ externalId: "101", name: "제주 카페", followed: false, itemCount: 2 }],
+      },
+      Date.now(),
+    );
+    const res = await send(cookie, pageUrl(runId, "101", 0), {
       favorites: [favorite(1, "1"), favorite(2, "2")],
     });
     expect(res.status).toBe(404);
 
     const read = smallRead("u1-cross", 39301);
     const own = await openRun("km-cross-owner", read, "u1-cross");
-    // Nor does kakao-list's page route serve an upload run.
-    expect(
-      (await call(`/api/import/runs/${own.runId}/lists/39301/pages/0`, post(own.cookie, {})))
-        .status,
-    ).toBe(404);
     const stranger = await devLogin("km-cross-stranger");
     expect(
       (await send(stranger, pageUrl(own.runId, "39301", 0), { favorites: read.favorites[39301] }))

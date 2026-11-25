@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LIMITS } from "./limits";
 import { position, storableText } from "./sync";
 
-/** A provider-neutral import, produced by a provider adapter (e.g. providers/kakao). */
+/** A provider-neutral import, produced by a provider adapter (e.g. providers/kakaoMap). */
 export interface ImportItem {
   externalId: string;
   placeExternalId?: string;
@@ -36,15 +36,6 @@ export interface ImportList {
    */
   accessOnly?: boolean;
   items: ImportItem[];
-}
-
-export interface ImportContract {
-  provider: string;
-  importedAt: string;
-  complete: boolean;
-  /** Whether `followed` is reliable; without it nobody is treated as a list's owner. */
-  subscriptionKnown: boolean;
-  lists: ImportList[];
 }
 
 export interface ImportSummary {
@@ -87,26 +78,15 @@ export const importListMetaSchema = z.object({
 
 export const importItemsChunkSchema = z.array(importItemSchema).max(LIMITS.importChunkItems);
 
-export const providerNameSchema = text(40).pipe(z.string().regex(/^[a-z0-9]+$/));
-
-export const importContractSchema = z.object({
-  provider: providerNameSchema,
-  importedAt: required(40),
-  complete: z.boolean(),
-  subscriptionKnown: z.boolean(),
-  lists: z
-    .array(
-      importListMetaSchema.extend({ items: z.array(importItemSchema).max(LIMITS.importListItems) }),
-    )
-    .max(LIMITS.importLists),
-});
-
 /** A provider list as the server reads it before importing its items. */
 export interface ImportListSummary extends Omit<ImportList, "items"> {
   itemCount: number;
 }
 
-/** The provider's list summaries, as fetched by the server at the start of an import. */
+/**
+ * A provider's list summaries at the start of an import: the old kakao-list import's shape, which
+ * the Kakao Map adapter's parity fixture still reads.
+ */
 export interface ImportListsSnapshot {
   provider: string;
   importedAt: string;
@@ -117,7 +97,7 @@ export interface ImportListsSnapshot {
   lists: ImportListSummary[];
 }
 
-/** One page (at most 500) of a list's items, as fetched by the server. */
+/** One page (at most 500) of a list's items (the old kakao-list import's shape, as above). */
 export interface ImportItemsPage {
   externalId: string;
   importedAt: string;

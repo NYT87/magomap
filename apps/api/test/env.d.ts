@@ -8,8 +8,6 @@ declare namespace Cloudflare {
     KAKAO_REDIRECT_URI: string;
     KAKAO_JAVASCRIPT_KEY: string;
     ALLOWED_KAKAO_USER_IDS: string;
-    KAKAO_LIST_URL: string;
-    MAGOMAP_IMPORT_SECRET: string;
     SIGNING_SECRET: string;
     ALLOW_DEV_LOGIN: string;
     ALLOW_DEV_UPLOAD: string;

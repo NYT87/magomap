@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { BADA, devLogin, importFromKakao, setVariant } from "./helpers";
+import { BADA, devLogin, syncFromKakao } from "./helpers";
 
 test("a note written offline survives a reload and syncs when back online", async ({
   page,
@@ -7,9 +7,8 @@ test("a note written offline survives a reload and syncs when back online", asyn
   browser,
 }, info) => {
   const text = `offline test ${info.project.name} ${Date.now()}`;
-  await setVariant(page, { name: "base" });
   await devLogin(context, "222");
-  await importFromKakao(page);
+  await syncFromKakao(page);
   await page.goto(`/places/${BADA}/details`);
   await expect(page.getByRole("heading", { name: "바다정원 카페" })).toBeVisible();
 

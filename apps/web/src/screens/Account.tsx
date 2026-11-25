@@ -16,7 +16,6 @@ import {
 import { accountDeviceKeys } from "../data/deviceKeys";
 import { useSyncControls } from "../data/SyncContext";
 import { type Lang, setLanguage } from "../i18n";
-import { ImportSection } from "../import/ImportSection";
 import { forgetKakaoMapRead } from "../import/kakaoMap";
 import { useOnline } from "../import/useOnline";
 import { useLayout } from "../layout/useLayout";
@@ -270,8 +269,6 @@ export function Account({ me }: { me: Me }) {
       </section>
 
       <KakaoMapSyncSection me={me} />
-
-      <ImportSection />
 
       <section className="mm-card">
         <label className="mm-field">

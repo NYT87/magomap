@@ -1,10 +1,11 @@
-// The server-driven Kakao import: the app only says "next page"; the server fetches from kakao-list.
+// Driving an import run from the app: each list's pages, its finish, then the run's complete.
+// The Kakao Map sync (kakaoMap.ts) sends the pages; `post` and `codeOf` are shared with
+// duplicating a list to Kakao Map.
 import { type ApiErrorCode, type ImportSummary, LIMITS } from "@magomap/domain";
 import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
-import { currentDb, dbUserId } from "../data/db";
 import { syncNow } from "../data/sync";
 
-export type ImportStep = "start" | "list" | "complete";
+export type ImportStep = "list" | "complete";
 
 export class ImportError extends Error {
   constructor(
@@ -43,89 +44,33 @@ export async function post<T>(account: string, path: string, body?: unknown): Pr
   }
 }
 
-type RunLists = { externalId: string; name: string; itemCount: number }[];
-export type ResumeLists = (RunLists[number] & { pagesDone: number; finished: boolean })[];
+/** A run's lists, as its start answered them. */
+export type RunLists = { externalId: string; name: string; itemCount: number }[];
 
-/**
- * Starts a run (or continues a stopped one), imports every list page by page, finishes each list,
- * then completes the run. If anything fails, the run is never completed, so nothing is marked
- * as removed from Kakao.
- */
-export async function runImport(
-  onProgress: (p: { listIndex: number; listCount: number }) => void,
-  opts: {
-    /** The account to act for; defaults to the open one. */
-    account?: string;
-    resumeRunId?: string;
-    /** Called once the run is known, started or continued. */
-    onRun?: (runId: string) => void;
-    /** Called when kakao-list synced since the stopped run, so the import began again. */
-    onFreshStart?: () => void;
-  } = {},
-): Promise<ImportSummary> {
-  const account = opts.account ?? dbUserId(currentDb());
-  let run: { runId: string; lists: ResumeLists } | undefined;
-  if (opts.resumeRunId) {
-    try {
-      run = await post(account, `/api/import/runs/${encodeURIComponent(opts.resumeRunId)}/resume`);
-    } catch (error) {
-      const code = codeOf(error);
-      if (code !== "snapshot_changed" && code !== "run_closed")
-        throw new ImportError("start", code);
-      // A closed run just means there is nothing to continue; only a newer sync is worth saying.
-      if (code === "snapshot_changed") opts.onFreshStart?.();
-    }
-  }
-  if (!run) {
-    try {
-      const fresh = await post<{ runId: string; lists: RunLists }>(account, "/api/import/runs", {
-        provider: "kakao",
-      });
-      run = {
-        runId: fresh.runId,
-        lists: fresh.lists.map((l) => ({ ...l, pagesDone: 0, finished: false })),
-      };
-    } catch (error) {
-      throw new ImportError("start", codeOf(error));
-    }
-  }
-  opts.onRun?.(run.runId);
-  return driveRun(account, run, onProgress, (at, page) =>
-    post<{ done: boolean }>(account, `${at}/pages/${page}`),
-  );
-}
-
-/** A run the app drives list by list: where each list stands. */
+/** A run the app drives list by list. */
 export interface DrivenRun {
   runId: string;
-  lists: ResumeLists;
+  lists: RunLists;
 }
 
 /**
- * The run loop both imports share: every list's pages in order (from where it stands), its
- * finish, then the run's complete and the following sync. `sendPage` sends one page of a list,
- * given the list's run path; `done` ends the list early. If anything fails, the run is never
- * completed, so nothing is marked as removed from Kakao.
+ * Every list's pages in order, its finish, then the run's complete and the following sync.
+ * `sendPage` sends one page of a list, given the list's run path; `done` ends the list early.
+ * If anything fails, the run is never completed, so nothing is marked as removed from Kakao.
  */
 export async function driveRun(
   account: string,
   run: DrivenRun,
   onProgress: (p: { listIndex: number; listCount: number }) => void,
-  sendPage: (
-    listPath: string,
-    page: number,
-    list: ResumeLists[number],
-  ) => Promise<{ done: boolean }>,
+  sendPage: (listPath: string, page: number, list: RunLists[number]) => Promise<{ done: boolean }>,
 ): Promise<ImportSummary> {
   const base = `/api/import/runs/${encodeURIComponent(run.runId)}`;
   for (const [listIndex, list] of run.lists.entries()) {
-    if (list.finished) continue;
     onProgress({ listIndex, listCount: run.lists.length });
     const at = `${base}/lists/${encodeURIComponent(list.externalId)}`;
     try {
-      // A list stopped after its last page only needs its finish call.
       const pageCount = Math.max(1, Math.ceil(list.itemCount / LIMITS.importChunkItems));
-      for (let page = list.pagesDone; page < pageCount; page++) {
+      for (let page = 0; page < pageCount; page++) {
         const res = await sendPage(at, page, list);
         if (res.done) break;
       }

@@ -77,7 +77,8 @@ authRoutes.get("/auth/kakao/callback", async (c) => {
     throw error;
   }
   if (!isAllowed(c.env, kakao.kakaoUserId)) return c.redirect("/not-invited", 302);
-  // magomap never takes Kakao's nickname: the name starts empty (filled by an import or typed).
+  // Sign-in never takes Kakao's nickname: the name starts empty, then a Kakao Map sync fills it
+  // with her Kakao Map nickname, or she types one.
   await signIn(c, kakao.kakaoUserId, null);
   return c.redirect("/", 302);
 });

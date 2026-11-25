@@ -32,11 +32,7 @@ function answerOnce(path: string, answer: () => Promise<unknown>) {
 }
 
 beforeEach(() => {
-  vi.mocked(apiFetch).mockImplementation(async (p: string) =>
-    p === "/api/import/status"
-      ? { latest: null, sourceSnapshotAt: null, upToDate: false, source: "ok" }
-      : {},
-  );
+  vi.mocked(apiFetch).mockImplementation(async () => ({}));
 });
 
 const me = { userId: "u1", displayName: "지은", identities: [{ provider: "kakao" as const }] };
@@ -273,13 +269,14 @@ describe("Account", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/signin"));
   });
 
-  it("offers importing from kakao-list", async () => {
+  it("offers syncing from Kakao Map, and no longer an import from kakao-list", async () => {
     await i18n.changeLanguage("en");
     renderAccount();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Import from kakao-list" }),
+      screen.getByRole("heading", { level: 2, name: "Sync from Kakao Map" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Import from kakao-list" })).toBeInTheDocument();
+    expect(screen.queryByText(/kakao-list/)).toBeNull();
+    expect(vi.mocked(apiFetch).mock.calls.map(([p]) => p)).not.toContain("/api/import/status");
   });
 
   it("shows who is signed in, without sign-in or Google notes", async () => {

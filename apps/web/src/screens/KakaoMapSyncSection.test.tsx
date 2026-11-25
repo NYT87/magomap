@@ -23,16 +23,11 @@ vi.mock("../import/kakaoMap", async (orig) => {
     forgetKakaoMapRead: () => forgetKakaoMapRead(),
   };
 });
-const runImport = vi.fn();
-vi.mock("../import/runImport", async (orig) => {
-  const actual = await orig<typeof import("../import/runImport")>();
-  return { ...actual, runImport: (...args: unknown[]) => runImport(...args) };
-});
 const release = vi.fn();
 vi.mock("../import/wakeLock", () => ({ holdScreenOn: () => release }));
 const { KakaoMapSyncSection } = await import("./KakaoMapSyncSection");
 const { KakaoMapSyncError } = await import("../import/kakaoMap");
-const { forgetImportJob, startImportJob } = await import("../import/importJob");
+const { forgetImportJob } = await import("../import/importJob");
 const { openUserDb } = await import("../data/db");
 
 const me: Me = { userId: "A", displayName: "호세", identities: [{ provider: "kakao" }] };
@@ -83,7 +78,6 @@ beforeEach(async () => {
   openUserDb("A");
   forgetImportJob();
   forgetKakaoMapRead.mockReset();
-  runImport.mockReset();
   setViewportWidth(1440);
   Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
   await i18n.changeLanguage("en");
@@ -281,7 +275,7 @@ describe("KakaoMapSyncSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("ignores a kakao-list import's run", async () => {
+  it("ignores a run left by the old kakao-list import", async () => {
     detectExtension.mockResolvedValue("ready");
     latest({ source: "kakao_list", status: "running" });
     render(<KakaoMapSyncSection me={me} />);
@@ -319,7 +313,7 @@ describe("KakaoMapSyncSection", () => {
     await waitFor(() => expect(forgetKakaoMapRead).toHaveBeenCalledTimes(1));
   });
 
-  it("the dialog's Sync waits for a connection and for a running import", async () => {
+  it("the dialog's Sync waits for a connection", async () => {
     runKakaoMapSync.mockRejectedValueOnce(
       new KakaoMapSyncError("kakao_account_unconfirmed", { nickname: "수지", idTail: "1234" }),
     );
@@ -339,13 +333,6 @@ describe("KakaoMapSyncSection", () => {
       window.dispatchEvent(new Event("online"));
     });
     expect(sync).toBeEnabled();
-    // A kakao-list import starts meanwhile.
-    runImport.mockReturnValueOnce(new Promise(() => {}));
-    act(() => {
-      startImportJob();
-    });
-    expect(sync).toBeDisabled();
-    expect(dialog).toHaveTextContent("An import from kakao-list is running.");
   });
 
   it("a confirmation that couldn't go out stays open to try again", async () => {
@@ -366,16 +353,5 @@ describe("KakaoMapSyncSection", () => {
       account: "A",
       confirmAccount: "1234",
     });
-  });
-
-  it("a running kakao-list import turns Sync off and says why", async () => {
-    detectExtension.mockResolvedValue("ready");
-    runImport.mockReturnValueOnce(new Promise(() => {}));
-    startImportJob();
-    render(<KakaoMapSyncSection me={me} />);
-    const button = await syncButton();
-    expect(button).toBeDisabled();
-    const note = screen.getByText(/An import from kakao-list is running/);
-    expect(button).toHaveAttribute("aria-describedby", note.id);
   });
 });

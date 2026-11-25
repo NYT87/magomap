@@ -17,8 +17,16 @@
 // `kakaoFolderId` on items, `ownerId`, and `toMagomapLists`' `ownerNickname`. (kakao-list's
 // `ownerId` line calls `.trim()` on `map_user_id`, which throws when Kakao sends it as a number.)
 import proj4 from "proj4";
-import type { ImportItem, ImportListSummary } from "../importContract";
-import { kakaoItemsToImport, kakaoListsToImport } from "./kakao";
+import { z } from "zod";
+import type {
+  ImportItem,
+  ImportItemsPage,
+  ImportListSummary,
+  ImportListsSnapshot,
+} from "../importContract";
+import { LIMITS } from "../limits";
+import { position, storableText } from "../sync";
+import { KAKAO, kakaoListExternalId, usableNickname } from "./kakao";
 
 // --- kakaoMapsExtractor.ts: record types ---
 
@@ -305,6 +313,116 @@ function toMagomapItems(
     items: items
       .slice(offset, offset + limit)
       .map((item, i) => toMagomapItem(item, offset + i, placeTypes)),
+  };
+}
+
+// --- magomap's reading of kakao-list's magomap endpoints (the import magomap had before the
+// Kakao Map sync; providers/kakao.ts until it was removed), the last step of the old path ---
+
+const text = (max: number) => storableText(max);
+const required = (max: number) => text(max).pipe(z.string().min(1));
+
+const kakaoItem = z.object({
+  favoriteSeq: required(200),
+  favoriteType: text(40).optional(),
+  placeKey: required(200).optional(),
+  title: required(LIMITS.importTitle),
+  address: text(LIMITS.importText).optional(),
+  category: text(LIMITS.importTitle).optional(),
+  phone: text(100).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  kakaoNote: text(LIMITS.importText).optional(),
+  kakaoColor: text(40).optional(),
+  localNote: text(LIMITS.importText).optional(),
+  position,
+});
+
+const kakaoListSummary = z.object({
+  kakaoFolderId: z.number().int().nonnegative(),
+  name: required(LIMITS.importTitle),
+  description: text(LIMITS.importText).optional(),
+  icon: text(200).optional(),
+  subscribed: z.boolean(),
+  ownerName: text(LIMITS.importTitle).optional(),
+  itemCount: z.number().int().nonnegative().max(LIMITS.importListItems),
+});
+
+/** kakao-list's GET /api/integrations/magomap/lists body. */
+export const kakaoListsSchema = z.object({
+  contractVersion: z.literal(1),
+  kakaoUserId: required(200),
+  importedAt: required(40),
+  complete: z.boolean(),
+  subscriptionKnown: z.boolean().optional(),
+  // Checked by hand, not by the schema: a nickname we can't use must never fail the import.
+  ownerNickname: z.unknown().optional(),
+  lists: z
+    .array(kakaoListSummary)
+    .max(LIMITS.importLists)
+    .refine((lists) => new Set(lists.map((l) => l.kakaoFolderId)).size === lists.length, {
+      message: "A list appears twice",
+    }),
+});
+
+/** kakao-list's GET /api/integrations/magomap/lists/:folderId/items body. */
+export const kakaoItemsSchema = z.object({
+  contractVersion: z.literal(1),
+  kakaoFolderId: z.number().int().nonnegative(),
+  importedAt: required(40),
+  total: z.number().int().nonnegative().max(LIMITS.importListItems),
+  offset: z.number().int().nonnegative(),
+  items: z.array(kakaoItem).max(LIMITS.importChunkItems),
+});
+
+export type KakaoLists = z.infer<typeof kakaoListsSchema>;
+export type KakaoItems = z.infer<typeof kakaoItemsSchema>;
+
+function kakaoListsToImport(raw: unknown, kakaoUserId: string): ImportListsSnapshot {
+  const c = kakaoListsSchema.parse(raw);
+  const ownerNickname = usableNickname(c.ownerNickname);
+  return {
+    provider: KAKAO,
+    importedAt: c.importedAt,
+    complete: c.complete,
+    subscriptionKnown: c.subscriptionKnown ?? false,
+    ...(ownerNickname ? { ownerNickname } : {}),
+    lists: c.lists.map((l) =>
+      defined({
+        externalId: kakaoListExternalId(l.kakaoFolderId, kakaoUserId),
+        name: l.name,
+        description: l.description,
+        followed: l.subscribed,
+        ownerName: l.ownerName,
+        itemCount: l.itemCount,
+      }),
+    ),
+  };
+}
+
+function kakaoItemsToImport(raw: unknown, kakaoUserId: string): ImportItemsPage {
+  const c = kakaoItemsSchema.parse(raw);
+  return {
+    externalId: kakaoListExternalId(c.kakaoFolderId, kakaoUserId),
+    importedAt: c.importedAt,
+    total: c.total,
+    offset: c.offset,
+    items: c.items.map((i) =>
+      defined({
+        externalId: i.favoriteSeq,
+        placeExternalId: i.placeKey,
+        title: i.title,
+        address: i.address,
+        category: i.category,
+        phone: i.phone,
+        lat: i.lat,
+        lng: i.lng,
+        providerNote: i.kakaoNote,
+        providerColor: i.kakaoColor,
+        localNote: i.localNote,
+        position: i.position,
+      }),
+    ),
   };
 }
 
