@@ -134,19 +134,21 @@ describe("MapContextMenu", () => {
   it('shows "No Kakao place found here" for an empty answer', async () => {
     fetchNearby.mockResolvedValue([]);
     renderMenu();
-    expect(await screen.findByText("No Kakao place found here.")).toBeVisible();
+    expect(
+      await screen.findByText("No Kakao place found here. Try pressing closer to the place."),
+    ).toBeVisible();
   });
 
   it("shows the offline, rate-limited and unavailable messages and saves nothing", async () => {
     const cases: [unknown, string][] = [
-      [new NetworkError(), "Looking for places needs a connection."],
+      [new NetworkError(), "Looking for places needs a connection. Try again once you're online."],
       [
         new ApiError(429, { error: "rate_limited" }),
         "That's a lot of lookups. Wait a moment, then try again.",
       ],
       [
         new ApiError(502, { error: "search_unavailable" }),
-        "Place lookup isn't available right now.",
+        "Place lookup isn't available right now. Try again, or search for the place by name.",
       ],
     ];
     for (const [error, message] of cases) {
@@ -171,7 +173,7 @@ describe("MapContextMenu", () => {
     expect(screen.getByRole("button", { name: /Place 2/ })).not.toHaveTextContent("Saved");
     await userEvent.click(saved);
     const cafesRow = await screen.findByRole("button", { name: /Cafés/ });
-    expect(cafesRow).toHaveTextContent("Already in");
+    expect(cafesRow).toHaveTextContent("Already in this list");
     expect(screen.getByRole("button", { name: /Bakeries/ })).not.toHaveTextContent("Already in");
   });
 
@@ -306,6 +308,206 @@ describe("MapContextMenu", () => {
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 
+  it("shows distances of a kilometre or more in km, with one decimal", async () => {
+    fetchNearby.mockResolvedValue([near("1", 999), near("2", 1000), near("3", 1234)]);
+    renderMenu();
+    expect(await screen.findByRole("button", { name: /Place 1/ })).toHaveTextContent("999 m");
+    expect(screen.getByRole("button", { name: /Place 2/ })).toHaveTextContent("1.0 km");
+    expect(screen.getByRole("button", { name: /Place 3/ })).toHaveTextContent("1.2 km");
+  });
+
+  it("is called 이 위치에서 장소 저장 in Korean, and marks a list 이미 이 리스트에 있어요", async () => {
+    await i18n.changeLanguage("ko");
+    const cafes = await createList({ name: "Cafés", color: null });
+    await savePlaceFromSearch(result("1"));
+    await addToList(cafes, "p_kakao_1");
+    fetchNearby.mockResolvedValue([near("1", 1500)]);
+    renderMenu();
+    expect(screen.getByRole("dialog", { name: "이 위치에서 장소 저장" })).toBeVisible();
+    const row = await screen.findByRole("button", { name: /Place 1/ });
+    expect(row).toHaveTextContent("1.5km");
+    await waitFor(() => expect(row).toHaveTextContent("저장됨"));
+    await userEvent.click(row);
+    expect(await screen.findByRole("button", { name: /Cafés/ })).toHaveTextContent(
+      "이미 이 리스트에 있어요",
+    );
+  });
+
+  it("offers Try again after a failed lookup or none found, for the same point", async () => {
+    const cases: [() => void, string][] = [
+      [() => fetchNearby.mockRejectedValueOnce(new NetworkError()), "needs a connection"],
+      [
+        () => fetchNearby.mockRejectedValueOnce(new ApiError(429, { error: "rate_limited" })),
+        "lot of lookups",
+      ],
+      [
+        () => fetchNearby.mockRejectedValueOnce(new ApiError(502, { error: "search_unavailable" })),
+        "isn't available",
+      ],
+      [() => fetchNearby.mockResolvedValueOnce([]), "No Kakao place"],
+    ];
+    for (const [fail, message] of cases) {
+      fetchNearby.mockReset();
+      fail();
+      fetchNearby.mockResolvedValueOnce([near("1", 5)]);
+      const view = renderMenu();
+      expect(await screen.findByText(new RegExp(message))).toBeVisible();
+      await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+      expect(await screen.findByRole("button", { name: /Place 1/ })).toBeVisible();
+      expect(fetchNearby).toHaveBeenCalledTimes(2);
+      expect(fetchNearby).toHaveBeenLastCalledWith(PRESS.point);
+      // The answer's first place takes the focus the button had.
+      await waitFor(() => expect(screen.getByRole("button", { name: /Place 1/ })).toHaveFocus());
+      view.unmount();
+    }
+  });
+
+  it("Try again sends no second lookup while one is still running", async () => {
+    fetchNearby.mockRejectedValueOnce(new NetworkError());
+    const again = deferred<NearbyResult[]>();
+    fetchNearby.mockReturnValueOnce(again.promise);
+    renderMenu();
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    await userEvent.click(retry);
+    // Still there, still focused, but it does nothing until the answer is in.
+    expect(retry).toHaveAttribute("aria-disabled", "true");
+    expect(retry).toHaveFocus();
+    await userEvent.click(retry);
+    await userEvent.click(retry);
+    expect(fetchNearby).toHaveBeenCalledTimes(2);
+    await act(async () => again.resolve([near("1", 5)]));
+    expect(await screen.findByRole("button", { name: /Place 1/ })).toBeVisible();
+  });
+
+  it("announces looking, then how many were found, in a status region apart from the list", async () => {
+    const answer = deferred<NearbyResult[]>();
+    fetchNearby.mockReturnValue(answer.promise);
+    renderMenu();
+    const status = within(screen.getByRole("dialog")).getByRole("status");
+    expect(status).toHaveTextContent("Looking for places nearby…");
+    await act(async () => answer.resolve([near("1", 5), near("2", 9)]));
+    await waitFor(() => expect(status).toHaveTextContent("2 places found"));
+    // The same region all along, and the list isn't read out with it.
+    expect(within(screen.getByRole("dialog")).getByRole("status")).toBe(status);
+    expect(within(status).queryByRole("button")).toBeNull();
+    expect(screen.getByRole("button", { name: /Place 1/ })).toBeVisible();
+  });
+
+  it("announces one place, none, and a failure in the same region", async () => {
+    fetchNearby.mockResolvedValueOnce([near("1", 5)]);
+    let view = renderMenu();
+    await waitFor(() =>
+      expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent(
+        "1 place found",
+      ),
+    );
+    view.unmount();
+    fetchNearby.mockResolvedValueOnce([]);
+    view = renderMenu();
+    await waitFor(() =>
+      expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent(
+        "No Kakao place found here.",
+      ),
+    );
+    view.unmount();
+    fetchNearby.mockRejectedValueOnce(new NetworkError());
+    renderMenu();
+    await waitFor(() =>
+      expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent(
+        "needs a connection",
+      ),
+    );
+  });
+
+  it("while saving, the lists stay focusable (aria-disabled) and a second tap saves nothing", async () => {
+    const cafes = await createList({ name: "Cafés", color: null });
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    const pending = deferred<string>();
+    savePlaceToList.mockReturnValue(pending.promise);
+    renderMenu();
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    const row = await screen.findByRole("button", { name: /Cafés/ });
+    await userEvent.click(row);
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(row).not.toBeDisabled();
+    expect(row).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "No list" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to the places" }));
+    await userEvent.click(row);
+    expect(savePlaceToList).toHaveBeenCalledExactlyOnceWith({ result: result("1"), listId: cafes });
+    expect(screen.getByRole("button", { name: /Cafés/ })).toBeVisible();
+    // A failure leaves her where she was, with the message.
+    await act(async () => pending.reject(new Error("disk full")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save");
+    expect(screen.getByRole("button", { name: /Cafés/ })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /Cafés/ })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("Escape on the lists goes back to the places; Escape on the places closes", async () => {
+    fetchNearby.mockResolvedValue([near("1", 5), near("2", 9)]);
+    renderMenu();
+    await userEvent.click(await screen.findByRole("button", { name: /Place 2/ }));
+    await screen.findByRole("button", { name: "No list" });
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Place 2/ })).toHaveFocus());
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a save still running when a newer press replaces the menu neither opens it nor closes the new one", async () => {
+    fetchNearby.mockResolvedValueOnce([near("1", 5)]).mockResolvedValueOnce([near("2", 7)]);
+    const pending = deferred<string>();
+    savePlaceToList.mockReturnValue(pending.promise);
+    const onClose = vi.fn();
+    const { hook } = memoryLocation({ path: "/" });
+    const view = render(
+      <Router hook={hook}>
+        <MapContextMenu press={PRESS} onClose={onClose} />
+        <Where />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "No list" }));
+    // The same menu, given a newer press.
+    view.rerender(
+      <Router hook={hook}>
+        <MapContextMenu press={{ ...PRESS, point: { lat: 1, lng: 2 } }} onClose={onClose} />
+        <Where />
+      </Router>,
+    );
+    expect(await screen.findByRole("button", { name: /Place 2/ })).toBeVisible();
+    await act(async () => pending.resolve("p_kakao_1"));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    expect(screen.getByRole("button", { name: /Place 2/ })).toBeVisible();
+    // Nor does a late failure show on the newer menu.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a save failing after a newer press says nothing on the newer menu", async () => {
+    fetchNearby.mockResolvedValueOnce([near("1", 5)]).mockResolvedValueOnce([near("2", 7)]);
+    const pending = deferred<string>();
+    savePlaceToList.mockReturnValue(pending.promise);
+    const { hook } = memoryLocation({ path: "/" });
+    const view = render(
+      <Router hook={hook}>
+        <MapContextMenu press={PRESS} onClose={() => {}} />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "No list" }));
+    view.rerender(
+      <Router hook={hook}>
+        <MapContextMenu press={{ ...PRESS, point: { lat: 1, lng: 2 } }} onClose={() => {}} />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Place 2/ }));
+    await act(async () => pending.reject(new Error("disk full")));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "No list" })).not.toHaveAttribute("aria-disabled");
+  });
+
   it("Escape closes it and returns focus", async () => {
     fetchNearby.mockResolvedValue([near("1", 5)]);
     const { hook } = memoryLocation({ path: "/" });
@@ -356,6 +558,67 @@ describe("MapContextMenu", () => {
       expect(screen.getByRole("dialog")).toBeVisible();
       fireEvent.pointerDown(screen.getByRole("button", { name: "before" }));
       expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("Escape on the lists goes back to the places", async () => {
+      fetchNearby.mockResolvedValue([near("1", 5)]);
+      renderMenu();
+      await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+      await screen.findByRole("button", { name: "No list" });
+      await userEvent.keyboard("{Escape}");
+      expect(await screen.findByRole("button", { name: /Place 1/ })).toBeVisible();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("closes when focus leaves it, and focus goes back to the map", async () => {
+      fetchNearby.mockResolvedValue([near("1", 5)]);
+      const { hook } = memoryLocation({ path: "/" });
+      render(
+        <Router hook={hook}>
+          <Opener />
+          <button type="button">elsewhere</button>
+        </Router>,
+      );
+      const opener = screen.getByRole("button", { name: "map" });
+      await userEvent.click(opener);
+      await screen.findByRole("button", { name: /Place 1/ });
+      act(() => screen.getByRole("button", { name: "elsewhere" }).focus());
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(opener).toHaveFocus();
+    });
+
+    it("stays open while focus moves inside it, from one step to the other", async () => {
+      fetchNearby.mockResolvedValue([near("1", 5)]);
+      renderMenu();
+      await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+      await userEvent.tab();
+      await userEvent.click(screen.getByRole("button", { name: "Back to the places" }));
+      expect(screen.getByRole("dialog")).toBeVisible();
+    });
+
+    it("moves back inside the window when the window shrinks or turns", async () => {
+      fetchNearby.mockResolvedValue([]);
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+        width: 300,
+        height: 200,
+      } as DOMRect);
+      const was = { w: window.innerWidth, h: window.innerHeight };
+      try {
+        renderMenu({ ...PRESS, at: { x: 600, y: 500 } });
+        const dialog = screen.getByRole("dialog", { name: "Save a place here" });
+        expect(dialog.style.left).toBe("600px");
+        Object.defineProperty(window, "innerWidth", { value: 700, configurable: true });
+        Object.defineProperty(window, "innerHeight", { value: 600, configurable: true });
+        act(() => {
+          window.dispatchEvent(new Event("resize"));
+        });
+        expect(dialog.style.left).toBe(`${700 - 8 - 300}px`);
+        expect(dialog.style.top).toBe(`${600 - 8 - 200}px`);
+      } finally {
+        Object.defineProperty(window, "innerWidth", { value: was.w, configurable: true });
+        Object.defineProperty(window, "innerHeight", { value: was.h, configurable: true });
+      }
     });
 
     it("closes on Escape", async () => {
