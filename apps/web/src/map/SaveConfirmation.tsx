@@ -11,8 +11,8 @@ export const SAVE_CONFIRMATION_MS = 6_000;
  * After a save from the map: "Saved to <list>" (or "Saved"), with Undo when the save changed
  * anything. A polite status; it goes away after a few seconds (not while her pointer or focus is
  * on it), on her next action elsewhere, or when a newer save replaces it. Going away lets the
- * held sending go (`release`). Undo takes back exactly what the save did; when that unsaves the
- * place she landed on, she goes back to the map.
+ * held sending go (`release`). Undo takes back what the save did; when that unsaves the place
+ * she landed on, she goes back to the map.
  */
 export function SaveConfirmation({
   saved,
@@ -85,8 +85,7 @@ export function SaveConfirmation({
     setUndoing(true);
     setFailed(false);
     try {
-      await undoSave(saved);
-      const unsaved = saved.rows.some((r) => r.table === "user_places");
+      const { unsaved } = await undoSave(saved);
       if (unsaved && location === `/places/${encodeURIComponent(saved.placeId)}`) {
         navigate("/", { replace: true });
       }

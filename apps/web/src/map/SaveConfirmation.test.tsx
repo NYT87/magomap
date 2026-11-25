@@ -1,5 +1,5 @@
 import type { SearchResult } from "@magomap/domain";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -117,6 +117,16 @@ describe("SaveConfirmation", () => {
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
     expect(release).toHaveBeenCalled();
+  });
+
+  it("stays on the place when Undo couldn't unsave it (already sent)", async () => {
+    const saved = await savePlaceToList({ result: result("1"), listId: null, newListName: "New" });
+    await db.outbox.clear();
+    show(saved);
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(await db.user_places.count()).toBe(1);
+    expect(screen.getByTestId("location")).toHaveTextContent("/places/p_kakao_1");
   });
 
   it("Undo of a saved place added to a list only takes it out of the list, and stays", async () => {

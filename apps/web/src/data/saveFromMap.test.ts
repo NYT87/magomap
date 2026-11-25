@@ -3,7 +3,7 @@ import { placeRowId, userPlaceRowId } from "@magomap/domain/ids";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openUserDb } from "./db";
 import { savePlaceToList, undoSave } from "./saveFromMap";
-import { addToList, createList, removeFromList, savePlaceFromSearch } from "./writes";
+import { addToList, addVisitNote, createList, removeFromList, savePlaceFromSearch } from "./writes";
 
 const result = (extra: Partial<SearchResult> = {}): SearchResult => ({
   provider: "kakao",
@@ -163,7 +163,7 @@ describe("undoSave", () => {
     expect(saved.listName).toBe("Cafés");
     expect(saved.listId).not.toBeNull();
     expect(saved.changed).toBe(true);
-    await undoSave(saved);
+    await expect(undoSave(saved)).resolves.toEqual({ unsaved: true });
     expect(await snapshot(db)).toEqual(before);
   });
 
@@ -174,7 +174,7 @@ describe("undoSave", () => {
     const before = await snapshot(db);
     const saved = await savePlaceToList({ result: result(), listId });
     expect(await liveItems(db)).toHaveLength(1);
-    await undoSave(saved);
+    await expect(undoSave(saved)).resolves.toEqual({ unsaved: false });
     expect(await snapshot(db)).toEqual(before);
     // Still saved, as it was.
     expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
@@ -216,7 +216,7 @@ describe("undoSave", () => {
     const saved = await savePlaceToList({ result: result(), listId: null, newListName: "Cafés" });
     // As if pushed.
     await db.outbox.clear();
-    await undoSave(saved);
+    await expect(undoSave(saved)).resolves.toEqual({ unsaved: false });
     expect(await liveItems(db)).toEqual([]);
     expect((await db.lists.get(saved.listId as string))?.deletedAt).not.toBeNull();
     const sent = (await db.outbox.toArray()).map((e) => [e.table, e.op]);
@@ -226,5 +226,89 @@ describe("undoSave", () => {
         ["lists", "delete"],
       ]),
     );
+  });
+
+  it("unsaves a place she only had through a list, leaving that list's item", async () => {
+    const db = openUserDb(user());
+    const listId = await createList({ name: "Shared", color: null });
+    await savePlaceFromSearch(result());
+    await addToList(listId, ID);
+    // In a list, but not among her places.
+    await db.user_places.delete(userPlaceRowId(ID));
+    const before = await snapshot(db);
+    const saved = await savePlaceToList({ result: result(), listId: null });
+    await expect(undoSave(saved)).resolves.toEqual({ unsaved: true });
+    expect(await snapshot(db)).toEqual(before);
+  });
+
+  describe("when something else changed in between, it keeps that and the place", () => {
+    const live = (id: string | null) => async (db: ReturnType<typeof openUserDb>) =>
+      (await db.list_items.toArray()).filter((i) => i.listId === id && i.deletedAt == null);
+
+    it("a note written for the place", async () => {
+      const db = openUserDb(user());
+      const saved = await savePlaceToList({ result: result(), listId: null, newListName: "L" });
+      const note = await addVisitNote(ID, { visitedOn: null, body: "lovely" });
+      await expect(undoSave(saved)).resolves.toEqual({ unsaved: false });
+      expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
+      expect(await db.places.get(ID)).toBeDefined();
+      expect((await db.visit_notes.get(note))?.body).toBe("lovely");
+      expect((await db.outbox.toArray()).some((e) => e.id === note)).toBe(true);
+      // What only the save made is still taken back.
+      expect(await live(saved.listId)(db)).toEqual([]);
+      expect((await db.lists.get(saved.listId as string))?.deletedAt).not.toBeNull();
+    });
+
+    it("the place added to another list", async () => {
+      const db = openUserDb(user());
+      const saved = await savePlaceToList({ result: result(), listId: null });
+      const other = await createList({ name: "Other", color: null });
+      await addToList(other, ID);
+      await expect(undoSave(saved)).resolves.toEqual({ unsaved: false });
+      expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
+      expect(await live(other)(db)).toHaveLength(1);
+      // Nothing waiting to be sent refers to a place that's gone.
+      const pending = await db.outbox.toArray();
+      for (const e of pending) {
+        const placeId = (e.row as { placeId?: string } | undefined)?.placeId;
+        if (placeId) expect(await db.places.get(placeId)).toBeDefined();
+      }
+    });
+
+    it("another place added to the list it created", async () => {
+      const db = openUserDb(user());
+      const saved = await savePlaceToList({ result: result(), listId: null, newListName: "L" });
+      const second = await savePlaceFromSearch(result({ externalId: "999", title: "Two" }));
+      await addToList(saved.listId as string, second);
+      await undoSave(saved);
+      // Its own item goes; the list, holding another place, stays.
+      expect((await live(saved.listId)(db)).map((i) => i.placeId)).toEqual([second]);
+      expect((await db.lists.get(saved.listId as string))?.deletedAt).toBeNull();
+    });
+
+    it("a row the server sent in between", async () => {
+      const db = openUserDb(user());
+      const saved = await savePlaceToList({ result: result(), listId: null, newListName: "L" });
+      const place = await db.places.get(ID);
+      await db.places.put({
+        ...(place as NonNullable<typeof place>),
+        title: "Renamed",
+        updatedAt: Date.now() + 5_000,
+      });
+      await expect(undoSave(saved)).resolves.toEqual({ unsaved: false });
+      expect((await db.places.get(ID))?.title).toBe("Renamed");
+      expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
+      expect(await live(saved.listId)(db)).toEqual([]);
+    });
+
+    it("a list it created, renamed in between, isn't deleted", async () => {
+      const db = openUserDb(user());
+      const saved = await savePlaceToList({ result: result(), listId: null, newListName: "L" });
+      const { editList } = await import("./writes");
+      await editList(saved.listId as string, { name: "Kept" });
+      await undoSave(saved);
+      expect((await db.lists.get(saved.listId as string))?.deletedAt).toBeNull();
+      expect(await live(saved.listId)(db)).toEqual([]);
+    });
   });
 });
