@@ -95,8 +95,6 @@ describe("watchLongPress", () => {
   });
 
   it("cancels the click that lifting the finger would send, and keeps the browser's menu away", () => {
-    const clicked = vi.fn();
-    document.addEventListener("click", clicked);
     touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
     vi.advanceTimersByTime(500);
     // While the finger is still down: no menu.
@@ -110,7 +108,6 @@ describe("watchLongPress", () => {
     const late = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     document.body.dispatchEvent(late);
     expect(late.defaultPrevented).toBe(true);
-    document.removeEventListener("click", clicked);
   });
 
   it("lets a tap through when the finger lifts away from the map (the sheet made it inert)", () => {
@@ -167,6 +164,27 @@ describe("watchLongPress", () => {
     const pan = touch(el, "touchmove", [{ clientX: 160, clientY: 260 }]);
     expect(pan.defaultPrevented).toBe(false);
     expect(mapMoved).toHaveBeenCalledOnce();
+  });
+
+  it("never leaves moves blocked when the lift went missing: a new touch, or the cleanup, frees them", () => {
+    const mapMoved = vi.fn();
+    el.addEventListener("touchmove", mapMoved);
+    const other = document.createElement("div");
+    document.body.append(other);
+    touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+    vi.advanceTimersByTime(500);
+    // No lift ever arrives; her next touch is elsewhere.
+    touch(other, "touchstart", [{ clientX: 5, clientY: 5 }]);
+    expect(touch(el, "touchmove", [{ clientX: 50, clientY: 50 }]).defaultPrevented).toBe(false);
+    expect(mapMoved).toHaveBeenCalledOnce();
+    other.remove();
+
+    touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+    vi.advanceTimersByTime(500);
+    stop();
+    const after = touch(el, "touchmove", [{ clientX: 50, clientY: 50 }]);
+    expect(after.defaultPrevented).toBe(false);
+    expect(mapMoved).toHaveBeenCalledTimes(2);
   });
 
   it("lets her next tap through at once, on what the press opened", () => {

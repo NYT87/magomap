@@ -76,8 +76,9 @@ export function watchLongPress(
   // On the window, before anything else: the menu may land on what the press opened, and the
   // finger may lift or move over it.
   const onAnyStart = () => {
-    // A new touch: the pressing finger is up, whatever became of its touchend.
+    // A new touch: the pressing finger is up, whatever became of its lift.
     liftPending = false;
+    if (holding) released();
   };
   const onAnyMove = (e: Event) => {
     if (!holding) return;
