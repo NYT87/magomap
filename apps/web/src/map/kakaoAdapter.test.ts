@@ -9,6 +9,7 @@ function stubKakao() {
   const overlays: { opts: Opts; setMap: ReturnType<typeof vi.fn> }[] = [];
   const listeners: { target: unknown; type: string; cb: (e?: unknown) => void }[] = [];
   const clustered: unknown[][] = [];
+  const mapOptions: unknown[] = [];
   class CustomOverlay {
     setMap = vi.fn();
     constructor(public opts: Opts) {
@@ -41,6 +42,9 @@ function stubKakao() {
   }
   // A projection where one container pixel is 0.001 degrees from (37, 127) at the top left.
   class KMap {
+    constructor(_el: HTMLElement, opts: unknown) {
+      mapOptions.push(opts);
+    }
     getProjection() {
       return {
         coordsFromContainerPoint: (p: Point) => new LatLng(37 - p.y * 0.001, 127 + p.x * 0.001),
@@ -61,7 +65,7 @@ function stubKakao() {
       },
     },
   };
-  return { overlays, clustered, listeners };
+  return { overlays, clustered, listeners, mapOptions };
 }
 
 afterEach(() => {
@@ -69,6 +73,16 @@ afterEach(() => {
 });
 
 describe("Kakao adapter", () => {
+  it("lets the keyboard move and zoom the map (arrows, + and -) once it has focus", () => {
+    const { mapOptions } = stubKakao();
+    createKakaoAdapter().mount(document.createElement("div"), {
+      center: { lat: 37.5, lng: 127 },
+      zoom: 10,
+    });
+    // https://apis.map.kakao.com/web/documentation/#MapOptions (keyboardShortcuts, default false)
+    expect(mapOptions[0]).toMatchObject({ keyboardShortcuts: true });
+  });
+
   it("keeps the selected pin out of the clusterer, above the others", () => {
     const { overlays, clustered } = stubKakao();
     const map = createKakaoAdapter();

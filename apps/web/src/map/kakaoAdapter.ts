@@ -23,7 +23,7 @@ interface KakaoMaps {
   LatLngBounds: new () => { extend(p: KakaoLatLng): void };
   Map: new (
     el: HTMLElement,
-    opts: { center: KakaoLatLng; level: number },
+    opts: { center: KakaoLatLng; level: number; keyboardShortcuts?: boolean },
   ) => {
     setCenter(p: KakaoLatLng): void;
     panTo(p: KakaoLatLng): void;
@@ -99,6 +99,9 @@ export function createKakaoAdapter(): MapAdapter {
       map = new k.Map(el, {
         center: new k.LatLng(view.center.lat, view.center.lng),
         level: kakaoLevel(view.zoom),
+        // Arrows move the map, + and - zoom, while focus is on the map (as on Leaflet's map).
+        // Off by default: https://apis.map.kakao.com/web/documentation/#MapOptions
+        keyboardShortcuts: true,
       });
       cluster = new k.MarkerClusterer({ map, averageCenter: true, minLevel: 7 });
       // "idle" fires once the map has stopped moving, not while dragging.
