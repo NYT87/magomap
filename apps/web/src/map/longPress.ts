@@ -2,7 +2,7 @@
 export const LONG_PRESS_MS = 500;
 /** How far the finger may wander and still count as held (more is a pan). */
 export const LONG_PRESS_SLOP_PX = 10;
-/** After a press, how long the click and menu that lifting the finger sends are swallowed. */
+/** After a press, how long a late browser menu for it is still swallowed. */
 const AFTER_PRESS_MS = 600;
 /** A press that starts on one of these is theirs, not the map's. */
 const NOT_THE_MAP = ".leaflet-control, a, input, textarea, select";
@@ -10,8 +10,9 @@ const NOT_THE_MAP = ".leaflet-control, a, input, textarea, select";
 /**
  * Calls `onPress` once when a single finger is held still on `el` for LONG_PRESS_MS (or when the
  * browser's own long-press menu comes first), at the client point where it went down. A pan, a
- * pinch or a tap never counts. After a press, the browser's menu and the click that lifting the
- * finger sends are swallowed, so the press doesn't also open a place or close what it opened.
+ * pinch or a tap never counts. After a press, the browser's menu is swallowed, and so is any click
+ * while the finger is still down; lifting it sends no click (its touchend is cancelled), so the
+ * press doesn't also open a place or close what it opened, and her next tap goes through.
  * Returns a cleanup.
  */
 export function watchLongPress(
@@ -21,6 +22,8 @@ export function watchLongPress(
   let held: { x: number; y: number } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pressed = false;
+  /** The pressing finger is still down. */
+  let holding = false;
   let afterPress: ReturnType<typeof setTimeout> | undefined;
 
   const cancel = () => {
@@ -32,6 +35,7 @@ export function watchLongPress(
     cancel();
     if (!at) return;
     pressed = true;
+    holding = true;
     onPress(at);
   };
   const swallow = (e: Event) => {
@@ -42,6 +46,7 @@ export function watchLongPress(
   const onStart = (e: TouchEvent) => {
     clearTimeout(afterPress);
     pressed = false;
+    holding = false;
     const first = e.touches[0];
     const target = e.target instanceof Element ? e.target : null;
     if (e.touches.length !== 1 || !first || target?.closest(NOT_THE_MAP)) return cancel();
@@ -57,6 +62,7 @@ export function watchLongPress(
   };
   const onEnd = (e: TouchEvent) => {
     cancel();
+    holding = false;
     if (!pressed) return;
     // No click (and no mouse events) from lifting the finger after a press.
     if (e.type === "touchend" && e.cancelable) e.preventDefault();
@@ -73,7 +79,7 @@ export function watchLongPress(
     } else if (pressed) swallow(e);
   };
   const onClick = (e: Event) => {
-    if (pressed) swallow(e);
+    if (holding) swallow(e);
   };
 
   el.addEventListener("touchstart", onStart, { passive: true });
@@ -86,6 +92,7 @@ export function watchLongPress(
     cancel();
     clearTimeout(afterPress);
     pressed = false;
+    holding = false;
     el.removeEventListener("touchstart", onStart);
     el.removeEventListener("touchmove", onMove);
     el.removeEventListener("touchend", onEnd);

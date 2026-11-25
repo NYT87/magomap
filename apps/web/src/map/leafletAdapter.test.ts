@@ -86,6 +86,8 @@ describe("Leaflet adapter", () => {
 
   it("reports a right-click with the point under it, and keeps the browser's menu away", async () => {
     const { el, map } = await mountedMap();
+    // Leaflet makes its map focusable; the keyboard opens the menu from there.
+    expect(el.tabIndex).toBe(0);
     const presses: ContextPress[] = [];
     map.onContextPress((p) => presses.push(p));
     const event = new MouseEvent("contextmenu", {

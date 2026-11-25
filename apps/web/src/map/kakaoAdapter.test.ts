@@ -124,6 +124,17 @@ describe("Kakao adapter", () => {
     el.remove();
   });
 
+  it("makes the map focusable, as Leaflet does", () => {
+    stubKakao();
+    const map = createKakaoAdapter();
+    const el = host();
+    expect(el.tabIndex).toBe(-1);
+    map.mount(el, { center: { lat: 37.5, lng: 127 }, zoom: 10 });
+    expect(el.tabIndex).toBe(0);
+    map.destroy();
+    el.remove();
+  });
+
   it("keeps the browser's own menu off the map", () => {
     stubKakao();
     const map = createKakaoAdapter();

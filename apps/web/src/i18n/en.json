@@ -100,7 +100,29 @@
     "empty": "No places on the map yet. Search for one, or import your lists from kakao-list in Account.",
     "previousLabel": "{{title}}, previous location until {{date}}",
     "selectedLabel": "{{title}}, selected",
-    "hasPrevious": "Moved. Open it to see where it was."
+    "hasPrevious": "Moved. Open it to see where it was.",
+    "canvasLabel": "Map",
+    "canvasHint": "Right-click, long-press, or press Shift+F10 to save a place here.",
+    "save": {
+      "title": "Save a place here",
+      "looking": "Looking for places nearby…",
+      "none": "No Kakao place found here.",
+      "offline": "Looking for places needs a connection.",
+      "rateLimited": "That's a lot of lookups. Wait a moment, then try again.",
+      "unavailable": "Place lookup isn't available right now.",
+      "distance": "{{m}} m",
+      "saved": "Saved",
+      "chooseList": "Save to…",
+      "noList": "No list",
+      "newList": "New list",
+      "newListName": "List name",
+      "alreadyIn": "Already in",
+      "confirm": "Save",
+      "saving": "Saving…",
+      "saveFailed": "Couldn't save this place. Try again.",
+      "back": "Back to the places",
+      "close": "Close"
+    }
   },
   "picker": {
     "mine": "My lists",

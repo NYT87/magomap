@@ -94,20 +94,34 @@ describe("watchLongPress", () => {
     expect(pressed).not.toHaveBeenCalled();
   });
 
-  it("swallows the click and context menu that lifting the finger would send", () => {
+  it("cancels the click that lifting the finger would send, and keeps the browser's menu away", () => {
     const clicked = vi.fn();
     document.addEventListener("click", clicked);
     touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
     vi.advanceTimersByTime(500);
+    // While the finger is still down: no menu, no click.
     const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     document.body.dispatchEvent(menu);
     expect(menu.defaultPrevented).toBe(true);
-    const end = touch(el, "touchend", [{ clientX: 100, clientY: 200 }]);
-    expect(end.defaultPrevented).toBe(true);
     document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(clicked).not.toHaveBeenCalled();
-    // Later clicks are hers again.
-    vi.advanceTimersByTime(1_000);
+    // Lifting it: its touchend is cancelled, so the browser sends no click for it.
+    const end = touch(el, "touchend", [{ clientX: 100, clientY: 200 }]);
+    expect(end.defaultPrevented).toBe(true);
+    // A late menu from the same press is still kept away.
+    const late = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(late);
+    expect(late.defaultPrevented).toBe(true);
+    document.removeEventListener("click", clicked);
+  });
+
+  it("lets her next tap through at once, on what the press opened", () => {
+    const clicked = vi.fn();
+    document.addEventListener("click", clicked);
+    touch(el, "touchstart", [{ clientX: 100, clientY: 200 }]);
+    vi.advanceTimersByTime(500);
+    touch(el, "touchend", [{ clientX: 100, clientY: 200 }]);
+    vi.advanceTimersByTime(100);
     document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(clicked).toHaveBeenCalledOnce();
     document.removeEventListener("click", clicked);

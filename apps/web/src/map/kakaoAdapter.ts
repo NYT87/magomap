@@ -111,6 +111,8 @@ export function createKakaoAdapter(): MapAdapter {
           at: { x: box.left + e.point.x, y: box.top + e.point.y },
         });
       });
+      // Focusable, as Leaflet makes its map: the keyboard opens the save menu from here.
+      if (el.tabIndex < 0) el.tabIndex = 0;
       el.addEventListener("contextmenu", noBrowserMenu);
       stopLongPress = watchLongPress(el, (client) => {
         if (!map) return;
