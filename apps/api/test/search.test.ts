@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { NEARBY_CATEGORY_GROUPS } from "../src/search/nearby";
 import { verifySearchSignature } from "../src/search/signing";
 import { call, devLogin } from "./helpers";
 import { network } from "./msw";
@@ -274,7 +275,7 @@ describe("nearby places", () => {
     expect(text).not.toContain("test-rest-key");
   });
 
-  it("answers 429 when the limiter refuses, counting one press once", async () => {
+  it("answers 429 when the limiter refuses, charging one search per Kakao call", async () => {
     const cookie = await devLogin("111");
     const keys: string[] = [];
     const refusing = {
@@ -302,7 +303,30 @@ describe("nearby places", () => {
       SEARCH_LIMITER: allowing,
     } as never);
     expect(ok.status).toBe(200);
-    expect(counted).toBe(1);
+    // Six Kakao calls, six searches: one user can't spend the Kakao quota six times faster.
+    expect(counted).toBe(NEARBY_CATEGORY_GROUPS.length);
+    expect(counted).toBe(6);
+
+    // Refused part-way: no Kakao call is made.
+    let left = 3;
+    let kakaoCalls = 0;
+    const running = {
+      limit: async () => {
+        left -= 1;
+        return { success: left >= 0 };
+      },
+    } as unknown as RateLimit;
+    network.use(
+      http.get(KAKAO_CATEGORY, () => {
+        kakaoCalls += 1;
+        return HttpResponse.json(categoryAnswer([]));
+      }),
+    );
+    const partly = await call("/api/search/nearby?lat=33.46&lng=126.31", { headers: { cookie } }, {
+      SEARCH_LIMITER: running,
+    } as never);
+    expect(partly.status).toBe(429);
+    expect(kakaoCalls).toBe(0);
   });
 
   it("requires a session", async () => {

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
 import { type KakaoDocument, toSearchResult } from "./kakaoLocal";
-import { findNearby, parseNearbyPoint } from "./nearby";
+import { findNearby, NEARBY_CATEGORY_GROUPS, parseNearbyPoint } from "./nearby";
 import { signSearchResult } from "./signing";
 
 export const searchRoutes = new Hono<AppEnv>();
@@ -54,10 +54,13 @@ searchRoutes.get("/search/nearby", async (c) => {
   const point = parseNearbyPoint(c.req.query("lat"), c.req.query("lng"));
   if (!point) return c.json({ error: "invalid" }, 400);
 
-  // One press counts once, however many Kakao calls it makes.
+  // One search per Kakao call a press makes (six), all charged before any call: the per-user
+  // limit then guards the Kakao daily quota as it does for keyword search.
   if (c.env.SEARCH_LIMITER) {
-    const { success } = await c.env.SEARCH_LIMITER.limit({ key: c.var.userId });
-    if (!success) return c.json({ error: "rate_limited" }, 429);
+    for (const _group of NEARBY_CATEGORY_GROUPS) {
+      const { success } = await c.env.SEARCH_LIMITER.limit({ key: c.var.userId });
+      if (!success) return c.json({ error: "rate_limited" }, 429);
+    }
   }
 
   const results = await findNearby(
