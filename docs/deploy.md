@@ -50,7 +50,7 @@ Requirements: Node 22, pnpm (the version in `package.json`), a Cloudflare accoun
 
 ## 1. Choose the database
 
-**Current choice (2026-11-19): D1.** The first deployment uses D1, created in an Asia location (`npx wrangler d1 create magomap --location apac`) so it sits near the people using it. Moving to Postgres (for example a separate database on the server kakao-list uses) is to be reconsidered once the app is in real use. The deciding factor is the latency from the Worker to that server's region. Postgres-only would also allow real transactions instead of the write token, but that is a rewrite and its own plan.
+**Current choice (2026-11-19): D1.** The first deployment uses D1, created in an Asia location (`npx wrangler d1 create magomap --location apac`) so it sits near the people using it. Moving to Postgres is to be reconsidered once the app is in real use. The deciding factor is the latency from the Worker to that server's region. Postgres-only would also allow real transactions instead of the write token, but that is a rewrite and its own plan.
 
 ### Option A: D1
 
@@ -101,7 +101,7 @@ Kakao place search is limited to 60 requests a minute per user. In `apps/api/wra
 
 ## 3. Kakao Developers
 
-Use the **same Kakao Developers app as kakao-list**. Kakao gives each person a different user id per app, so a different app would break the import.
+Keep using the **Kakao Developers app the deployment already has**. Kakao gives each person a different user id per app, so another app would make existing accounts, and the ids in `ALLOWED_KAKAO_USER_IDS`, unrecognised.
 
 In that app:
 
@@ -119,7 +119,6 @@ In `apps/api/wrangler.toml`, under `[env.<env>.vars]`:
 | `KAKAO_REDIRECT_URI` | `https://<your-domain>/api/auth/kakao/callback` |
 | `KAKAO_JAVASCRIPT_KEY` | the JavaScript key, which is public by design |
 | `ALLOWED_KAKAO_USER_IDS` | comma-separated Kakao user ids allowed to sign up; empty means open |
-| `KAKAO_LIST_URL` | the deployed kakao-list server, e.g. `https://kakao-list-api.vercel.app` |
 | `ALLOW_DEV_LOGIN` | `"false"`, always, when deployed |
 | `ALLOW_DEV_UPLOAD` | `"false"`, always, when deployed: `"true"` lets **any** signed-in user upload a Kakao Map read (see "Sync from Kakao Map") |
 
@@ -128,11 +127,10 @@ Secrets, which are never stored in the file:
 ```bash
 npx wrangler secret put KAKAO_REST_API_KEY --env d1      # or --env postgres
 npx wrangler secret put KAKAO_CLIENT_SECRET --env d1
-npx wrangler secret put MAGOMAP_IMPORT_SECRET --env d1   # at least 32 characters: openssl rand -hex 32
 npx wrangler secret put SIGNING_SECRET --env d1          # signs search results: openssl rand -hex 32
 ```
 
-Set **the same** `MAGOMAP_IMPORT_SECRET` on the kakao-list server. Generate real secrets; never reuse the values in `.dev.vars.example`.
+Generate real secrets; never reuse the values in `.dev.vars.example`.
 
 ## 5. Emergency deploy
 
@@ -190,8 +188,7 @@ docker compose up -d postgres                   # only for Postgres tests
 cp apps/api/.dev.vars.example apps/api/.dev.vars
 pnpm db:migrate:d1 --local
 pnpm --filter @magomap/api dev                  # wrangler dev --env d1 on :8787
-pnpm --filter @magomap/api dev:fake-kakao-list  # a stand-in kakao-list on :8788
-pnpm --filter @magomap/api dev:seed             # dev login + a full import
+pnpm --filter @magomap/api dev:seed             # dev login + a small Kakao Map sync
 ```
 
 To try "Sync from Kakao Map" locally, load the extension's dev build (`pnpm --filter @magomap/extension build:dev`, then **Load unpacked** `apps/extension/dist`), sign in to Kakao Map in that browser, and allow uploads for the dev login: `pnpm --filter @magomap/api exec wrangler dev --env d1 --var ALLOW_DEV_UPLOAD:true`, or run `--env postgres`, where `ALLOW_DEV_UPLOAD` is already `"true"`.

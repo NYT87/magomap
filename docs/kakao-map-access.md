@@ -6,7 +6,7 @@ Phase 0 of the direct Kakao Map sync (`docs/superpowers/specs/2026-11-20-kakao-d
 
 ## Endpoints
 
-Undocumented `map.kakao.com` endpoints, also described in `kakao-list/docs/kakao-maps-private-api.md`:
+Undocumented `map.kakao.com` endpoints:
 
 - `GET /folder/list` returns `200 { status: { code: "SUCCESS" }, folders: [...] }`. It lists every folder, including folder 0.
 - `GET /favorite/mine/list?folderid=<id>` returns the favourites of one folder.
@@ -45,7 +45,7 @@ Not tested yet.
   | 471350 | -32433 | 33.37661909 | 126.87684594 | the favourite's own `lat`/`lon` (Jeju) |
   | 608064 | 1159067 | 37.67127631 | 127.48995646 | Kakao's place-detail endpoint |
 
-- **Negative `y` is valid**: places south of about 33.5°N (southern Jeju) have one. kakao-list used to drop such coordinates; its PR #29 fixed that.
+- **Negative `y` is valid**: places south of about 33.5°N (southern Jeju) have one. A reader must keep such coordinates.
 
 ### Folder 0
 
@@ -56,7 +56,7 @@ Folder 0 is **each person's default favourites list**, and `/folder/list` includ
 | type | key | in magomap |
 |---|---|---|
 | `PLACE` | Kakao place id | a place |
-| `ADDRESS` | an address docid (`N…` or `J…`) | a place (kakao-list's `MAGOMAP_PLACE_TYPES`) |
+| `ADDRESS` | an address docid (`N…` or `J…`) | a place |
 | `POINT` | none | a pin at its own coordinates |
 | `ROUTE_BICYCLE` | none, and no `x`/`y` (waypoints in `route_form`) | a list item with no pin |
 
@@ -64,7 +64,7 @@ Folder 0 is **each person's default favourites list**, and `/folder/list` includ
 
 ### Owner ids
 
-Folder records carry `map_user_id`, but not always `kakao_map_user_id`. The own account is `kakao_map_user_id || map_user_id` of the folders not flagged with `subscribe`, as in kakao-list's extractor.
+Folder records carry `map_user_id`, but not always `kakao_map_user_id`. The own account is `kakao_map_user_id || map_user_id` of the folders not flagged with `subscribe`.
 
 ### Other endpoints, not used
 
@@ -77,8 +77,8 @@ Read in each account's own signed-in tab with a console snippet (no cookie copie
 
 - **`seq` is the same for both readers.** Folder `16499871` (hers; he follows it): 500 favourites in both accounts, and the first 8 `[seq, key]` pairs are identical. Memberships can stay keyed by `seq`.
 - **Owner ids** are filled for every folder of her own account (`kakao_map_user_id` or `map_user_id`), and `subscribe` is `1` only on folders she follows.
-- **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, and must cope if its favourites can't be read. While kakao-list runs beside the direct sync, its fallback name (`Folder <id>`) is kept so both sources name the list the same way.
-- **Favourites come in pages of 500.** `/favorite/mine/list?folderid=X` (and `/favorite/list`) return `{ favorites: [...up to 500], next_id }`; Kakao Map's own page then asks for `...&next_id=<next_id>` until there is no `next_id`. Her folder `2869579` ("Seúl 0") has more than 500, and a place on its second page (돌솥추어탕) never reached kakao-list or magomap, because both read only the first page. A reader must follow `next_id` (correcting an earlier note that a list holds at most 500 places).
+- **Followed folders can come back bare.** In his account about a dozen followed folders (for example `2052505`, "Jeju" in hers) have **no title and no owner id**, only `folderid` and `subscribe: 1`. Probably lists the owner has since made private. A reader must never treat such a folder as the reader's own, and must cope if its favourites can't be read. Such a folder gets the fallback name `Folder <id>`, and the sync imports it as access only, so it never overwrites the shared list's name or contents.
+- **Favourites come in pages of 500.** `/favorite/mine/list?folderid=X` (and `/favorite/list`) return `{ favorites: [...up to 500], next_id }`; Kakao Map's own page then asks for `...&next_id=<next_id>` until there is no `next_id`. Her folder `2869579` ("Seúl 0") has more than 500, and a place on its second page (돌솥추어탕) never reached magomap while it read only the first page. A reader must follow `next_id` (correcting an earlier note that a list holds at most 500 places).
 
 ## 7. Writing a list (2026-11-23)
 

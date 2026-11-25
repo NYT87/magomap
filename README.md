@@ -21,7 +21,7 @@ The logo shows two hand-shaped peaks, the land Mago sculpted, whose outline form
 - **A visit diary.** Add a new, dated note every time you visit, and read back your earlier impressions.
 - **Links.** Save articles, menus or posts to a place.
 - **Lists.** Like Google Maps lists, and a place can be in many lists. Its diary and links belong to the place, so they're the same in every list.
-- **Kakao Map import.** Bring in your Kakao Map lists through [kakao-list](https://github.com/NYT87/kakao-list), and keep them following Kakao. Your own notes are never touched by an import.
+- **Sync from Kakao Map.** Bring in your Kakao Map lists with the magomap extension (`apps/extension`), and keep them following Kakao. Your own notes are never touched by a sync.
 - **Sync from Kakao Map.** On a computer, the magomap extension for Chrome or Brave reads your lists straight from Kakao Map in that browser, and Account → "Sync from Kakao Map" brings them in (see "Sync from Kakao Map" below).
 - **Location history.** When a place moves, magomap keeps its earlier locations, and shows them on the map and beside older diary entries.
 - **Offline first.** Browse, search and write without a connection. Changes sync when you're back online.
