@@ -4,14 +4,19 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useInertBackground } from "./useInertBackground";
 
-/** A bottom sheet on phones: modal, Esc or the scrim closes it, focus returns afterwards. */
+/**
+ * A bottom sheet on phones: modal, Esc or the scrim closes it, focus returns afterwards.
+ * `onEscape`, when given, takes Esc instead (a step back inside the sheet, say).
+ */
 export function Sheet({
   title,
   onClose,
+  onEscape,
   children,
 }: {
   title: string;
   onClose: () => void;
+  onEscape?: () => void;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -21,11 +26,13 @@ export function Sheet({
   // A new onClose on every render must not re-run the effect below (it would steal focus).
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
+      if (e.key === "Escape") (escapeRef.current ?? closeRef.current)();
     };
     window.addEventListener("keydown", onKey);
     return () => {

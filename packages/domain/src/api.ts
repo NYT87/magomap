@@ -32,6 +32,13 @@ export interface SearchResult {
   signature: string;
 }
 
+/** A place near a point on the map: a signed search result, and how far it is from the point. */
+export interface NearbyResult {
+  result: SearchResult;
+  /** Metres from the point; outside the signature. */
+  distanceM: number;
+}
+
 export interface ImportRunInfo {
   runId: string;
   status: "running" | "completed" | "failed" | "superseded";

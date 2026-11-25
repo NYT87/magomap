@@ -11,7 +11,7 @@ import { userPlaceRowId } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
 import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
 import { dbUserId, type MagomapDexie, type OutboxEntry, openDbOrNull, ROW_TABLES } from "./db";
-import { onWrite } from "./events";
+import { onWrite, pushesHeld } from "./events";
 
 export type SyncStateName =
   | "idle"
@@ -359,7 +359,9 @@ async function run(
   try {
     // A removal (another tab) during the push leaves nothing for the pull to refill.
     const removal = await removalMark(db);
-    const entries = await db.outbox.orderBy("seq").toArray();
+    // While an Undo is offered, nothing is sent; it goes out once the hold is let go.
+    const held = pushesHeld(db);
+    const entries = held ? [] : await db.outbox.orderBy("seq").toArray();
     for (const batch of batches(entries)) await pushBatch(db, batch, t);
     await db.transaction("rw", db.meta, async () => {
       if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
@@ -374,12 +376,14 @@ async function run(
     });
     const pulled = await pullAll(db, { removal });
     const now = Date.now();
+    // Held changes still waiting: pulled, but not synced.
+    const waiting = held && (await db.outbox.count()) > 0;
     await db.transaction("rw", db.meta, async () => {
       if ((await removalMark(db)) !== removal) throw new Stop("needs_signin");
-      await db.meta.put({ key: "lastSyncAt", value: now });
+      if (!waiting) await db.meta.put({ key: "lastSyncAt", value: now });
     });
     const to = t.clockAhead ? "clock_ahead" : "idle";
-    report(to, now);
+    report(to, waiting ? undefined : now);
     return { result: { pushed: t.pushed, pulled, rejected: t.rejected }, to };
   } catch (error) {
     const { to } = stopFor(error);

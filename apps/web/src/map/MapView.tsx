@@ -1,18 +1,22 @@
 import type { PlaceLocationRow, PlaceRow } from "@magomap/domain";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useConfig } from "../auth/useConfig";
+import type { SavedFromMap } from "../data/saveFromMap";
 import { switchesPlace } from "../layout/placeRoute";
 import { applyFocus } from "./applyFocus";
+import { centrePress } from "./centrePress";
 import { redrawKeepingFocus } from "./keepFocus";
 import { preloadLeaflet } from "./leafletAdapter";
 import { createAdapter, loadKakaoSdk } from "./loadMapAdapter";
-import { DEFAULT_VIEW, type MapAdapter } from "./MapAdapter";
+import { type ContextPress, DEFAULT_VIEW, type MapAdapter } from "./MapAdapter";
+import { MapContextMenu } from "./MapContextMenu";
 import { useMapStage } from "./MapStage";
 import { useMapPrefs } from "./mapPrefs";
 import { PreviousLocationCard } from "./PreviousLocationCard";
 import { providerFor } from "./providerChoice";
+import { SaveConfirmation } from "./SaveConfirmation";
 import { swapAdapter } from "./swapAdapter";
 import type { useMapData } from "./useMapData";
 
@@ -31,7 +35,7 @@ export function MapView({ data }: { data: Data | null }) {
   // Read when a pin is tapped (the tap handler is set once per adapter).
   const locationRef = useRef(location);
   locationRef.current = location;
-  const el = useRef<HTMLDivElement>(null);
+  const el = useRef<HTMLElement>(null);
   const [adapter, setAdapter] = useState<MapAdapter | null>(null);
   const fitted = useRef(false);
   const [previous, setPrevious] = useState<{ location: PlaceLocationRow; place: PlaceRow } | null>(
@@ -40,6 +44,17 @@ export function MapView({ data }: { data: Data | null }) {
   const choice = useRef(mapChoice);
   choice.current = mapChoice;
   const kakaoReady = useRef(false);
+  const hintId = useId();
+  // A right-click or long-press opens the menu that saves a place from the map.
+  const [press, setPress] = useState<ContextPress | null>(null);
+  const keyboardPressAt = useRef(0);
+  // The latest save from the menu, confirmed with Undo; a newer one replaces it.
+  const [saved, setSaved] = useState<{
+    saved: SavedFromMap;
+    release: () => void;
+    n: number;
+  } | null>(null);
+  const savedCount = useRef(0);
 
   // When the map will be Leaflet, start its download now, not after config and data.
   useEffect(() => {
@@ -98,6 +113,37 @@ export function MapView({ data }: { data: Data | null }) {
 
   useEffect(() => () => adapter?.destroy(), [adapter]);
 
+  useEffect(() => {
+    adapter?.onContextPress((p) => {
+      // The menu key also sends the browser's context menu event, at no useful spot: the
+      // keyboard's press (at the centre) stands.
+      if (Date.now() - keyboardPressAt.current < 500) return;
+      setPress(p);
+    });
+  }, [adapter]);
+
+  // Without a mouse: the menu key or Shift+F10 on the focused map opens it at the centre.
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "ContextMenu" && !(e.key === "F10" && e.shiftKey)) return;
+    const current = stage.map.current;
+    if (!current || !el.current) return;
+    e.preventDefault();
+    keyboardPressAt.current = Date.now();
+    setPress(centrePress(current, el.current));
+  };
+
+  // The phone's Save button opens it at the centre too, as the keyboard does.
+  useEffect(() => {
+    const saveHere = stage.saveHere;
+    saveHere.current = () => {
+      const current = stage.map.current;
+      if (current && el.current) setPress(centrePress(current, el.current));
+    };
+    return () => {
+      saveHere.current = null;
+    };
+  }, [stage.saveHere, stage.map]);
+
   const dataRef = useRef(data);
   dataRef.current = data;
   useEffect(() => {
@@ -143,13 +189,42 @@ export function MapView({ data }: { data: Data | null }) {
     adapter?.provider === "kakao" ? t("map.providerKakao") : t("map.providerOsm");
   return (
     <div className="mm-mapview">
-      <div ref={el} className="mm-mapview__canvas" />
+      {/* The map handles its own keys (arrows pan; the menu key opens the save menu). Both
+          maps make this element focusable when they mount. */}
+      <section
+        ref={el}
+        className="mm-mapview__canvas"
+        aria-label={t("map.canvasLabel")}
+        aria-describedby={hintId}
+        onKeyDown={onKeyDown}
+      />
+      <p id={hintId} className="mm-visually-hidden">
+        {t("map.canvasHint")}
+      </p>
       {adapter && <p className="mm-map-caption">{t("map.mapBy", { name: providerName })}</p>}
       {previous && (
         <PreviousLocationCard
           location={previous.location}
           place={previous.place}
           onClose={() => setPrevious(null)}
+        />
+      )}
+      {press && (
+        <MapContextMenu
+          press={press}
+          onClose={() => setPress(null)}
+          onSaved={(s, release) => {
+            savedCount.current += 1;
+            setSaved({ saved: s, release, n: savedCount.current });
+          }}
+        />
+      )}
+      {saved && (
+        <SaveConfirmation
+          key={saved.n}
+          saved={saved.saved}
+          release={saved.release}
+          onDone={() => setSaved(null)}
         />
       )}
     </div>

@@ -14,6 +14,13 @@ export interface MapMarker {
   selected?: boolean;
 }
 
+/** A right-click, or a long-press on a phone: where on the map, and where on the screen. */
+export interface ContextPress {
+  point: LatLng;
+  /** Viewport pixels, for placing a popover. */
+  at: { x: number; y: number };
+}
+
 /** What the app needs from a map; Kakao Maps and Leaflet both implement it. */
 export interface MapAdapter {
   readonly provider: "kakao" | "leaflet";
@@ -35,6 +42,11 @@ export interface MapAdapter {
   /** Where "my location" was last shown, if it was. */
   myLocation(): LatLng | null;
   onSelect(cb: (markerId: string) => void): void;
+  /**
+   * Called on a right-click, or a long-press on a phone (never a tap, a pan or a pinch). The
+   * browser's own context menu is kept off the map.
+   */
+  onContextPress(cb: (press: ContextPress) => void): void;
   /** Shows where I am, and by default moves the map there. */
   showMyLocation(p: LatLng, opts?: { recenter?: boolean }): void;
   destroy(): void;

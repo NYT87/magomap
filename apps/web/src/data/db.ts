@@ -16,6 +16,7 @@ import type {
 import Dexie, { type EntityTable } from "dexie";
 import { ACCOUNT_CHANGED, setRequestAccount } from "../api/client";
 import { accountDeviceKeys } from "./deviceKeys";
+import { dropHolds } from "./events";
 
 export interface OutboxEntry {
   seq?: number;
@@ -133,6 +134,7 @@ export function openUserDb(userId: string): MagomapDexie {
   // recreates it, and ask again who is signed in.
   db.on("versionchange", () => {
     db.close({ disableAutoOpen: true });
+    dropHolds(db);
     if (instances.get(db.name) === db) instances.delete(db.name);
     if (current === db) {
       current = null;
@@ -166,6 +168,7 @@ export function closeUserDb(userId?: string) {
   const db = userId === undefined ? current : (instances.get(dbName(userId)) ?? null);
   if (!db) return;
   db.close();
+  dropHolds(db);
   instances.delete(db.name);
   if (db === current) {
     current = null;

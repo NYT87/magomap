@@ -23,6 +23,8 @@ interface Stage {
   /** Called when a search marker is tapped. */
   onSearchSelect: ((id: string) => void) | null;
   setOnSearchSelect: (fn: ((id: string) => void) | null) => void;
+  /** Opens the save menu at the map's centre (set by the map), for the phone's Save button. */
+  saveHere: MutableRefObject<(() => void) | null>;
 }
 
 const Ctx = createContext<Stage | null>(null);
@@ -36,6 +38,7 @@ export function MapStageProvider({ children }: { children: ReactNode }) {
     [],
   );
   const map = useRef<MapAdapter | null>(null);
+  const saveHere = useRef<(() => void) | null>(null);
   const [onSearchSelect, setSelect] = useState<((id: string) => void) | null>(null);
   const setOnSearchSelect = useCallback(
     (fn: ((id: string) => void) | null) => setSelect(() => fn),
@@ -50,6 +53,7 @@ export function MapStageProvider({ children }: { children: ReactNode }) {
       map,
       onSearchSelect,
       setOnSearchSelect,
+      saveHere,
     }),
     [searchMarkers, focus, setFocus, onSearchSelect, setOnSearchSelect],
   );

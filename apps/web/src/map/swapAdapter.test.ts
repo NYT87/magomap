@@ -16,6 +16,7 @@ const fake = (provider: MapAdapter["provider"], at = { lat: 35.68, lng: 139.69 }
     pendingFit: vi.fn((): { lat: number; lng: number }[] | null => null),
     myLocation: vi.fn((): { lat: number; lng: number } | null => null),
     onSelect: vi.fn(),
+    onContextPress: vi.fn(),
     onViewChange: vi.fn(),
     showMyLocation: vi.fn(),
     destroy: vi.fn(),

@@ -554,6 +554,11 @@ a {
   background: var(--color-surface);
 }
 
+/* Inside the edge: the map fills the screen, so an outside ring would be cut off. */
+.mm-mapview__canvas:focus-visible {
+  outline-offset: -3px;
+}
+
 .mm-map-caption {
   position: absolute;
   left: var(--space-sm);
@@ -986,6 +991,156 @@ a {
   padding: var(--space-sm) var(--space-md) calc(var(--space-lg) + env(safe-area-inset-bottom));
 }
 
+/* ---------- Save a place from the map ---------- */
+
+/* Desktop: a popover at the right-clicked spot (phones use the sheet). */
+.mm-map-menu--popover {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, calc(100vw - 16px));
+  max-height: min(70dvh, 32rem);
+  overflow-y: auto;
+  padding: var(--space-xs) var(--space-md) var(--space-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+/* Focus lands on the sheet or popover itself only to start from: no ring around all of it. */
+.mm-map-menu--popover:focus-visible,
+.mm-sheet:focus-visible {
+  outline: none;
+}
+
+.mm-map-menu__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-right: calc(-1 * var(--space-sm));
+}
+
+.mm-map-menu__body,
+.mm-map-menu__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mm-map-menu__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-map-menu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-sm) var(--space-xs);
+  color: var(--color-text);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-map-menu__row:hover:not([aria-disabled="true"]) {
+  background: var(--color-surface);
+}
+
+.mm-map-menu__row[aria-disabled="true"],
+.mm-map-menu__body .mm-button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.mm-map-menu__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.mm-map-menu__meta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-xs);
+}
+
+.mm-map-menu__distance {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mm-map-menu__chosen {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: calc(-1 * var(--space-sm));
+  overflow-wrap: break-word;
+}
+
+/* Saving with no list: its own group, set apart from her lists by one line above (her lists'
+   last row drops its own). */
+.mm-map-menu__list--mine > li:last-child > .mm-map-menu__row {
+  border-bottom: 0;
+}
+
+.mm-map-menu__list--apart {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-xs);
+}
+
+.mm-map-menu__retry {
+  align-self: flex-start;
+}
+
+.mm-map-menu__new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* After a save from the map: a short confirmation with Undo, at the top, over everything. */
+.mm-save-confirmation {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + var(--space-md));
+  left: 50%;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--space-md));
+  min-height: 56px;
+  padding: var(--space-xs) var(--space-md);
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.mm-save-confirmation__text {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-md);
+  overflow-wrap: break-word;
+}
+
 /* ---------- Search ---------- */
 
 .mm-search {
@@ -1108,6 +1263,11 @@ a {
   border-radius: var(--radius-pill);
   font-size: var(--text-xs);
   font-weight: 600;
+}
+
+/* In the save menu, pine-deep: 4.5:1 or more on the badge's tint over a hovered row, in both themes. */
+.mm-map-menu__body .mm-badge {
+  color: var(--color-pine-deep);
 }
 
 .mm-button--small {

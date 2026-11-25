@@ -1,25 +1,13 @@
 import type { SearchResult } from "@magomap/domain";
-import { KAKAO } from "@magomap/domain/providers/kakao";
 import { Hono } from "hono";
 import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
+import { type KakaoDocument, toSearchResult } from "./kakaoLocal";
+import { findNearby, NEARBY_CATEGORY_GROUPS, parseNearbyPoint } from "./nearby";
 import { signSearchResult } from "./signing";
 
 export const searchRoutes = new Hono<AppEnv>();
 searchRoutes.use("/search/*", requireUser);
-
-interface KakaoDocument {
-  id: string;
-  place_name: string;
-  address_name?: string;
-  road_address_name?: string;
-  category_name?: string;
-  phone?: string;
-  x: string;
-  y: string;
-}
-
-const orNull = (value: string | undefined) => (value ? value : null);
 
 /** Kakao Local keyword search: https://developers.kakao.com/docs/latest/en/local/dev-guide#search-by-keyword */
 searchRoutes.get("/search/places", async (c) => {
@@ -52,23 +40,35 @@ searchRoutes.get("/search/places", async (c) => {
   }
   if (!res.ok) return c.json({ error: "search_unavailable" }, 502);
   const body = (await res.json()) as { documents?: KakaoDocument[]; meta?: { is_end?: boolean } };
-  const results = (body.documents ?? [])
-    .map((d) => ({
-      provider: KAKAO,
-      externalId: d.id,
-      title: d.place_name,
-      address: orNull(d.address_name),
-      roadAddress: orNull(d.road_address_name),
-      category: orNull(d.category_name),
-      phone: orNull(d.phone),
-      lat: Number(d.y),
-      lng: Number(d.x),
-    }))
-    .filter((r) => r.externalId && Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  const results = (body.documents ?? []).flatMap((d) => toSearchResult(d) ?? []);
   const now = Date.now();
   const signed: SearchResult[] = results.map((r) => ({
     ...r,
     ...signSearchResult(c.env.SIGNING_SECRET, r, now),
   }));
   return c.json({ results: signed, isEnd: body.meta?.is_end ?? true });
+});
+
+/** The Kakao places nearest a point on the map (a right-click or long-press), nearest first. */
+searchRoutes.get("/search/nearby", async (c) => {
+  const point = parseNearbyPoint(c.req.query("lat"), c.req.query("lng"));
+  if (!point) return c.json({ error: "invalid" }, 400);
+
+  // One search per Kakao call a press makes (six), all charged before any call: the per-user
+  // limit then guards the Kakao daily quota as it does for keyword search.
+  if (c.env.SEARCH_LIMITER) {
+    for (const _group of NEARBY_CATEGORY_GROUPS) {
+      const { success } = await c.env.SEARCH_LIMITER.limit({ key: c.var.userId });
+      if (!success) return c.json({ error: "rate_limited" }, 429);
+    }
+  }
+
+  const results = await findNearby(
+    c.env.KAKAO_REST_API_KEY,
+    c.env.SIGNING_SECRET,
+    point,
+    Date.now(),
+  );
+  if (!results) return c.json({ error: "search_unavailable" }, 502);
+  return c.json({ results });
 });
