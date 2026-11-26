@@ -68,7 +68,10 @@ export function PlacePeek({ id }: { id: string }) {
   }, [place?.lat, place?.lng, setFocus]);
 
   useEffect(() => {
-    if (place) document.title = `${place.title} – ${t("app.name")}`;
+    // Not found or deleted: the app's name, never the title of the place shown before.
+    if (place !== undefined) {
+      document.title = place ? `${place.title} – ${t("app.name")}` : t("app.name");
+    }
   }, [place, t]);
 
   if (place === undefined) return null;

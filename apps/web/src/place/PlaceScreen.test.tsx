@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openUserDb } from "../data/db";
 import i18n from "../i18n";
@@ -14,6 +14,25 @@ beforeEach(async () => {
 });
 
 describe("PlaceScreen", () => {
+  it("names the place in the window title, and no longer an old one when it isn't found", async () => {
+    const db = openUserDb(`place-screen-title${n}`);
+    await seed(db);
+    const view = render(
+      <MapStageProvider>
+        <PlaceScreen id={PLACE.id} />
+      </MapStageProvider>,
+    );
+    await waitFor(() => expect(document.title).toBe(`${PLACE.title} – magomap`));
+    view.unmount();
+    render(
+      <MapStageProvider>
+        <PlaceScreen id="p_kakao_missing" />
+      </MapStageProvider>,
+    );
+    await screen.findByText(en.place.notFound);
+    await waitFor(() => expect(document.title).toBe("magomap"));
+  });
+
   it("lists come before the diary and links", async () => {
     const db = openUserDb(`place-screen${n}`);
     await seed(db);

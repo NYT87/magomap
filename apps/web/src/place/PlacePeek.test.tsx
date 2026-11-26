@@ -187,8 +187,10 @@ describe("PlacePeek", () => {
   });
 
   it("shows the not-found text and Close only for an unknown place", async () => {
+    document.title = "바다빵집 – magomap";
     renderPeek("nope");
     expect(await screen.findByText(en.place.notFound)).toBeVisible();
+    await waitFor(() => expect(document.title).toBe("magomap"));
     expect(screen.getByRole("button", { name: en.place.peek.close })).toBeVisible();
     expect(screen.queryByRole("button", { name: en.place.peek.openDetails })).toBeNull();
     expect(screen.getByTestId("focus")).toHaveTextContent("");
@@ -199,8 +201,11 @@ describe("PlacePeek", () => {
   it("says a deleted place may have been deleted, not to wait for a sync", async () => {
     await put({ deletedAt: 5 });
     renderPeek(PLACE.id);
+    document.title = "바다빵집 – magomap";
     expect(await screen.findByText(en.place.peek.gone)).toBeVisible();
     expect(screen.queryByText(en.place.notFound)).toBeNull();
+    // Not the place it was showing before.
+    await waitFor(() => expect(document.title).toBe("magomap"));
     expect(screen.getByRole("button", { name: en.place.peek.close })).toBeVisible();
   });
 
