@@ -327,6 +327,30 @@ describe("writeInPage: add", () => {
     });
   });
 
+  it("takes her own public list that names only her map_user_id as hers, as the sync does", async () => {
+    const folders = [
+      { folderid: 0, kakao_map_user_id: "u1", map_user_id: 1 },
+      { folderid: 12, map_user_id: 1, subscribe: "Y" },
+      // Someone else's whose kakao_map_user_id is the same text as her map_user_id.
+      { folderid: 13, kakao_map_user_id: "1", subscribe: "Y" },
+    ];
+    serve({
+      "GET /folder/list": () => json(ok({ folders })),
+      "GET /favorite/mine/list": () => existing([]),
+      "POST /favorite/add": ({ body }) => added((body as { datas: unknown[] }).datas.length),
+    });
+    expect(await writeInPage({ op: "add", folderId: 12, places: [place(1)] })).toEqual({
+      ok: true,
+      added: 1,
+      skipped: 0,
+    });
+    expect(await writeInPage({ op: "add", folderId: 13, places: [place(1)] })).toEqual({
+      ok: false,
+      error: "not_found",
+      added: 0,
+    });
+  });
+
   it("looks again, briefly, for a list just made that Kakao's list doesn't show yet", async () => {
     let reads = 0;
     serve({

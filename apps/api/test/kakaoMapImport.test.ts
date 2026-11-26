@@ -1230,6 +1230,81 @@ describe("another person's list", () => {
     expect(role?.role).toBe("owner");
   });
 
+  it("her public lists that the old kakao-list import marked followed become hers on her first sync", {
+    timeout: SLOW,
+  }, async () => {
+    const he = await devLogin("km-pub-he");
+    const she = await devLogin("km-pub-she");
+    const herId = await userIdOf(she);
+    // Her public lists as Kakao flags them (like followed ones): 43001 names only her map_user_id,
+    // 43002 her kakao_map_user_id.
+    const herPublic = (extra: Raw) => ({
+      status: "O",
+      subscribe: "Y",
+      nickname: "사과",
+      favorite_cnt: 1,
+      ...extra,
+    });
+    const pub1 = herPublic({ folderid: 43001, title: "공개 1", map_user_id: 77 });
+    const pub2 = herPublic({ folderid: 43002, title: "공개 2", kakao_map_user_id: "u-pub-she" });
+    const favorites = {
+      43001: [favorite(4300101, "94300101")],
+      43002: [favorite(4300201, "94300201")],
+    };
+    // He follows both: his sync records no owner for 43001 (a map_user_id nobody is bound by).
+    await upload(
+      he,
+      {
+        folders: [ownFolder(43003, "u-pub-he", { nickname: "호세" }), pub1, pub2],
+        favorites: { ...favorites, 43003: [favorite(4300301, "94300301")] },
+      },
+      "u-pub-he",
+    );
+    // Her old kakao-list import marked both followed, with her own nickname as the owner.
+    const db = dbFromD1(env.DB);
+    const { runId } = await startImportRun(
+      db,
+      herId,
+      {
+        ...KAKAO_LIST_RUN,
+        lists: [43001, 43002].map((id) => ({
+          externalId: String(id),
+          name: `공개 ${id - 43000}`,
+          followed: true,
+          ownerName: "사과",
+          itemCount: 0,
+        })),
+      },
+      Date.now(),
+    );
+    for (const id of ["43001", "43002"]) {
+      await importListChunk(db, herId, runId, id, 0, [], Date.now());
+      await finishImportList(db, herId, runId, id, Date.now());
+    }
+    await completeImportRun(db, herId, runId, Date.now());
+    const herLists = () =>
+      env.DB.prepare(
+        "SELECT l.id, ul.role, l.owner_name FROM user_lists ul JOIN lists l ON l.id = ul.list_id WHERE ul.user_id = ? AND l.id IN ('l_kakao_43001', 'l_kakao_43002') ORDER BY l.id",
+      )
+        .bind(herId)
+        .all<{ id: string; role: string; owner_name: string | null }>();
+    expect((await herLists()).results.map((r) => r.role)).toEqual(["follower", "follower"]);
+
+    // Her first Kakao Map sync: her own lists pair u-pub-she with map_user_id 77.
+    await upload(
+      she,
+      {
+        folders: [ownFolder(43004, "u-pub-she", { map_user_id: 77, nickname: "사과" }), pub1, pub2],
+        favorites: { ...favorites, 43004: [favorite(4300401, "94300401")] },
+      },
+      "u-pub-she",
+    );
+    expect((await herLists()).results).toEqual([
+      { id: "l_kakao_43001", role: "owner", owner_name: null },
+      { id: "l_kakao_43002", role: "owner", owner_name: null },
+    ]);
+  });
+
   it("an own folder with no owner id in the read is followed", async () => {
     const cookie = await devLogin("km-bare-own");
     const user = await userIdOf(cookie);

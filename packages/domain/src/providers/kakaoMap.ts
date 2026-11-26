@@ -201,8 +201,10 @@ export function kakaoMapListsToImport(
   const accountAlias =
     aliases.length === 1 && aliases[0] !== undefined ? id(aliases[0][0]) : undefined;
 
-  // Followed exactly as kakao-list decides it: flagged, and not made by an owner of an unflagged
-  // folder (a folder with no owner id, such as a bare followed one, is never her own).
+  // Followed as kakao-list decides it: flagged, and not made by an owner of an unflagged folder
+  // (a folder with no owner id, such as a bare followed one, is never her own). Unlike kakao-list,
+  // a flagged folder that names only the map_user_id her own folders pair with her account is
+  // hers too: her own public list, which Kakao flags like a followed one.
   const ownOwners = new Set(
     folders.flatMap(({ raw }) => {
       const owner = flagged(raw.subscribe) ? undefined : ownerOf(raw);
@@ -217,7 +219,13 @@ export function kakaoMapListsToImport(
   const bareFolders = new Set<string>();
   let nickname: string | undefined;
   for (const { folderid, raw } of folders) {
-    const followed = flagged(raw.subscribe) && !ownOwners.has(ownerOf(raw) ?? "");
+    const rawOwner = ownerOf(raw) ?? "";
+    // The alias is a map_user_id: it applies only to a folder that names no kakao_map_user_id.
+    const viaAlias = trimmed(raw.kakao_map_user_id) ? undefined : alias.get(rawOwner);
+    const followed =
+      flagged(raw.subscribe) &&
+      !ownOwners.has(rawOwner) &&
+      !(viaAlias !== undefined && ownOwners.has(viaAlias));
     if (!followed) nickname ??= usableNickname(raw.nickname);
     if (!listable(folderid)) continue;
     const externalId = kakaoListExternalId(folderid, kakaoLoginId);

@@ -307,7 +307,8 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
     // Add: only to one of her own lists. Kakao would refuse another's list anyway; this makes
     // sure of it before anything is sent. The rule is the domain's Kakao Map adapter's: a list
     // without Kakao's `subscribe` flag is hers, and a flagged one (followed, or her own public
-    // one) is hers when it carries the owner id her unflagged lists carry.
+    // one) is hers when it carries the owner id her unflagged lists carry, or names only the
+    // map_user_id they pair with her kakao_map_user_id.
     const flagged = (value: unknown) => {
       if (value == null || value === false) return false;
       const text = String(value).trim().toLowerCase();
@@ -333,7 +334,20 @@ export async function writeInPage(request: WriteRequest): Promise<WriteResult> {
       if (!target) return false;
       if (!flagged(target.subscribe)) return true;
       const owner = ownerOf(target);
-      return owner !== undefined && live.some((f) => !flagged(f.subscribe) && ownerOf(f) === owner);
+      if (owner === undefined) return false;
+      const mine = live.filter((f) => !flagged(f.subscribe));
+      if (mine.some((f) => ownerOf(f) === owner)) return true;
+      // Her own public list may name only her map_user_id, which her own lists pair with her
+      // kakao_map_user_id (the sync's alias). Only for a list that names no kakao_map_user_id.
+      const kakaoIdOf = (f: Record<string, unknown>) =>
+        typeof f.kakao_map_user_id === "string" ? f.kakao_map_user_id.trim() : "";
+      if (kakaoIdOf(target) !== "") return false;
+      return mine.some(
+        (f) =>
+          kakaoIdOf(f) !== "" &&
+          (typeof f.map_user_id === "string" || typeof f.map_user_id === "number") &&
+          String(f.map_user_id).trim() === owner,
+      );
     };
     // A list made a moment ago may not be in Kakao's list yet: a few short tries.
     let hers = false;
