@@ -22,6 +22,12 @@ test("a place added to her Kakao list without the extension waits, marked, and c
   const p = await other.newPage();
   await p.goto(`/places/${target.place}/details`);
   await expect(p.getByRole("heading", { name: target.title })).toBeVisible({ timeout: 20_000 });
+  // An earlier run that stopped halfway may have left its add pending: cancel it first.
+  const leftover = p.getByRole("button", { name: `Don't add to ${target.list}` });
+  if (await leftover.count()) {
+    await leftover.click();
+    await expect(leftover).toHaveCount(0);
+  }
 
   await other.setOffline(true);
   await p.getByRole("button", { name: "Add to list" }).click();
