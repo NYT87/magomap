@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.11](https://github.com/NYT87/magomap/compare/magomap-v0.1.10...magomap-v0.1.11) (2026-11-26)
+
+
+### Features
+
+* **db:** the data export includes the Kakao import history ([78ee76f](https://github.com/NYT87/magomap/commit/78ee76fb3810a9c2c72843dbcf6fc9a1dd2f2149))
+* the data export includes the Kakao import history ([cbe9c51](https://github.com/NYT87/magomap/commit/cbe9c51615a989e21ce013d0ad668809bcba668f))
+
 ## [0.1.10](https://github.com/NYT87/magomap/compare/magomap-v0.1.9...magomap-v0.1.10) (2026-11-26)
 
 
