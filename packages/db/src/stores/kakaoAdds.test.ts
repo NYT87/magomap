@@ -203,6 +203,37 @@ forEachDialect("kakao_adds", (makeDb) => {
     expect((await rows(db, A))[0]?.deleted_at).toBe(T0 + 8);
   });
 
+  it("takes a pending add sent with the new place it names, in one push", async () => {
+    const db = await setup(makeDb);
+    const res = await push(
+      db,
+      A,
+      [up("places", searchedPlace("7")), up("kakao_adds", kakaoAdd("l_kakao_9", "p_kakao_7"))],
+      T0 + 5,
+    );
+    expect(res.results.map((r) => r.reason ?? r.status)).toEqual(["applied", "applied"]);
+  });
+
+  it("takes a failure mark after the list is gone, but not asking again for it", async () => {
+    const db = await setup(makeDb);
+    await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 5)], T0);
+    await db.kysely
+      .updateTable("lists")
+      .set({ removed_at_provider: T0 })
+      .where("id", "=", "l_kakao_9")
+      .execute();
+    const marked = await push(
+      db,
+      A,
+      [up("kakao_adds", kakaoAdd("l_kakao_9", P1, { failed: "list_missing" }), T0 + 6)],
+      T0,
+    );
+    expect(marked.results[0]?.status).toBe("applied");
+    const again = await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 7)], T0);
+    expect(again.results[0]?.reason).toBe("not_allowed");
+    expect((await rows(db, A))[0]).toMatchObject({ failed: "list_missing" });
+  });
+
   it("still deletes her row after the list stopped being hers", async () => {
     const db = await setup(makeDb);
     await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 5)], T0);

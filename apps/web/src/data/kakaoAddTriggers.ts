@@ -4,6 +4,7 @@
 // After a push that stopped (signed out of Kakao Map, another account, Kakao unavailable), the
 // next try waits a while, so switching tabs doesn't knock on Kakao Map again and again.
 import type { MagomapDexie } from "./db";
+import { loadLibrary } from "./queries";
 
 /** How long after opening: the first sync of the day goes first. */
 const OPEN_DELAY_MS = 3_000;
@@ -19,10 +20,13 @@ export function startKakaoAddTriggers(
   let notBefore = 0;
   const run = async () => {
     if (stopped || now() < notBefore) return;
-    const pending = await db.kakao_adds
+    const stored = await db.kakao_adds
       .filter((a) => a.deletedAt == null && a.failed == null)
       .count();
-    if (pending === 0 || stopped) return;
+    if (stored === 0 || stopped) return;
+    // Only adds that can still go: one whose list can't take places any more counts as failed.
+    const lib = await loadLibrary(db);
+    if (!lib.pending.some((p) => p.add.failed == null) || stopped) return;
     const { pushKakaoAdds } = await import("../lists/pushKakaoAdds");
     if (stopped) return;
     const outcome = await pushKakaoAdds(db);

@@ -22,6 +22,43 @@ const pendingAdd = (failed: "list_missing" | null = null) => ({
   deletedAt: null,
 });
 const settle = () => new Promise((r) => setTimeout(r, 50));
+
+/** Her own Kakao list 9 and place 1, so the pending add can go. */
+async function target(db: ReturnType<typeof openUserDb>, removedAtProvider: number | null = null) {
+  const base = { createdAt: 1, updatedAt: 1, deletedAt: null };
+  await db.lists.put({
+    id: "l_kakao_9",
+    provider: "kakao",
+    externalId: "9",
+    name: "제주",
+    description: null,
+    color: null,
+    ownerName: null,
+    removedAtProvider,
+    providerSnapshotAt: 1,
+    ...base,
+  });
+  await db.user_lists.put({
+    id: "ul_l_kakao_9",
+    listId: "l_kakao_9",
+    role: "owner",
+    removedAt: null,
+    ...base,
+  });
+  await db.places.put({
+    id: "p_kakao_1",
+    title: "x",
+    address: null,
+    roadAddress: null,
+    addressSource: null,
+    category: null,
+    phone: null,
+    lat: 1,
+    lng: 1,
+    providerSnapshotAt: null,
+    ...base,
+  });
+}
 const showing = (state: "visible" | "hidden") => {
   Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
   document.dispatchEvent(new Event("visibilitychange"));
@@ -30,6 +67,7 @@ const showing = (state: "visible" | "hidden") => {
 describe("startKakaoAddTriggers", () => {
   it("pushes this account's adds after the opening delay, only with adds pending", async () => {
     const db = openUserDb(`kat${n}`);
+    await target(db);
     await db.kakao_adds.put(pendingAdd());
     const stop = startKakaoAddTriggers(db, 30);
     await new Promise((r) => setTimeout(r, 10));
@@ -49,9 +87,20 @@ describe("startKakaoAddTriggers", () => {
     stop();
   });
 
+  it("doesn't load the push for an add whose list can't take places any more", async () => {
+    const db = openUserDb(`kat${n}`);
+    await target(db, 5);
+    await db.kakao_adds.put(pendingAdd());
+    const stop = startKakaoAddTriggers(db, 0);
+    await settle();
+    expect(push).not.toHaveBeenCalled();
+    stop();
+  });
+
   it("pushes when the app comes back into view, not when it's hidden, and not once stopped", async () => {
     const db = openUserDb(`kat${n}`);
     const stop = startKakaoAddTriggers(db, 60_000);
+    await target(db);
     await db.kakao_adds.put(pendingAdd());
     showing("hidden");
     await settle();
@@ -66,6 +115,7 @@ describe("startKakaoAddTriggers", () => {
 
   it("after a push that stopped, waits before trying again", async () => {
     const db = openUserDb(`kat${n}`);
+    await target(db);
     await db.kakao_adds.put(pendingAdd());
     let clock = 1_000;
     push.mockResolvedValue("stopped");

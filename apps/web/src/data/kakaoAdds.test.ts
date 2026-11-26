@@ -183,6 +183,15 @@ describe("pending adds to a Kakao list", () => {
     expect((await loadLibrary(db)).pending).toEqual([]);
   });
 
+  it("a pending add to a list gone from her Kakao Map shows as failed, not waiting for ever", async () => {
+    await seed();
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    await db.lists.update("l_kakao_9", { removedAtProvider: 5 });
+    const lib = await loadLibrary(db);
+    expect(lib.pending.map((p) => p.add.failed)).toEqual(["list_missing"]);
+    expect(placeMemberships(lib, "p_kakao_1")[0]?.pending?.failed).toBe("list_missing");
+  });
+
   it("doesn't offer a list removed from her Kakao Map", async () => {
     await seed();
     await db.lists.update("l_kakao_9", { removedAtProvider: 5 });

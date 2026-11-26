@@ -93,7 +93,7 @@ export async function loadLibrary(db: MagomapDexie): Promise<Library> {
         !held.has(`${a.listId} ${a.placeId}`),
     )
     .map((add) => ({ add, item: standIn(add) }));
-  return {
+  const lib: Library = {
     places: placeMap,
     lists: visible,
     roles: new Map([...access].map(([id, a]) => [id, a.role])),
@@ -103,6 +103,15 @@ export async function loadLibrary(db: MagomapDexie): Promise<Library> {
     locations: live(locations),
     sources: live(sources),
   };
+  // A pending add to a list that can't take places any more (gone from her Kakao Map, or no
+  // longer hers) can't go: it shows as failed, so it doesn't wait for ever, and isn't pushed.
+  const targets = new Set(kakaoTargets(lib).map((l) => l.id));
+  lib.pending = pending.map((p) =>
+    p.add.failed == null && !targets.has(p.add.listId)
+      ? { ...p, add: { ...p.add, failed: "list_missing" as const } }
+      : p,
+  );
+  return lib;
 }
 
 export const useLibrary = () => useLiveQuery(() => loadLibrary(currentDb()), []);

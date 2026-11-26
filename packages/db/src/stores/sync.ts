@@ -414,6 +414,10 @@ async function decidePush(
           client_updated_at: 0,
           seq: 0,
         });
+        // A pending add to a Kakao list in this same push can name it by its Kakao place id.
+        if (source.provider === "kakao" && /^[1-9]\d{0,14}$/.test(source.externalId)) {
+          kakaoKeyed.add(m.id);
+        }
         ensureMyPlace(m.id);
         set(m, "applied");
         continue;
@@ -572,8 +576,17 @@ async function decidePush(
     }
 
     if (table === "kakao_adds") {
-      // Only to her own live Kakao list (never folder 0, which the extension can't write), and
-      // only a place she can see that has a Kakao place id to add by.
+      // Marking a pending add she has as failed is always taken: it says the list is gone, which
+      // is exactly when the checks below would refuse it.
+      const marksFailed =
+        existing?.deleted_at == null && existing !== undefined && r.failed != null;
+      if (marksFailed) {
+        write(table, dbRow(table, { ...r, updatedAt: acceptedAt }, m));
+        set(m, "applied");
+        continue;
+      }
+      // Otherwise only to her own live Kakao list (never folder 0, which the extension can't
+      // write), and only a place she can see that has a Kakao place id to add by.
       const list = listOf(r.listId);
       const access = myLists.get(userListRowId(String(r.listId)));
       const folder =
