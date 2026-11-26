@@ -163,11 +163,11 @@ Account → "Sync from Kakao Map" reads her Kakao Map lists through the magomap 
 
 Each user exports their own data: **Account → Download my data** (the web app calls `GET /api/me/export` with their session, so it works on both databases and needs nothing from the operator). It saves `magomap-export-YYYY-MM-DD.json`:
 
-- `mine`: their saved places, notes, links, own lists with items, and list memberships.
+- `mine`: their saved places, notes, links, own lists with items, list memberships, places waiting to go into their Kakao lists, and their Kakao import history (`importRuns`: when each import ran, how it ended and what it changed).
 - `shared`: the places (with sources and locations) and followed Kakao lists they reach through those, kept apart because other people can see them too.
-- Never in it: another user's notes, links or saved places, sessions, and server-only columns (`provider_owner_id`, `color_edited_at`). Deleted rows are left out.
+- Never in it: another user's notes, links or saved places, sessions, and server-only columns (`provider_owner_id`, `color_edited_at`), and an import's working state (its per-list progress and pages). Deleted rows are left out.
 
-The export is built in memory from user-scoped queries read 500 rows at a time (no whole-table scans, so D1 rows read stay proportional to the account), then sent as one response. An account of a few thousand places is far inside the Worker's limits. There is no operator-side command: nobody but the account's owner can export it, as no one else has its session. Account deletion (**Account → Delete account**) is covered by tests for both databases (`packages/db/src/stores/users.test.ts`).
+The export is built in memory from user-scoped queries read 5,000 rows at a time (about one query a table, inside the Free plan's 50 queries per request) (no whole-table scans, so D1 rows read stay proportional to the account), then sent as one response. An account of a few thousand places is far inside the Worker's limits. There is no operator-side command: nobody but the account's owner can export it, as no one else has its session. Account deletion (**Account → Delete account**) is covered by tests for both databases (`packages/db/src/stores/users.test.ts`).
 
 ## Daily clean-up
 

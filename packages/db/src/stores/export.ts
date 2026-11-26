@@ -1,4 +1,5 @@
 import type {
+  ImportSummary,
   ListItemRow,
   ListRow,
   PlaceLocationRow,
@@ -18,6 +19,19 @@ import { pullPage } from "./sync";
 type Out<T> = Omit<T, "seq">;
 type LinkRow = RowOf<"links">;
 
+/** One Kakao import, as the import screen reported it; the run's working state is left out. */
+export interface ExportedImportRun {
+  id: string;
+  provider: string;
+  source: string;
+  startedAt: number;
+  finishedAt: number | null;
+  status: string;
+  complete: boolean;
+  /** What the import changed (so far, for a run that didn't finish); null if it recorded nothing. */
+  summary: ImportSummary | null;
+}
+
 export interface UserExport {
   format: "magomap-export";
   /** Bumped when a field is removed or renamed; adding fields does not bump it. */
@@ -36,6 +50,8 @@ export interface UserExport {
     listItems: Out<ListItemRow>[];
     /** Which lists (own and followed Kakao lists) the user belongs to, and how. */
     listMemberships: Out<UserListRow>[];
+    /** The user's Kakao imports, newest first. */
+    importRuns: ExportedImportRun[];
   };
   /** Rows other people can see too, included only because this user's places or lists reach them. */
   shared: {
@@ -105,6 +121,21 @@ export async function exportUserData(
     .select("provider")
     .where("user_id", "=", userId)
     .execute();
+  const runs = await db.kysely
+    .selectFrom("import_runs")
+    .select([
+      "id",
+      "provider",
+      "source",
+      "started_at",
+      "finished_at",
+      "status",
+      "complete",
+      "summary_json",
+    ])
+    .where("user_id", "=", userId)
+    .orderBy("started_at", "desc")
+    .execute();
   const read = <T extends SyncTable>(table: T) => readAll(db, userId, table, pageRows);
   const lists = await read("lists");
   const listItems = await read("list_items");
@@ -135,6 +166,18 @@ export async function exportUserData(
       lists: lists.filter((l) => ownListIds.has(l.id)),
       listItems: listItems.filter((i) => ownListIds.has(i.listId)),
       listMemberships,
+      importRuns: runs.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        source: r.source,
+        startedAt: Number(r.started_at),
+        finishedAt: r.finished_at == null ? null : Number(r.finished_at),
+        status: r.status,
+        complete: Number(r.complete) === 1,
+        summary: r.summary_json
+          ? ((JSON.parse(r.summary_json) as { summary?: ImportSummary }).summary ?? null)
+          : null,
+      })),
     },
     shared: {
       places,
