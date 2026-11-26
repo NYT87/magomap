@@ -135,17 +135,21 @@ export function Memberships({ placeId }: { placeId: string }) {
         <p className="mm-muted">{t("place.color.needsExtension")}</p>
       )}
       <ul className="mm-memberships">
-        {memberships.map(({ item, list, section }) => {
+        {memberships.map(({ item, list, section, pending }) => {
           const note = kakaoNoteOf(item);
           const color = membershipColor(item, list);
           // His own lists, and Kakao lists he owns (changed in Kakao Map first, so it needs the extension).
+          // Not for a place only waiting to be added in Kakao Map: there's no favourite to change yet.
           const canColor =
-            item.removedAtProvider == null && (section === "mine" || section === "provider");
+            pending === undefined &&
+            item.removedAtProvider == null &&
+            (section === "mine" || section === "provider");
           const colorReady = section === "mine" || extension === "ready";
           const currentColor =
             (section === "mine" ? item.itemColor : item.providerColor) ?? undefined;
           // The note of a Kakao list he owns: changed in Kakao Map first, so it needs the extension.
-          const isOwned = section === "provider" && item.removedAtProvider == null;
+          const isOwned =
+            pending === undefined && section === "provider" && item.removedAtProvider == null;
           const noteReady = extension === "ready";
           const canEditNote = isOwned && noteReady;
           return (

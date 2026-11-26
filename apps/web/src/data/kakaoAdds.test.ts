@@ -1,8 +1,10 @@
 // Pending adds of a place to one of her own Kakao lists (#83): written locally, shown with that
 // list, cleared once a Kakao Map sync brings the place in.
 import type { ListItemRow, ListRow, PlaceRow } from "@magomap/domain";
+import Dexie from "dexie";
 import { beforeEach, describe, expect, it } from "vitest";
-import { openUserDb } from "./db";
+import { buildMarkers } from "../map/markers";
+import { dbName, openUserDb } from "./db";
 import {
   kakaoListsFor,
   listPlaces,
@@ -153,5 +155,76 @@ describe("pending adds to a Kakao list", () => {
     expect((await db.kakao_adds.get("ka_l_kakao_9_p_kakao_2"))?.deletedAt).toBeNull();
     const deletes = (await db.outbox.toArray()).filter((o) => o.op === "delete");
     expect(deletes.map((o) => o.id)).toEqual(["ka_l_kakao_9_p_kakao_1"]);
+  });
+
+  it("asks afresh after a failure: the mark goes and the add is sent again", async () => {
+    await seed();
+    const id = await addToKakaoList("l_kakao_9", "p_kakao_1");
+    await markKakaoAddsFailed([id], "list_missing");
+    await db.outbox.clear();
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    expect((await db.kakao_adds.get(id))?.failed).toBeNull();
+    expect((await db.outbox.toArray()).map((o) => [o.table, o.op])).toEqual([
+      ["kakao_adds", "upsert"],
+    ]);
+  });
+
+  it("doesn't show a pending add twice once the list holds the place, nor one for a list she left", async () => {
+    await seed();
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    await db.list_items.put(item("l_kakao_9", "p_kakao_1"));
+    expect((await loadLibrary(db)).pending).toEqual([]);
+    expect(listPlaces(await loadLibrary(db), "l_kakao_9")).toHaveLength(1);
+    await db.list_items.clear();
+    await db.user_lists.update("ul_l_kakao_9", { removedAt: 5 });
+    expect((await loadLibrary(db)).pending).toEqual([]);
+  });
+
+  it("doesn't offer a list removed from her Kakao Map", async () => {
+    await seed();
+    await db.lists.update("l_kakao_9", { removedAtProvider: 5 });
+    expect(kakaoListsFor(await loadLibrary(db), "p_kakao_1")).toEqual([]);
+  });
+
+  it("puts a pending place on the map in its list, in the theme colour until Kakao Map has it", async () => {
+    await seed();
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    const lib = await loadLibrary(db);
+    const markers = buildMarkers({
+      places: [...lib.places.values()],
+      memberships: shownItems(lib),
+      lists: lib.lists,
+      locations: lib.locations,
+      roles: lib.roles,
+      saved: new Set(),
+      visibleListIds: new Set(["l_kakao_9"]),
+      showPrevious: false,
+    });
+    expect(markers.filter((m) => m.kind === "saved").map((m) => m.id)).toEqual(["p_kakao_1"]);
+  });
+
+  it("an existing device's database gains the table and keeps its rows", async () => {
+    const name = dbName(`kaold${n}`);
+    const old = new Dexie(name);
+    old.version(1).stores({
+      places: "id",
+      place_sources: "id, placeId",
+      place_locations: "id, placeId",
+      lists: "id",
+      list_items: "id, listId, placeId",
+      user_lists: "id, listId",
+      user_places: "id, placeId",
+      visit_notes: "id, placeId",
+      links: "id, placeId",
+      outbox: "++seq, mutationId, [table+id]",
+      rejected: "mutationId",
+      drafts: "key",
+      meta: "key",
+    });
+    await old.table("places").put(place("p_kakao_1"));
+    old.close();
+    const upgraded = openUserDb(`kaold${n}`);
+    expect(await upgraded.places.get("p_kakao_1")).toBeDefined();
+    expect(await upgraded.kakao_adds.count()).toBe(0);
   });
 });

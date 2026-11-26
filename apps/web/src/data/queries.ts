@@ -115,13 +115,13 @@ export function sectionOf(list: ListRow, roles: Map<string, UserListRow["role"]>
   return roles.get(list.id) === "follower" ? "subscribed" : "provider";
 }
 
-/** Places the user saved that are in none of their visible lists. */
 /** Every item lists show: the real ones, then the stand-ins of places pending for a Kakao list. */
 export const shownItems = (lib: Library): ListItemRow[] => [
   ...lib.items,
   ...lib.pending.map((p) => p.item),
 ];
 
+/** Places the user saved that are in none of their visible lists. */
 export function savedNotInList(lib: Library): string[] {
   const listed = new Set(
     shownItems(lib)

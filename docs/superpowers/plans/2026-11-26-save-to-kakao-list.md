@@ -17,7 +17,7 @@
 - **Offered lists:** her own Kakao lists (`sectionOf === "provider"`), never followed ones, and never folder 0 (her default list: the extension refuses folder id 0). Only for a place with a Kakao place source whose id is a Kakao place id (`/^[1-9]\d{0,14}$/`); otherwise the Kakao lists are absent.
 - **Row:** `kakao_adds (user_id, id, list_id, place_id, failed, created_at, updated_at, deleted_at, client_updated_at, seq)`, primary key `(user_id, id)`, index `(user_id, seq, id)`. `id = ka_<listId>_<placeId>` (deterministic, so two devices merge). `failed` is null or `"list_missing"`.
 - **Server rules:** upsert refused (`not_allowed`) unless the list is a live Kakao list with her `owner` role and the place is one she can see with a live Kakao source; `listId`/`placeId` can't change; deletes always allowed for her own rows. Account deletion and export include the table.
-- **Saving:** saving to a Kakao list also saves the place (as today); the pending add is a local write, so it works offline.
+- **Saving:** a Kakao list is offered only for a place she already has (saved, or in one of her lists), which is what the server checks; the map's save step saves the place first, as today. `addToKakaoList` writes only the pending add. It is a local write, so it works offline.
 - **Pushing:** never on a phone without the extension; only one push at a time; a push that fails leaves the rows pending (retried next time), except `not_found` from the extension, which marks that list's rows `failed: "list_missing"`. Nothing is logged.
 - **Clearing:** after any pull, a pending add whose list holds that place in a live, not-removed item is soft-deleted.
 - **Shown:** a pending place appears in that list (list screen, map, place memberships) with the text "Not yet in Kakao Map"; a failed one says why and offers **Remove**.
@@ -56,7 +56,7 @@
 
 **Files:** `apps/web/src/data/{db.ts,writes.ts,queries.ts}`, `apps/web/src/components/SyncIndicator.tsx`, i18n `sync.kakaoAdd`.
 
-- [ ] Tests first: `addToKakaoList(listId, placeId)` saves the place if needed and writes the pending row (again: unchanged; after removal: restored); `removeKakaoAdd(id)`; `clearDoneKakaoAdds()` removes rows whose list now holds the place; the library exposes pending adds; `useListPlaces`, place memberships and markers include pending places marked `pending` (and `failed`); `kakaoListsFor(placeId)` offers only her own Kakao lists except folder 0, and only for a place with a Kakao key.
+- [ ] Tests first: `addToKakaoList(listId, placeId)` writes the pending row (again: unchanged; after removal: restored); `removeKakaoAdd(id)`; `clearDoneKakaoAdds()` removes rows whose list now holds the place; the library exposes pending adds; `useListPlaces`, place memberships and markers include pending places marked `pending` (and `failed`); `kakaoListsFor(placeId)` offers only her own Kakao lists except folder 0, and only for a place with a Kakao key.
 - [ ] Dexie `version(2)` adds `kakao_adds: "id, listId, placeId"`; `ROW_TABLES`, `TABLES`, `OWN_ROW_TABLES`; clearing runs after every pull.
 - [ ] Gate, reviewer, commit.
 
