@@ -2,6 +2,7 @@
 // check, and the run routes' check must not also run for them (each check reads the session).
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import app from "../src/index";
 import { call, devLogin } from "./helpers";
 
 /** The D1 binding, counting the statements that read the sessions table. */
@@ -40,8 +41,23 @@ describe("sign-in checks on the import routes", () => {
     expect(counting.reads()).toBe(1);
   });
 
-  it("the run routes still need a signed-in user", async () => {
-    const res = await call("/api/import/runs/latest");
-    expect(res.status).toBe(401);
+  // Every import route and Kakao edit route the app defines, today's and any added later.
+  it("every import and Kakao edit route needs a signed-in user", async () => {
+    const routes = app.routes.filter(
+      (r) =>
+        r.method !== "ALL" &&
+        (r.path.startsWith("/api/import/") || /^\/api\/kakao-(colors|notes)$/.test(r.path)),
+    );
+    expect(routes.length).toBeGreaterThanOrEqual(8);
+    for (const r of routes) {
+      const path = r.path.replace(/:[A-Za-z]+/g, "x");
+      const res = await call(path, {
+        method: r.method,
+        ...(r.method === "GET"
+          ? {}
+          : { headers: { "content-type": "application/json" }, body: "{}" }),
+      });
+      expect([r.method, path, res.status]).toEqual([r.method, path, 401]);
+    }
   });
 });
