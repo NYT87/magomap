@@ -19,6 +19,7 @@ vi.mock("../import/runImport", async (orig) => {
 const { openUserDb } = await import("../data/db");
 const { addToKakaoList } = await import("../data/writes");
 const { pushKakaoAdds } = await import("./pushKakaoAdds");
+const { claimKakaoWrites, releaseKakaoWrites } = await import("./duplicateToKakao");
 
 let n = 0;
 let db: ReturnType<typeof openUserDb>;
@@ -107,11 +108,11 @@ describe("pushKakaoAdds", () => {
   it("sends nothing without the extension, or with nothing pending", async () => {
     await seed();
     behaves();
-    expect(await pushKakaoAdds()).toBe("nothing");
+    expect(await pushKakaoAdds(db)).toBe("nothing");
     expect(ask).not.toHaveBeenCalled();
     await addToKakaoList("l_kakao_9", "p_kakao_1");
     detect.mockResolvedValue("missing");
-    expect(await pushKakaoAdds()).toBe("no_extension");
+    expect(await pushKakaoAdds(db)).toBe("no_extension");
     expect(ask).not.toHaveBeenCalled();
     expect(sync).not.toHaveBeenCalled();
   });
@@ -122,7 +123,7 @@ describe("pushKakaoAdds", () => {
     await addToKakaoList("l_kakao_9", "p_kakao_1");
     await addToKakaoList("l_kakao_9", "p_kakao_2");
     await addToKakaoList("l_kakao_8", "p_kakao_3");
-    expect(await pushKakaoAdds()).toBe("pushed");
+    expect(await pushKakaoAdds(db)).toBe("pushed");
     expect(ask.mock.calls[0]?.[0].type).toBe("magomap.account");
     expect(
       adds().map((m) => [m.folderId, (m.places as { key: string }[]).map((p) => p.key)]),
@@ -130,10 +131,21 @@ describe("pushKakaoAdds", () => {
       [8, ["3"]],
       [9, ["1", "2"]],
     ]);
+    // Exactly what the extension takes: never magomap's own place ids.
     expect(adds()[0]?.places).toEqual([
-      expect.objectContaining({ key: "3", title: "장소 3", address: "애월로 3" }),
+      {
+        key: "3",
+        title: "장소 3",
+        address: "애월로 3",
+        x: expect.any(Number),
+        y: expect.any(Number),
+      },
     ]);
     expect(sync).toHaveBeenCalledTimes(1);
+    // The sync comes after the adds.
+    expect(sync.mock.invocationCallOrder[0]).toBeGreaterThan(
+      ask.mock.invocationCallOrder.at(-1) ?? Number.POSITIVE_INFINITY,
+    );
   });
 
   it("marks a list Kakao Map can't find as failed, and still adds to the others", async () => {
@@ -146,7 +158,7 @@ describe("pushKakaoAdds", () => {
     });
     await addToKakaoList("l_kakao_8", "p_kakao_3");
     await addToKakaoList("l_kakao_9", "p_kakao_1");
-    expect(await pushKakaoAdds()).toBe("pushed");
+    expect(await pushKakaoAdds(db)).toBe("pushed");
     expect((await db.kakao_adds.get("ka_l_kakao_8_p_kakao_3"))?.failed).toBe("list_missing");
     expect((await db.kakao_adds.get("ka_l_kakao_9_p_kakao_1"))?.failed).toBeNull();
     expect(adds().map((m) => m.folderId)).toEqual([8, 9]);
@@ -154,7 +166,7 @@ describe("pushKakaoAdds", () => {
     // A failed add isn't sent again.
     ask.mockClear();
     behaves();
-    await pushKakaoAdds();
+    await pushKakaoAdds(db);
     expect(adds().map((m) => m.folderId)).toEqual([9]);
   });
 
@@ -163,8 +175,9 @@ describe("pushKakaoAdds", () => {
     behaves({ "magomap.addPlaces": () => ({ ok: false, error: "kakao_signed_out" }) });
     await addToKakaoList("l_kakao_8", "p_kakao_3");
     await addToKakaoList("l_kakao_9", "p_kakao_1");
-    expect(await pushKakaoAdds()).toBe("stopped");
+    expect(await pushKakaoAdds(db)).toBe("stopped");
     expect(adds()).toHaveLength(1);
+    // Nothing went in, so there's nothing to bring in.
     expect(sync).not.toHaveBeenCalled();
     const rows = await db.kakao_adds.toArray();
     expect(rows.map((r) => [r.deletedAt, r.failed])).toEqual([
@@ -178,7 +191,7 @@ describe("pushKakaoAdds", () => {
     behaves();
     post.mockRejectedValue(new Error("mismatch"));
     await addToKakaoList("l_kakao_9", "p_kakao_1");
-    expect(await pushKakaoAdds()).toBe("stopped");
+    expect(await pushKakaoAdds(db)).toBe("stopped");
     expect(adds()).toHaveLength(0);
   });
 
@@ -187,7 +200,7 @@ describe("pushKakaoAdds", () => {
     behaves();
     await addToKakaoList("l_kakao_9", "p_kakao_1");
     await db.user_lists.update("ul_l_kakao_9", { role: "follower" });
-    expect(await pushKakaoAdds()).toBe("nothing");
+    expect(await pushKakaoAdds(db)).toBe("nothing");
     expect(ask).not.toHaveBeenCalled();
   });
 
@@ -196,10 +209,130 @@ describe("pushKakaoAdds", () => {
     let finish: (v: unknown) => void = () => undefined;
     behaves({ "magomap.addPlaces": () => new Promise((r) => (finish = r)) });
     await addToKakaoList("l_kakao_9", "p_kakao_1");
-    const first = pushKakaoAdds();
+    const first = pushKakaoAdds(db);
     await vi.waitFor(() => expect(adds()).toHaveLength(1));
-    expect(await pushKakaoAdds()).toBe("busy");
+    expect(await pushKakaoAdds(db)).toBe("busy");
     finish({ ok: true, added: 1, skipped: 0 });
     expect(await first).toBe("pushed");
+  });
+
+  /** Seeds `count` more places with Kakao ids, all pending for list 9. */
+  async function manyPending(count: number) {
+    for (let i = 0; i < count; i++) {
+      const key = String(1000 + i);
+      await db.places.put(place(key));
+      await db.place_sources.put({
+        id: `s_kakao_${key}`,
+        placeId: `p_kakao_${key}`,
+        provider: "kakao",
+        externalId: key,
+        ...base,
+      });
+      await db.user_places.put({
+        id: `up_p_kakao_${key}`,
+        placeId: `p_kakao_${key}`,
+        savedAt: 1,
+        ...base,
+      });
+      await addToKakaoList("l_kakao_9", `p_kakao_${key}`);
+    }
+  }
+
+  it("sends a list's places 50 at a time", async () => {
+    await seed();
+    behaves();
+    await manyPending(60);
+    expect(await pushKakaoAdds(db)).toBe("pushed");
+    expect(adds().map((m) => (m.places as unknown[]).length)).toEqual([50, 10]);
+  });
+
+  it("stopping on the second page keeps what wasn't sent pending, and brings in what was", async () => {
+    await seed();
+    let page = 0;
+    behaves({
+      "magomap.addPlaces": (m) => {
+        page += 1;
+        return page === 2
+          ? undefined
+          : { ok: true, added: (m.places as unknown[]).length, skipped: 0 };
+      },
+    });
+    await manyPending(60);
+    expect(await pushKakaoAdds(db)).toBe("stopped");
+    expect(sync).toHaveBeenCalledTimes(1);
+    const rows = await db.kakao_adds.toArray();
+    expect(rows.every((r) => r.deletedAt == null && r.failed == null)).toBe(true);
+  });
+
+  it("a list gone on the second page marks only the places not sent yet", async () => {
+    await seed();
+    let page = 0;
+    behaves({
+      "magomap.addPlaces": (m) => {
+        page += 1;
+        return page === 2
+          ? { ok: false, error: "not_found", added: 0 }
+          : { ok: true, added: (m.places as unknown[]).length, skipped: 0 };
+      },
+    });
+    await manyPending(60);
+    expect(await pushKakaoAdds(db)).toBe("pushed");
+    const failed = (await db.kakao_adds.toArray()).filter((r) => r.failed === "list_missing");
+    expect(failed).toHaveLength(10);
+  });
+
+  it("marks a place it can't send (no location), and sends the rest", async () => {
+    await seed();
+    behaves();
+    await db.places.update("p_kakao_2", { lat: null, lng: null });
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    await addToKakaoList("l_kakao_9", "p_kakao_2");
+    expect(await pushKakaoAdds(db)).toBe("pushed");
+    expect((await db.kakao_adds.get("ka_l_kakao_9_p_kakao_2"))?.failed).toBe("cant_send");
+    expect(adds().map((m) => (m.places as { key: string }[]).map((p) => p.key))).toEqual([["1"]]);
+    // Nothing to send next time: no extension check, no account check.
+    ask.mockClear();
+    await db.kakao_adds.update("ka_l_kakao_9_p_kakao_1", { deletedAt: 5 });
+    expect(await pushKakaoAdds(db)).toBe("nothing");
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("doesn't mark a list gone when the signed-in Kakao Map account has changed meanwhile", async () => {
+    await seed();
+    behaves({ "magomap.addPlaces": () => ({ ok: false, error: "not_found", added: 0 }) });
+    // The first account check passes; the one after not_found doesn't.
+    post.mockResolvedValueOnce({ ok: true }).mockRejectedValue(new Error("mismatch"));
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    expect(await pushKakaoAdds(db)).toBe("stopped");
+    expect((await db.kakao_adds.get("ka_l_kakao_9_p_kakao_1"))?.failed).toBeNull();
+  });
+
+  it("stops, writing nothing more, when the open account changes during a push", async () => {
+    await seed();
+    let release: (v: unknown) => void = () => undefined;
+    behaves({ "magomap.addPlaces": () => new Promise((r) => (release = r)) });
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    await addToKakaoList("l_kakao_8", "p_kakao_3");
+    const running = pushKakaoAdds(db);
+    await vi.waitFor(() => expect(adds()).toHaveLength(1));
+    openUserDb(`pka-other${n}`);
+    release({ ok: true, added: 1, skipped: 0 });
+    expect(await running).toBe("stopped");
+    // List 9's add went no further, and no sync ran for the other account.
+    expect(adds()).toHaveLength(1);
+    expect(sync).not.toHaveBeenCalled();
+  });
+
+  it("waits while Copy to Kakao Map is writing", async () => {
+    await seed();
+    behaves();
+    await addToKakaoList("l_kakao_9", "p_kakao_1");
+    expect(claimKakaoWrites()).toBe(true);
+    try {
+      expect(await pushKakaoAdds(db)).toBe("busy");
+      expect(ask).not.toHaveBeenCalled();
+    } finally {
+      releaseKakaoWrites();
+    }
   });
 });

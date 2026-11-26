@@ -67,8 +67,10 @@ async function softDelete(db: MagomapDexie, table: ClientWritableTable, id: stri
   await db.outbox.add({ mutationId: newId(), table, id, op: "delete", clientUpdatedAt: at });
 }
 
-async function tx<T>(fn: (db: MagomapDexie) => Promise<T>): Promise<T> {
-  const db = currentDb();
+async function tx<T>(
+  fn: (db: MagomapDexie) => Promise<T>,
+  db: MagomapDexie = currentDb(),
+): Promise<T> {
   const out = await db.transaction(
     "rw",
     TABLES.map((t) => db.table(t)),
@@ -429,7 +431,11 @@ export function addToKakaoList(listId: string, placeId: string): Promise<string>
 export const removeKakaoAdd = (id: string) => tx((db) => softDelete(db, "kakao_adds", id));
 
 /** Marks pending adds that can't be added, with why; they stay until she removes them. */
-export function markKakaoAddsFailed(ids: string[], failed: "list_missing"): Promise<void> {
+export function markKakaoAddsFailed(
+  ids: string[],
+  failed: NonNullable<KakaoAddRow["failed"]>,
+  db: MagomapDexie = currentDb(),
+): Promise<void> {
   return tx(async (db) => {
     for (const id of ids) {
       const existing = await db.kakao_adds.get(id);
@@ -437,7 +443,7 @@ export function markKakaoAddsFailed(ids: string[], failed: "list_missing"): Prom
       const row: KakaoAddRow = { ...existing, failed, updatedAt: stamp(existing.updatedAt) };
       await upsert(db, "kakao_adds", row);
     }
-  });
+  }, db);
 }
 
 /**

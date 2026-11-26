@@ -137,12 +137,14 @@ export async function sendPlacesOf(
  * Whether the Kakao Map account signed in on the page is the one linked to his magomap account.
  * Returns her folder records as the extension handed them over.
  */
-export async function checkKakaoAccount(): Promise<unknown[]> {
+export async function checkKakaoAccount(
+  account: string = dbUserId(currentDb()),
+): Promise<unknown[]> {
   const answer = await ask({ type: "magomap.account" }, ACCOUNT_WAIT_MS);
   if (answer.ok !== true || !Array.isArray(answer.folders))
     throw new KakaoCopyError(failureOf(answer));
   try {
-    await post(dbUserId(currentDb()), "/api/import/kakao-map/account", { folders: answer.folders });
+    await post(account, "/api/import/kakao-map/account", { folders: answer.folders });
   } catch (error) {
     const code = codeOf(error);
     if (code === "offline") throw new KakaoCopyError("offline");
@@ -157,7 +159,20 @@ export async function checkKakaoAccount(): Promise<unknown[]> {
   return answer.folders;
 }
 
+/**
+ * One write to Kakao Map at a time from this page: a copy, or a push of pending adds. Both go
+ * through the extension and end in a Kakao Map sync, so they never run side by side.
+ */
 let working = false;
+/** Takes the page's Kakao Map writes for a run; false when another holds them. */
+export function claimKakaoWrites(): boolean {
+  if (working) return false;
+  working = true;
+  return true;
+}
+export function releaseKakaoWrites(): void {
+  working = false;
+}
 
 /**
  * A create that got no clear answer (none in time, or Kakao Map unavailable): Kakao may have made
@@ -195,8 +210,7 @@ export async function duplicateToKakao(input: {
   name: string;
   resume?: { folderId: number };
 }): Promise<KakaoCopyResult> {
-  if (working) throw new KakaoCopyError("busy");
-  working = true;
+  if (!claimKakaoWrites()) throw new KakaoCopyError("busy");
   try {
     const { places, leftOut } = await placesOf(input.sourceListId);
     const account = dbUserId(currentDb());
@@ -259,6 +273,6 @@ export async function duplicateToKakao(input: {
     }
     return { folderId, added, skipped, leftOut, synced };
   } finally {
-    working = false;
+    releaseKakaoWrites();
   }
 }

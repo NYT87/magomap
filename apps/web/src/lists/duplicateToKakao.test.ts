@@ -154,6 +154,15 @@ describe("duplicateToKakao", () => {
     expect(Number.isInteger(places[0]?.y)).toBe(true);
     // d has an own-list colour only.
     expect(places[1]?.color).toBe("02");
+    // Only what the extension takes: never magomap's own place ids.
+    expect(Object.keys(places[0] ?? {}).sort()).toEqual([
+      "address",
+      "color",
+      "key",
+      "title",
+      "x",
+      "y",
+    ]);
   });
 
   it("stops before creating anything when the signed-in account isn't his", async () => {

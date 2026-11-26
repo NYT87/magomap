@@ -97,6 +97,9 @@ describe("pending adds to a Kakao list", () => {
     const lib = await loadLibrary(db);
     expect(kakaoListsFor(lib, "p_kakao_1").map((l) => l.id)).toEqual(["l_kakao_9"]);
     expect(kakaoListsFor(lib, "p_naver_3")).toEqual([]);
+    // A collaborator isn't the owner: not offered either.
+    await db.user_lists.update("ul_l_kakao_9", { role: "collaborator" });
+    expect(kakaoListsFor(await loadLibrary(db), "p_kakao_1")).toEqual([]);
   });
 
   it("writes one pending add, synced; again changes nothing; removing and adding restores it", async () => {

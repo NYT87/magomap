@@ -238,7 +238,8 @@ export function kakaoListsFor(lib: Library, placeId: string): ListRow[] {
   if (!keyed) return [];
   return lib.lists
     .filter((l) => {
-      if (l.provider !== "kakao" || sectionOf(l, lib.roles) !== "provider") return false;
+      // Owner only, as the server requires (a follower or collaborator can't add in Kakao Map).
+      if (l.provider !== "kakao" || lib.roles.get(l.id) !== "owner") return false;
       if (l.removedAtProvider != null || l.externalId == null) return false;
       const folder = kakaoFolderIdOf(l.externalId);
       return folder !== undefined && folder > 0;

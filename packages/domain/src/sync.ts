@@ -137,7 +137,7 @@ export const mutationRowSchemas = {
       ...base,
       listId: id,
       placeId: id,
-      failed: z.enum(["list_missing"]).nullable(),
+      failed: z.enum(["list_missing", "cant_send"]).nullable(),
     })
     .refine((r) => r.id === `ka_${r.listId}_${r.placeId}`, "Expected ka_<listId>_<placeId>"),
 } satisfies Record<ClientWritableTable, z.ZodType>;
