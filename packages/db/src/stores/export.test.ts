@@ -1,3 +1,4 @@
+import { SYNC_TABLES } from "@magomap/domain";
 import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
@@ -226,8 +227,8 @@ forEachDialect("exportUserData", (makeDb) => {
     } as Db;
     const out = await exportUserData(counted, u.userId, T0);
     expect(out.shared.places).toHaveLength(600);
-    // users, identities, and one read for each of the exported tables.
-    expect(queries).toBeLessThanOrEqual(2 + 9);
+    // users, identities, and one read for each synced table (the export reads them all).
+    expect(queries).toBeLessThanOrEqual(2 + SYNC_TABLES.length);
   });
 
   it("finds nothing for a deleted account, and everything still for the other one", async () => {
