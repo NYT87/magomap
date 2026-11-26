@@ -40,6 +40,20 @@ export function setRequestAccount(userId: string | null) {
   account = userId;
 }
 
+/** Long enough for a full sync page or a 1 MB push on a slow link; it only has to end a stall. */
+const TIMEOUT_MS = 120_000;
+
+/**
+ * `own` cut off after `ms`. A browser without `AbortSignal.timeout` (iOS before 16) or
+ * `AbortSignal.any` keeps `own` unlimited rather than failing every request.
+ */
+export function withTimeLimit(own: AbortSignal | undefined, ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal.timeout !== "function") return own;
+  const limit = AbortSignal.timeout(ms);
+  if (!own) return limit;
+  return typeof AbortSignal.any === "function" ? AbortSignal.any([own, limit]) : own;
+}
+
 /** Fetches a same-origin API path with the session cookie; JSON in, JSON out. */
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -47,14 +61,18 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (init.body !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
+  // On weak signal a request can stall without ever failing: past its limit it counts as offline.
+  const signal = withTimeLimit(init.signal ?? undefined, TIMEOUT_MS);
   let res: Response;
+  let text: string;
   try {
-    res = await fetch(path, { credentials: "same-origin", ...init, headers });
+    res = await fetch(path, { credentials: "same-origin", ...init, headers, signal });
+    // The body can stall too, so reading it stays under the same limit.
+    text = await res.text();
   } catch (error) {
     throw new NetworkError(error);
   }
   if (res.status === 401) throw new UnauthorizedError();
-  const text = await res.text();
   let body: unknown = null;
   try {
     body = text ? JSON.parse(text) : null;

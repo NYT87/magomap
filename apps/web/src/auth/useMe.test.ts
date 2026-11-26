@@ -104,4 +104,24 @@ describe("useMe", () => {
     act(() => notifyMeChanged());
     await waitFor(() => expect(result.current.me?.userId).toBe("b"));
   });
+
+  it("opens at once with the account it knows, while it checks in the background", async () => {
+    localStorage.setItem("mm.me", JSON.stringify(me("a")));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const { result } = renderHook(() => useMe());
+    expect(result.current.loading).toBe(false);
+    expect(result.current.me?.userId).toBe("a");
+  });
+
+  it("still waits for the server on a device that knows no account", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const { result } = renderHook(() => useMe());
+    expect(result.current.loading).toBe(true);
+  });
 });
