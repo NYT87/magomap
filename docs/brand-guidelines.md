@@ -73,7 +73,8 @@ The colours come from the land Mago shaped: pine-covered mountains, clay earth, 
 
 ### Map Markers
 
-- **Kakao lists** keep Kakao's own favourite colours (`KAKAO_PLACE_COLORS`), so places look the way she knows them from Kakao Map.
+- **Kakao lists** keep Kakao's own favourite colours (`KAKAO_PLACE_COLORS`), exactly as Kakao Map shows them, so places look the way she knows them: red #F96061, yellow #FFC43B, orange #FF9340, green #96D147, dark green #56C07C, purple #A088FF, pink #E879C5. Kakao's favourite yellow isn't the Kakao brand yellow (#FEE500), which stays off-limits.
+- **Every saved pin and colour dot** has a 1 to 1.5 px edge of black at 35% over its fill, a darker shade of its own colour, so light colours stand out on the map and the page.
 - **Own lists** choose from 8 brand-derived presets: Pine #1F6F5C, Clay #B4552A, River #2F6FA3, Persimmon #D9662B, Plum #7A4E7E, Moss #6B7A2F, Slate #4A5A68, Rose #B84A62.
 - **Previous locations** use the place's colour at 45% opacity, with a 1.5 px Clay outline.
 - **Search results** are hollow rings in Ink, to set them apart from saved places.

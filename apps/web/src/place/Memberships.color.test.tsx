@@ -66,7 +66,7 @@ describe("Memberships: changing a colour", () => {
       "aria-pressed",
       "true",
     );
-    expect(within(group).getByRole("button", { name: "Blue" })).toHaveAttribute(
+    expect(within(group).getByRole("button", { name: "Dark green" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -89,7 +89,7 @@ describe("Memberships: changing a colour", () => {
     await open();
     const trigger = await screen.findByRole("button", { name: "Change colour in 제주 카페" });
     await user.click(trigger);
-    await user.click(screen.getByRole("button", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Dark green" }));
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
@@ -97,7 +97,7 @@ describe("Memberships: changing a colour", () => {
     const user = userEvent.setup();
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
-    await user.click(screen.getByRole("button", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Dark green" }));
     expect(setColor).toHaveBeenCalledWith({ itemId: "i_kakao_1_10", color: "05" });
     await waitFor(() => expect(screen.queryByRole("group", { name: /Colour in/ })).toBeNull());
   });
@@ -107,7 +107,7 @@ describe("Memberships: changing a colour", () => {
     const user = userEvent.setup();
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
-    await user.click(screen.getByRole("button", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Dark green" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/different Kakao Map account/i);
     expect(screen.getByRole("group", { name: "Colour in 제주 카페" })).toBeInTheDocument();
   });
@@ -117,7 +117,7 @@ describe("Memberships: changing a colour", () => {
     const user = userEvent.setup();
     await open();
     await user.click(await screen.findByRole("button", { name: "Change colour in 제주 카페" }));
-    await user.click(screen.getByRole("button", { name: "Blue" }));
+    await user.click(screen.getByRole("button", { name: "Dark green" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Kakao Map has the new colour/i);
   });
 });

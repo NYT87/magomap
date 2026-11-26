@@ -62,44 +62,46 @@ test("a long list name and a long note stay inside their Kakao note card", async
   expect(pageOverflow).toBeLessThanOrEqual(0);
 });
 
-test("the Kakao colour rule on a note stays visible in the dark theme", async ({
-  page,
-  context,
-}) => {
-  await devLogin(context, "222");
-  await syncFromKakao(page);
-  await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto(`/places/${BADA}/details`);
-  const text = page.locator(".mm-kakao-note__text").first();
-  await expect(text).toBeVisible();
-  // Every Kakao colour, as the rule would draw it, against the card behind it.
-  const worst = await text.evaluate((el) => {
-    // "rgb(200, 55, 62)", or "color(srgb 0.78 0.21 0.24)" for a color-mix() result.
-    const parse = (c: string) => {
-      const n = (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
-      return c.startsWith("color(") ? n.map((v) => v * 255) : n;
-    };
-    const lum = ([r, g, b]: number[]) => {
-      const f = (v: number) => {
-        const x = v / 255;
-        return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+for (const scheme of ["light", "dark"] as const) {
+  test(`the Kakao colour rule on a note stays visible in the ${scheme} theme`, async ({
+    page,
+    context,
+  }) => {
+    await devLogin(context, "222");
+    await syncFromKakao(page);
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto(`/places/${BADA}/details`);
+    const text = page.locator(".mm-kakao-note__text").first();
+    await expect(text).toBeVisible();
+    // Every Kakao colour, as the rule would draw it, against the card behind it.
+    const worst = await text.evaluate((el) => {
+      // "rgb(200, 55, 62)", or "color(srgb 0.78 0.21 0.24)" for a color-mix() result.
+      const parse = (c: string) => {
+        const n = (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        return c.startsWith("color(") ? n.map((v) => v * 255) : n;
       };
-      return 0.2126 * f(r ?? 0) + 0.7152 * f(g ?? 0) + 0.0722 * f(b ?? 0);
-    };
-    const card = el.closest(".mm-kakao-note") as HTMLElement;
-    const behind = lum(parse(getComputedStyle(card).backgroundColor));
-    const colours = ["#c8373e", "#bd5b00", "#927000", "#2f7547", "#2464ad", "#7150a4", "#b82d6d"];
-    return Math.min(
-      ...colours.map((c) => {
-        (el as HTMLElement).style.setProperty("--note-color", c);
-        const rule = lum(parse(getComputedStyle(el).borderInlineStartColor));
-        const [hi, lo] = rule > behind ? [rule, behind] : [behind, rule];
-        return (hi + 0.05) / (lo + 0.05);
-      }),
-    );
+      const lum = ([r, g, b]: number[]) => {
+        const f = (v: number) => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * f(r ?? 0) + 0.7152 * f(g ?? 0) + 0.0722 * f(b ?? 0);
+      };
+      const card = el.closest(".mm-kakao-note") as HTMLElement;
+      const behind = lum(parse(getComputedStyle(card).backgroundColor));
+      const colours = ["#f96061", "#ffc43b", "#ff9340", "#96d147", "#56c07c", "#a088ff", "#e879c5"];
+      return Math.min(
+        ...colours.map((c) => {
+          (el as HTMLElement).style.setProperty("--note-color", c);
+          const rule = lum(parse(getComputedStyle(el).borderInlineStartColor));
+          const [hi, lo] = rule > behind ? [rule, behind] : [behind, rule];
+          return (hi + 0.05) / (lo + 0.05);
+        }),
+      );
+    });
+    expect(worst).toBeGreaterThanOrEqual(3);
   });
-  expect(worst).toBeGreaterThanOrEqual(3);
-});
+}
 
 // A phone's place is a peek card over the map; the details page is its own route.
 async function openFirstPin(page: import("@playwright/test").Page) {

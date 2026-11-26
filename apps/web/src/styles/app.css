@@ -931,10 +931,13 @@ a {
   width: 14px;
   height: 14px;
   border-radius: 50%;
+  /* A darker shade of the fill at the edge: Kakao's light colours stay visible on the page. */
+  box-shadow: inset 0 0 0 1px var(--color-pin-edge);
 }
 
 .mm-swatch--ring {
   border: 3px solid var(--color-pine);
+  box-shadow: none;
 }
 
 /* ---------- Sheet ---------- */
@@ -1631,13 +1634,14 @@ a {
   font-size: var(--text-sm);
 }
 
-/* Several Kakao colours are too dark against the night card: lighten the rule, keep the hue.
-   --kakao-note-lighten is 0% in light and set with the dark tokens (tokens.css). */
+/* Kakao's colours are light: on the light card the rule is mixed toward black, keeping the hue,
+   so every one reaches 3:1 against it. On the night card they reach it as they are.
+   --kakao-note-darken is 35% in light and 0% with the dark tokens (tokens.css). */
 .mm-kakao-note__text {
   border-inline-start-color: color-mix(
     in srgb,
     var(--note-color, var(--color-border)),
-    #ffffff var(--kakao-note-lighten, 0%)
+    #000000 var(--kakao-note-darken, 35%)
   );
 }
 
@@ -2068,11 +2072,14 @@ a {
   height: 24px;
   border-radius: 50%;
   border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px var(--color-pin-edge);
 }
 
 .mm-color-picker__option[aria-pressed="true"] .mm-color-picker__dot {
   border-color: var(--color-text);
-  box-shadow: 0 0 0 2px var(--color-surface) inset;
+  box-shadow:
+    0 0 0 2px var(--color-surface) inset,
+    0 0 0 3px var(--color-pin-edge) inset;
 }
 
 .mm-color-picker__option:focus-visible {

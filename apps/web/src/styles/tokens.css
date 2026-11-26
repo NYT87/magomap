@@ -31,6 +31,8 @@
   --color-river: #2f6fa3;
   --color-bg: #fbf8f2;
   --color-surface: #f3eee4;
+  /* The edge of a pin or colour dot: a darker shade of its own fill, in both themes. */
+  --color-pin-edge: rgb(0 0 0 / 0.35);
   --color-text: #1e2321;
   --color-text-secondary: #5e6660;
   --color-border: #e3dccf;
@@ -103,7 +105,7 @@
   --dark-color-on-danger: #141816;
   --dark-color-scrim: rgba(0, 0, 0, 0.55);
   --dark-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
-  --dark-kakao-note-lighten: 25%;
+  --dark-kakao-note-darken: 0%;
 }
 
 :root[data-theme="light"] {
@@ -130,7 +132,7 @@
   --color-on-danger: var(--dark-color-on-danger);
   --color-scrim: var(--dark-color-scrim);
   --shadow: var(--dark-shadow);
-  --kakao-note-lighten: var(--dark-kakao-note-lighten);
+  --kakao-note-darken: var(--dark-kakao-note-darken);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -153,7 +155,7 @@
     --color-on-danger: var(--dark-color-on-danger);
     --color-scrim: var(--dark-color-scrim);
     --shadow: var(--dark-shadow);
-    --kakao-note-lighten: var(--dark-kakao-note-lighten);
+    --kakao-note-darken: var(--dark-kakao-note-darken);
   }
 }
 

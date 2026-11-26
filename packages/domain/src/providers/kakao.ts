@@ -29,13 +29,16 @@ export function usableNickname(value: unknown): string | undefined {
   return name && isStorableText(name) ? name : undefined;
 }
 
-/** Kakao Map's favourite colours, keyed by the favourite's `color` code. */
+/**
+ * Kakao Map's favourite colours, keyed by the favourite's `color` code: exactly the colours its
+ * page shows, so places look the way she knows them. Light ones are edged where they're drawn.
+ */
 export const KAKAO_PLACE_COLORS: Record<string, { name: string; value: string }> = {
-  "01": { name: "red", value: "#c8373e" },
-  "02": { name: "orange", value: "#bd5b00" },
-  "03": { name: "yellow", value: "#927000" },
-  "04": { name: "green", value: "#2f7547" },
-  "05": { name: "blue", value: "#2464ad" },
-  "06": { name: "purple", value: "#7150a4" },
-  "07": { name: "pink", value: "#b82d6d" },
+  "01": { name: "red", value: "#f96061" },
+  "02": { name: "yellow", value: "#ffc43b" },
+  "03": { name: "orange", value: "#ff9340" },
+  "04": { name: "green", value: "#96d147" },
+  "05": { name: "darkGreen", value: "#56c07c" },
+  "06": { name: "purple", value: "#a088ff" },
+  "07": { name: "pink", value: "#e879c5" },
 };

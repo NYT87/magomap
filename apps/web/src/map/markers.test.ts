@@ -118,15 +118,15 @@ describe("buildMarkers", () => {
       })[0]?.color;
 
     it("the Kakao colour wins over an own list's, whichever list is first", () => {
-      expect(color([item("own", "p1"), item("kk", "p1", "01")])).toBe("#c8373e");
-      expect(color([item("kk", "p1", "01"), item("own", "p1")])).toBe("#c8373e");
+      expect(color([item("own", "p1"), item("kk", "p1", "01")])).toBe("#f96061");
+      expect(color([item("kk", "p1", "01"), item("own", "p1")])).toBe("#f96061");
     });
 
     it("an owned Kakao list's colour comes before one from a list she follows", () => {
       expect(color([item("sub", "p1", "05"), item("kk", "p1", "01"), item("own", "p1")])).toBe(
-        "#c8373e",
+        "#f96061",
       );
-      expect(color([item("sub", "p1", "05"), item("own", "p1")])).toBe("#2464ad");
+      expect(color([item("sub", "p1", "05"), item("own", "p1")])).toBe("#56c07c");
     });
 
     it("an own list's colour shows when no Kakao list gives the place one", () => {
@@ -137,14 +137,14 @@ describe("buildMarkers", () => {
     });
 
     it("an own-list item's colour (copied from Kakao) beats its list's colour", () => {
-      expect(color([{ ...item("own", "p1"), itemColor: "02" }])).toBe("#bd5b00");
+      expect(color([{ ...item("own", "p1"), itemColor: "02" }])).toBe("#ffc43b");
       // An unknown code is ignored, as for Kakao items.
       expect(color([{ ...item("own", "p1"), itemColor: "99" }])).toBe("#7A4E7E");
     });
 
     it("an own-list item's copied colour and a Kakao colour: the own list's copy decides", () => {
       expect(color([{ ...item("own", "p1"), itemColor: "02" }, item("kk", "p1", "01")])).toBe(
-        "#bd5b00",
+        "#ffc43b",
       );
     });
 

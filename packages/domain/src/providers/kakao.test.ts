@@ -35,4 +35,16 @@ describe("KAKAO_PLACE_COLORS", () => {
   it("names Kakao Map's seven favourite colours by their two-digit codes", () => {
     expect(Object.keys(KAKAO_PLACE_COLORS)).toEqual(["01", "02", "03", "04", "05", "06", "07"]);
   });
+
+  it("are Kakao Map's own colours, as its page shows them", () => {
+    expect(KAKAO_PLACE_COLORS).toEqual({
+      "01": { name: "red", value: "#f96061" },
+      "02": { name: "yellow", value: "#ffc43b" },
+      "03": { name: "orange", value: "#ff9340" },
+      "04": { name: "green", value: "#96d147" },
+      "05": { name: "darkGreen", value: "#56c07c" },
+      "06": { name: "purple", value: "#a088ff" },
+      "07": { name: "pink", value: "#e879c5" },
+    });
+  });
 });
