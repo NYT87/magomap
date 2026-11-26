@@ -2,7 +2,7 @@
 // check which Kakao Map account is signed in, create the list, add the places in pages, then run
 // the usual sync so the new list comes in as his own Kakao list. Kakao Map is written first and
 // magomap only follows by that sync; nothing here writes magomap's own rows.
-import { currentDb, dbUserId } from "../data/db";
+import { currentDb, dbUserId, type MagomapDexie } from "../data/db";
 import { askExtension, runKakaoMapSync } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
 
@@ -45,9 +45,9 @@ export interface KakaoCopyResult {
 }
 
 /** Places per message: the extension takes up to 100; fewer keeps a failure's progress fine. */
-const PAGE = 50;
+export const PAGE = 50;
 /** The extension's own limit per write is 2 minutes; the page waits a little longer. */
-const WRITE_WAIT_MS = 150_000;
+export const WRITE_WAIT_MS = 150_000;
 const ACCOUNT_WAIT_MS = 60_000;
 
 const KEY = /^[1-9]\d{0,14}$/;
@@ -55,7 +55,7 @@ const KEY = /^[1-9]\d{0,14}$/;
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-interface SendPlace {
+export interface SendPlace {
   key: string;
   title: string;
   address: string;
@@ -65,14 +65,14 @@ interface SendPlace {
 }
 
 /** One answer from the extension: its ok body, or the copy's error for it. */
-async function ask(message: { type: string; [k: string]: unknown }, wait: number) {
+export async function ask(message: { type: string; [k: string]: unknown }, wait: number) {
   const answer = await askExtension(message, wait);
   if (answer === undefined) throw new KakaoCopyError("extension_missing");
   if (!isRecord(answer)) throw new KakaoCopyError("kakao_unavailable");
   return answer;
 }
 
-const failureOf = (answer: Record<string, unknown>): KakaoCopyCode => {
+export const failureOf = (answer: Record<string, unknown>): KakaoCopyCode => {
   const error = answer.error;
   if (error === "kakao_signed_out" || error === "busy") return error;
   return "kakao_unavailable";
@@ -87,25 +87,42 @@ async function placesOf(sourceListId: string): Promise<{ places: SendPlace[]; le
   const items = (await db.list_items.where("listId").equals(sourceListId).toArray())
     .filter((i) => i.deletedAt == null && i.removedAtProvider == null)
     .sort((a, b) => a.position - b.position);
-  // Loaded only for a copy: the conversion brings proj4 (about 44 kB gzip) along, which must not
+  const { places, leftOut } = await sendPlacesOf(
+    db,
+    items.map((i) => ({ placeId: i.placeId, color: i.providerColor ?? i.itemColor ?? undefined })),
+  );
+  // Only what the extension takes: magomap's own place ids stay here.
+  return { places: places.map(({ placeId: _, ...send }) => send), leftOut: leftOut.length };
+}
+
+/**
+ * Places as the extension adds them: Kakao's place id, the two lines Kakao Map shows, its own
+ * coordinates and a Kakao colour when there is one. A place with no Kakao place id, no point or
+ * no name can't be sent (`leftOut`); a place twice is sent once.
+ */
+export async function sendPlacesOf(
+  db: MagomapDexie,
+  entries: { placeId: string; color?: string | undefined }[],
+): Promise<{ places: (SendPlace & { placeId: string })[]; leftOut: string[] }> {
+  // Loaded only to send: the conversion brings proj4 (about 44 kB gzip) along, which must not
   // be in the first JavaScript every phone downloads (scripts/check-bundle.mjs).
   const { latLngToWcongnamul } = await import("@magomap/domain/providers/wcongnamul");
-  const places: SendPlace[] = [];
-  let leftOut = 0;
+  const places: (SendPlace & { placeId: string })[] = [];
+  const leftOut: string[] = [];
   const seen = new Set<string>();
-  for (const item of items) {
-    const place = await db.places.get(item.placeId);
-    const sources = await db.place_sources.where("placeId").equals(item.placeId).toArray();
+  for (const { placeId, color } of entries) {
+    const place = await db.places.get(placeId);
+    const sources = await db.place_sources.where("placeId").equals(placeId).toArray();
     const key = sources.find((s) => s.provider === "kakao" && s.deletedAt == null)?.externalId;
     const point = place ? latLngToWcongnamul(place.lat, place.lng) : undefined;
     const title = place?.title.trim() ?? "";
     if (!place || !key || !KEY.test(key) || !point || title === "" || seen.has(key)) {
-      leftOut += 1;
+      leftOut.push(placeId);
       continue;
     }
     seen.add(key);
-    const color = item.providerColor ?? item.itemColor ?? undefined;
     places.push({
+      placeId,
       key,
       title,
       address: place.roadAddress?.trim() || place.address?.trim() || "",

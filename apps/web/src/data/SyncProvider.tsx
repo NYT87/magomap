@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { currentDb } from "./db";
+import { startKakaoAddTriggers } from "./kakaoAddTriggers";
 import { SyncContext, type SyncControls } from "./SyncContext";
 import { startSyncTriggers, syncNow } from "./sync";
 import { useSyncStatus } from "./useSyncStatus";
@@ -10,6 +11,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [db] = useState(currentDb);
   const status = useSyncStatus();
   useEffect(() => startSyncTriggers(), []);
+  // Places she asked to add to her Kakao lists go to Kakao Map where the extension is.
+  useEffect(() => startKakaoAddTriggers(db), [db]);
   const controls = useMemo<SyncControls>(
     () => ({
       unsynced: status.unsynced,

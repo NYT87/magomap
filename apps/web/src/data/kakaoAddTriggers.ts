@@ -1,0 +1,34 @@
+// When to push her pending adds to Kakao Map (#83): a little after the app opens (once the first
+// sync has had its turn) and whenever it comes back into view. Only with adds pending: the push
+// (and the extension check it makes) is loaded then, never on a device with nothing to send.
+import type { MagomapDexie } from "./db";
+
+/** How long after opening: the first sync of the day goes first. */
+const OPEN_DELAY_MS = 3_000;
+
+export function startKakaoAddTriggers(db: MagomapDexie, openDelayMs = OPEN_DELAY_MS): () => void {
+  let stopped = false;
+  const run = async () => {
+    if (stopped) return;
+    const pending = await db.kakao_adds
+      .filter((a) => a.deletedAt == null && a.failed == null)
+      .count();
+    if (pending === 0 || stopped) return;
+    const { pushKakaoAdds } = await import("../lists/pushKakaoAdds");
+    await pushKakaoAdds();
+  };
+  const go = () => {
+    // A push that fails leaves everything pending for the next try: nothing to report here.
+    run().catch(() => undefined);
+  };
+  const onVisible = () => {
+    if (document.visibilityState === "visible") go();
+  };
+  const timer = setTimeout(go, openDelayMs);
+  document.addEventListener("visibilitychange", onVisible);
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onVisible);
+  };
+}
