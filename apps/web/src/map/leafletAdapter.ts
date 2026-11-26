@@ -39,14 +39,25 @@ export function createLeafletAdapter(): MapAdapter {
     if (map && tiles && !map.hasLayer(tiles)) tiles.addTo(map);
   };
 
+  /** Each pin on the map by id, with what it was drawn from: only pins that differ are redrawn. */
+  let drawn = new Map<string, { from: string; marker: Leaflet.Marker; loose: boolean }>();
   const draw = (markers: MapMarker[]) => {
     if (!L || !cluster || !loose) {
       pending = markers;
       return;
     }
-    cluster.clearLayers();
-    loose.clearLayers();
+    const wanted = new Map(markers.map((m) => [m.id, JSON.stringify(m)]));
+    const unclustered: Leaflet.Marker[] = [];
+    for (const [id, d] of drawn) {
+      if (wanted.get(id) === d.from) continue;
+      if (d.loose) loose.removeLayer(d.marker);
+      else unclustered.push(d.marker);
+      drawn.delete(id);
+    }
+    if (unclustered.length > 0) cluster.removeLayers(unclustered);
+    const clustered: Leaflet.Marker[] = [];
     for (const m of markers) {
+      if (drawn.has(m.id)) continue;
       const marker = L.marker([m.position.lat, m.position.lng], {
         title: m.label,
         alt: m.label,
@@ -62,8 +73,12 @@ export function createLeafletAdapter(): MapAdapter {
         ...(m.selected ? { zIndexOffset: 1000 } : {}),
       });
       marker.on("click keypress", () => select(m.id));
-      (m.kind === "search" || m.selected ? loose : cluster).addLayer(marker);
+      const isLoose = m.kind === "search" || m.selected === true;
+      if (isLoose) loose.addLayer(marker);
+      else clustered.push(marker);
+      drawn.set(m.id, { from: wanted.get(m.id) ?? "", marker, loose: isLoose });
     }
+    if (clustered.length > 0) cluster.addLayers(clustered);
   };
 
   const fitView = (points: LatLng[]) => {
@@ -216,6 +231,7 @@ export function createLeafletAdapter(): MapAdapter {
       host?.removeEventListener("contextmenu", noBrowserMenu);
       map?.remove();
       map = null;
+      drawn = new Map();
       // Leaflet leaves its classes and leftovers on the container: clear them for the next map.
       if (host) {
         host.classList.remove(...[...host.classList].filter((c) => c.startsWith("leaflet-")));

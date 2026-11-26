@@ -61,6 +61,34 @@ describe("Leaflet adapter", () => {
     el.remove();
   });
 
+  // Only changed pins are made again. markercluster still re-adds the visible pins' elements when
+  // its contents change, so this checks the outcome: the right pins, the right one selected.
+  it("selecting another pin, or dropping one, leaves exactly the pins asked for", async () => {
+    const { el, map } = await mountedMap();
+    // Far enough apart to stay single pins at this zoom.
+    const pin = (id: string, lng: number, selected = false) => ({
+      id,
+      position: { lat: 37.57, lng },
+      color: "#123456",
+      label: id,
+      kind: "saved" as const,
+      ...(selected ? { selected } : {}),
+    });
+    map.setMarkers([pin("a", 126.97), pin("b", 126.98), pin("c", 126.99, true)]);
+    const icon = (label: string) => el.querySelector(`.leaflet-marker-icon[title="${label}"]`);
+    await vi.waitFor(() => expect(icon("b")).not.toBeNull(), { timeout: 5_000 });
+    map.setMarkers([pin("a", 126.97, true), pin("b", 126.98), pin("c", 126.99)]);
+    await vi.waitFor(() => expect(icon("a")?.querySelector(".mm-pin--selected")).not.toBeNull());
+    expect(icon("b")).not.toBeNull();
+    expect(icon("c")?.querySelector(".mm-pin--selected")).toBeNull();
+    expect(el.querySelectorAll(".leaflet-marker-icon")).toHaveLength(3);
+    map.setMarkers([pin("a", 126.97, true), pin("c", 126.99)]);
+    await vi.waitFor(() => expect(icon("b")).toBeNull());
+    expect(el.querySelectorAll(".leaflet-marker-icon")).toHaveLength(2);
+    map.destroy();
+    el.remove();
+  });
+
   it("keeps the selected pin out of the cluster, above the others", async () => {
     const el = document.createElement("div");
     Object.defineProperty(el, "clientWidth", { value: 400 });

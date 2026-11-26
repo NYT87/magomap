@@ -52,7 +52,7 @@ interface KakaoMaps {
     map: unknown;
     averageCenter?: boolean;
     minLevel?: number;
-  }) => { addMarkers(ms: unknown[]): void; clear(): void };
+  }) => { addMarkers(ms: unknown[]): void; removeMarkers(ms: unknown[]): void; clear(): void };
 }
 
 export const kakaoMaps = () => (window as unknown as { kakao: { maps: KakaoMaps } }).kakao.maps;
@@ -68,7 +68,8 @@ export function createKakaoAdapter(): MapAdapter {
   const k = kakaoMaps();
   let map: InstanceType<KakaoMaps["Map"]> | null = null;
   let cluster: InstanceType<KakaoMaps["MarkerClusterer"]> | null = null;
-  let loose: { setMap(m: unknown): void }[] = [];
+  /** Each pin on the map by id, with what it was drawn from: only pins that differ are redrawn. */
+  let drawn = new Map<string, { from: string; o: { setMap(m: unknown): void }; loose: boolean }>();
   let me: { setMap(m: unknown): void } | null = null;
   let select: (id: string) => void = () => {};
   let viewChange: () => void = () => {};
@@ -130,18 +131,25 @@ export function createKakaoAdapter(): MapAdapter {
     },
     setMarkers(markers) {
       if (!map || !cluster) return;
-      cluster.clear();
-      for (const o of loose) o.setMap(null);
-      loose = [];
+      const wanted = new Map(markers.map((m) => [m.id, JSON.stringify(m)]));
+      const unclustered = [];
+      for (const [id, d] of drawn) {
+        if (wanted.get(id) === d.from) continue;
+        if (d.loose) d.o.setMap(null);
+        else unclustered.push(d.o);
+        drawn.delete(id);
+      }
+      if (unclustered.length > 0) cluster.removeMarkers(unclustered);
       const clustered = [];
       for (const m of markers) {
+        if (drawn.has(m.id)) continue;
         const o = overlay(m);
-        if (m.kind === "search" || m.selected) {
-          o.setMap(map);
-          loose.push(o);
-        } else clustered.push(o);
+        const loose = m.kind === "search" || m.selected === true;
+        if (loose) o.setMap(map);
+        else clustered.push(o);
+        drawn.set(m.id, { from: wanted.get(m.id) ?? "", o, loose });
       }
-      cluster.addMarkers(clustered);
+      if (clustered.length > 0) cluster.addMarkers(clustered);
     },
     fitTo(points) {
       if (!map || points.length === 0) return;
@@ -203,6 +211,8 @@ export function createKakaoAdapter(): MapAdapter {
     },
     destroy() {
       cluster?.clear();
+      for (const d of drawn.values()) if (d.loose) d.o.setMap(null);
+      drawn = new Map();
       map = null;
       viewChange = () => {};
       contextPress = () => {};
