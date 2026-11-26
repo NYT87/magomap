@@ -26,9 +26,7 @@ test("a place added to her Kakao list without the extension waits, marked, and c
   await other.setOffline(true);
   await p.getByRole("button", { name: "Add to list" }).click();
   const kakao = p.getByRole("group", { name: "Kakao Map" });
-  await expect(
-    kakao.getByText(/next time magomap is open in Chrome with the extension/),
-  ).toBeVisible();
+  await expect(kakao.getByText(/next time you open magomap in Chrome on a computer/)).toBeVisible();
   await kakao.getByRole("button", { name: target.list }).click();
   const chip = p.locator(".mm-chip", { hasText: target.list });
   await expect(chip).toContainText("Not yet in Kakao Map");
@@ -43,7 +41,7 @@ test("a place added to her Kakao list without the extension waits, marked, and c
     "Not yet in Kakao Map",
   );
 
-  // Cancelled, it's gone, here and on the server.
+  // Cancelled, it's gone here, and the cancel is synced.
   await p.goto(`/places/${target.place}/details`);
   await p.getByRole("button", { name: `Don't add to ${target.list}` }).click();
   await expect(p.locator(".mm-chip", { hasText: target.list })).toHaveCount(0);

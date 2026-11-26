@@ -51,24 +51,61 @@ export function Memberships({ placeId }: { placeId: string }) {
   const panelId = useId();
   const nameId = useId();
   const addButton = useRef<HTMLButtonElement>(null);
+  const chipsRef = useRef<HTMLUListElement>(null);
+  // What screen readers hear about her Kakao adds (added, cancelled, in Kakao Map, failed).
+  const [said, setSaid] = useState("");
   const close = () => {
     setOpen(false);
     setNewName("");
     addButton.current?.focus();
   };
+  // A pending add that went into Kakao Map, or failed, is said once.
+  const pendingBefore = useRef<Map<string, { name: string; failed: string | null }> | null>(null);
+  useEffect(() => {
+    if (!memberships) return;
+    const now = new Map(
+      memberships.flatMap((m) =>
+        m.pending ? [[m.pending.id, { name: m.list.name, failed: m.pending.failed }] as const] : [],
+      ),
+    );
+    const before = pendingBefore.current;
+    pendingBefore.current = now;
+    if (!before) return;
+    for (const [id, was] of before) {
+      const is = now.get(id);
+      const inKakao = !is && memberships.some((m) => !m.pending && m.list.name === was.name);
+      if (inKakao) setSaid(t("place.pendingDone", { name: was.name }));
+      else if (is?.failed && is.failed !== was.failed) {
+        setSaid(
+          `${was.name}: ${t(is.failed === "list_missing" ? "place.pendingListMissing" : "place.pendingCantSend")}`,
+        );
+      }
+    }
+  }, [memberships, t]);
+  /** After a chip goes, focus moves to the chip that takes its place, or to Add to list. */
+  const focusAfterRemoving = (index: number) =>
+    requestAnimationFrame(() => {
+      const chips = [...(chipsRef.current?.children ?? [])];
+      const next = chips[Math.min(index, chips.length - 1)]?.querySelector<HTMLElement>("button");
+      (next ?? addButton.current)?.focus();
+    });
   if (!memberships || !ownLists || !kakaoLists) return null;
   const inList = new Set(memberships.map((m) => m.list.id));
   const addable = ownLists.filter((l) => !inList.has(l.id));
   const kakaoAddable = kakaoLists.filter((l) => !inList.has(l.id));
-  const addToKakao = (listId: string) =>
+  const addToKakao = (listId: string, name: string) => {
+    // Closed at once, so a second tap can't ask twice.
+    close();
+    const db = currentDb();
     void addToKakaoList(listId, placeId).then(() => {
-      close();
-      // Where the extension is, it goes to Kakao Map now; elsewhere it waits (and says so).
-      if (extension === "ready") {
-        const db = currentDb();
+      setSaid(t("place.pendingAdded", { name }));
+      // Unless this browser surely has no extension, try now (the push checks for it itself).
+      if (extension !== "missing") {
         void import("../lists/pushKakaoAdds").then(({ pushKakaoAdds }) => pushKakaoAdds(db));
       }
     });
+  };
+  const waiting = memberships.some((m) => m.pending && m.pending.failed == null);
 
   return (
     <section className="mm-section" aria-labelledby="lists-title">
@@ -129,14 +166,16 @@ export function Memberships({ placeId }: { placeId: string }) {
                     <button
                       type="button"
                       className="mm-add-list__option"
-                      onClick={() => addToKakao(l.id)}
+                      onClick={() => addToKakao(l.id, l.name)}
                     >
                       {l.name}
                     </button>
                   </li>
                 ))}
               </ul>
-              {extension === "missing" && <p className="mm-muted">{t("place.kakaoAddLater")}</p>}
+              {extension === "missing" && (
+                <p className="mm-muted mm-add-list__note">{t("place.kakaoAddLater")}</p>
+              )}
             </fieldset>
           )}
           <form
@@ -174,8 +213,12 @@ export function Memberships({ placeId }: { placeId: string }) {
       {extension === "missing" && memberships.some((m) => m.section === "provider") && (
         <p className="mm-muted">{t("place.color.needsExtension")}</p>
       )}
-      <ul className="mm-memberships">
-        {memberships.map(({ item, list, section, pending }) => {
+      {waiting && extension === "missing" && <p className="mm-muted">{t("place.kakaoAddLater")}</p>}
+      <p role="status" className="mm-visually-hidden">
+        {said}
+      </p>
+      <ul className="mm-memberships" ref={chipsRef}>
+        {memberships.map(({ item, list, section, pending }, index) => {
           const note = kakaoNoteOf(item);
           const color = membershipColor(item, list);
           // His own lists, and Kakao lists he owns (changed in Kakao Map first, so it needs the extension).
@@ -203,6 +246,7 @@ export function Memberships({ placeId }: { placeId: string }) {
                   )}
                   {pending && (
                     <span
+                      id={`pending-${item.id}`}
                       className="mm-chip__meta"
                       data-failed={pending.failed != null || undefined}
                     >
@@ -219,7 +263,13 @@ export function Memberships({ placeId }: { placeId: string }) {
                     type="button"
                     className="mm-icon-button mm-chip__remove"
                     aria-label={t("place.pendingRemove", { name: list.name })}
-                    onClick={() => void removeKakaoAdd(pending.id)}
+                    aria-describedby={`pending-${item.id}`}
+                    onClick={() =>
+                      void removeKakaoAdd(pending.id).then(() => {
+                        setSaid(t("place.pendingCancelled", { name: list.name }));
+                        focusAfterRemoving(index);
+                      })
+                    }
                   >
                     <X aria-hidden size={18} strokeWidth={1.75} />
                   </button>
@@ -243,7 +293,9 @@ export function Memberships({ placeId }: { placeId: string }) {
                     type="button"
                     className="mm-icon-button mm-chip__remove"
                     aria-label={t("place.removeFrom", { name: list.name })}
-                    onClick={() => void removeFromList(item.id)}
+                    onClick={() =>
+                      void removeFromList(item.id).then(() => focusAfterRemoving(index))
+                    }
                   >
                     <X aria-hidden size={18} strokeWidth={1.75} />
                   </button>

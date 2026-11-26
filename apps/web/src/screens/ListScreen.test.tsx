@@ -93,7 +93,10 @@ describe("ListScreen", () => {
     const waiting = (await screen.findByText("바다빵집")).closest("a") as HTMLElement;
     expect(waiting).toHaveTextContent("Not yet in Kakao Map");
     const gone = screen.getByText("숲길").closest("a") as HTMLElement;
-    expect(gone).toHaveTextContent("This list is gone from Kakao Map");
+    expect(gone).toHaveTextContent("This list no longer exists in Kakao Map");
+    expect(gone).toHaveTextContent("Open the place to cancel.");
+    // Her own Kakao list: she can add places here, and the banner says so.
+    expect(screen.getByText(/You can add places here/)).toBeInTheDocument();
   });
 
   it("an own empty list still says empty while a download is owed", async () => {

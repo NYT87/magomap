@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { currentDb } from "../data/db";
-import { loadLibrary, SAVED_GROUP, sectionOf, useListPlaces } from "../data/queries";
+import { kakaoTargets, loadLibrary, SAVED_GROUP, sectionOf, useListPlaces } from "../data/queries";
 import { useListArrival } from "../data/useSyncStatus";
 import { deleteList, editList } from "../data/writes";
 import { DuplicateDialog } from "../lists/DuplicateDialog";
@@ -18,7 +18,14 @@ export function ListScreen({ id }: { id: string }) {
   const meta = useLiveQuery(async () => {
     const lib = await loadLibrary(currentDb());
     const list = lib.lists.find((l) => l.id === id);
-    return list ? { list, section: sectionOf(list, lib.roles) } : null;
+    return list
+      ? {
+          list,
+          section: sectionOf(list, lib.roles),
+          // Her own Kakao list: places can be added to it from here (they go to Kakao Map).
+          addable: kakaoTargets(lib).some((l) => l.id === id),
+        }
+      : null;
   }, [id]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -37,7 +44,9 @@ export function ListScreen({ id }: { id: string }) {
         {list?.ownerName && !own && (
           <p className="mm-muted">{t("picker.by", { name: list.ownerName })}</p>
         )}
-        {list && !own && <p className="mm-note">{t("lists.readOnly")}</p>}
+        {list && !own && (
+          <p className="mm-note">{t(meta?.addable ? "lists.readOnlyOwn" : "lists.readOnly")}</p>
+        )}
         {list && (
           <div className="mm-place__actions">
             {own && (
@@ -93,11 +102,14 @@ export function ListScreen({ id }: { id: string }) {
                   <span className="mm-moved-hint">{t("lists.removed")}</span>
                 )}
                 {pending && (
-                  <span className="mm-moved-hint" data-failed={pending.failed != null || undefined}>
+                  <span
+                    className="mm-pending-hint"
+                    data-failed={pending.failed != null || undefined}
+                  >
                     {pending.failed === "list_missing"
-                      ? t("place.pendingListMissing")
+                      ? `${t("place.pendingListMissing")} ${t("place.pendingOpenToCancel")}`
                       : pending.failed === "cant_send"
-                        ? t("place.pendingCantSend")
+                        ? `${t("place.pendingCantSend")} ${t("place.pendingOpenToCancel")}`
                         : t("place.pendingKakao")}
                   </span>
                 )}

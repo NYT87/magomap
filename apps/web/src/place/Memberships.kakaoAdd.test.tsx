@@ -90,11 +90,16 @@ describe("Memberships: her Kakao lists", () => {
     await open();
     await user.click(screen.getByRole("button", { name: "Add to list" }));
     expect(
-      screen.getByText(/next time magomap is open in Chrome with the extension/i),
+      screen.getByText(/next time you open magomap in Chrome on a computer/i),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "새 리스트" }));
     await screen.findByText("Not yet in Kakao Map");
     expect(push).not.toHaveBeenCalled();
+    // The promise stays in sight beside the lists while it waits, and the add is announced.
+    expect(screen.getByText(/next time you open magomap in Chrome on a computer/i)).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Added to 새 리스트. Not yet in Kakao Map.",
+    );
   });
 
   it("a pending add can be cancelled", async () => {
@@ -105,11 +110,14 @@ describe("Memberships: her Kakao lists", () => {
     await waitFor(() =>
       expect(screen.queryByText("새 리스트", { selector: ".mm-chip__name" })).toBeNull(),
     );
+    // Said, and the keyboard isn't dropped: focus goes to a remaining chip's button.
+    expect(screen.getByRole("status")).toHaveTextContent("Won't be added to 새 리스트.");
+    await waitFor(() => expect(document.activeElement?.closest(".mm-memberships")).not.toBeNull());
   });
 
   it("a failed add says the list is gone from Kakao Map, and can be removed", async () => {
     await open((db) => db.kakao_adds.put(pendingRow("list_missing")));
-    expect(await screen.findByText("This list is gone from Kakao Map")).toBeInTheDocument();
+    expect(await screen.findByText(/This list no longer exists in Kakao Map/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Don't add to 새 리스트" })).toBeEnabled();
   });
 
@@ -118,5 +126,35 @@ describe("Memberships: her Kakao lists", () => {
     await open((db) => db.place_sources.delete("s_kakao_123"));
     await user.click(screen.getByRole("button", { name: "Add to list" }));
     expect(screen.queryByRole("group", { name: "Kakao Map" })).toBeNull();
+  });
+
+  it("says when a pending add went into Kakao Map, and when one failed", async () => {
+    const db = await open((db) => db.kakao_adds.put(pendingRow()));
+    await screen.findByText("Not yet in Kakao Map");
+    await db.kakao_adds.put({ ...pendingRow("list_missing"), updatedAt: 2 });
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(/새 리스트: This list no longer exists/),
+    );
+    // Asked again, then a Kakao Map sync brought it in.
+    await db.kakao_adds.put({ ...pendingRow(), updatedAt: 3 });
+    await screen.findByText("Not yet in Kakao Map");
+    await db.list_items.put({
+      id: "i_kakao_4_40",
+      listId: "l_kakao_4",
+      placeId: PLACE.id,
+      position: 0,
+      addedAt: 1,
+      externalId: "40",
+      providerNote: null,
+      providerColor: "02",
+      removedAtProvider: null,
+      providerSnapshotAt: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("새 리스트: now in Kakao Map."),
+    );
   });
 });

@@ -777,7 +777,13 @@ a {
   font-size: var(--text-md);
 }
 
-.mm-moved-hint[data-failed] {
+/* A place waiting to be added in Kakao Map: quiet; only one that can't go draws attention. */
+.mm-pending-hint {
+  color: var(--color-text-secondary);
+  font-size: var(--text-md);
+}
+
+.mm-pending-hint[data-failed] {
   color: var(--color-error);
 }
 
@@ -1105,6 +1111,19 @@ a {
   border-bottom: 0;
 }
 
+/* Her own Kakao lists: set apart from the magomap ones, like Save without a list. */
+.mm-map-menu__kakao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-sm);
+}
+
+.mm-map-menu__list--kakao > li:last-child > .mm-map-menu__row {
+  border-bottom: 0;
+}
+
 .mm-map-menu__list--apart {
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-xs);
@@ -1366,6 +1385,10 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+}
+
+.mm-add-list__note {
+  padding: 0 var(--space-sm);
 }
 
 .mm-add-list__heading {

@@ -457,7 +457,7 @@ export function MapContextMenu({
         </form>
       )}
       {kakaoLists.length > 0 && (
-        <>
+        <div className="mm-map-menu__kakao">
           <p id={kakaoId} className="mm-field__label">
             {t("map.save.kakaoLists")}
           </p>
@@ -481,7 +481,7 @@ export function MapContextMenu({
               );
             })}
           </ul>
-        </>
+        </div>
       )}
       {/* Apart from her lists: saving with no list at all. */}
       <ul className="mm-map-menu__list mm-map-menu__list--apart">
