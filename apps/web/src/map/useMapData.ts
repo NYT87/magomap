@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { type Library, SAVED_GROUP, savedNotInList, sectionOf, useLibrary } from "../data/queries";
+import {
+  type Library,
+  SAVED_GROUP,
+  savedNotInList,
+  sectionOf,
+  shownItems,
+  useLibrary,
+} from "../data/queries";
 import { formatDate } from "../i18n";
 import type { PickerList } from "./ListPicker";
 import { useMapPrefs } from "./mapPrefs";
@@ -21,8 +28,9 @@ export function useMapData(selectedPlaceId?: string) {
   const { t } = useTranslation();
   return useMemo(() => {
     if (!lib) return null;
+    const items = shownItems(lib);
     const count = (id: string) =>
-      lib.items.filter((i) => i.listId === id && i.removedAtProvider == null).length;
+      items.filter((i) => i.listId === id && i.removedAtProvider == null).length;
     const sections = {
       mine: [] as PickerList[],
       provider: [] as PickerList[],
@@ -41,7 +49,7 @@ export function useMapData(selectedPlaceId?: string) {
     const until = new Map(lib.locations.map((l) => [`prev:${l.id}`, l.validUntil]));
     const markers = buildMarkers({
       places: [...lib.places.values()],
-      memberships: lib.items,
+      memberships: items,
       lists: lib.lists,
       locations: lib.locations,
       roles: lib.roles,
@@ -62,7 +70,7 @@ export function useMapData(selectedPlaceId?: string) {
       (p) =>
         visibleIds.has(p.id) ||
         (p.lat == null &&
-          (lib.items.some((i) => i.placeId === p.id && visibleListIds.has(i.listId)) ||
+          (items.some((i) => i.placeId === p.id && visibleListIds.has(i.listId)) ||
             (visibleListIds.has(SAVED_GROUP) && savedNotInList(lib).includes(p.id)))),
     );
     const withoutLocation = shownPlaces.filter((p) => p.lat == null || p.lng == null).length;
