@@ -37,5 +37,6 @@ Run this before the owner's wife starts using magomap (plan 03, Task 4). Each li
 ## Quality
 
 - [ ] The `auditor-performance` audit from plan 02 Task 7 has no open Critical or High findings.
+  - Run 2026-11-26 (0.1.11): no Critical. One High stays open, because the map screen hasn't been measured signed in. Signed out, `/signin` scored 76 with LCP 4.5 s (targets 90 and 2.5 s) and CLS 0.009. The first-load JS is 189.6 KB gzip, against a 200 KB budget. To close it: a Lighthouse mobile run on the signed-in map, in incognito with the map opened once first, after the 0.1.8 fixes. The last signed-in run, on 0.1.8, scored 26 (`docs/perf-audit.md`).
 - [ ] A manual screen-reader pass on her phone works: VoiceOver on iOS Safari, or TalkBack on Android Chrome. Open a place, add a note, and find it in the list.
 - [x] The homepage is live, and "Open magomap" points to the production URL. Checked 2026-11-26: `https://nyt87.github.io/magomap/` and `/ko/` answer 200 and link to `https://magomap.jmn8718.workers.dev`.
