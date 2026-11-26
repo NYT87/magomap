@@ -7,7 +7,14 @@ import { kakaoFolderIdOf } from "@magomap/domain/providers/kakao";
 import { currentDb, dbUserId } from "../data/db";
 import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
-import { checkKakaoAccount, KakaoCopyError } from "../lists/duplicateToKakao";
+import {
+  checkKakaoAccount,
+  claimKakaoWrites,
+  isRecord,
+  KakaoCopyError,
+  releaseKakaoWrites,
+  WRITE_WAIT_MS,
+} from "../lists/duplicateToKakao";
 import { extensionTooOld, favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
 
 export type NoteErrorCode =
@@ -44,13 +51,6 @@ export class NoteChangedError extends NoteError {
   }
 }
 
-const WRITE_WAIT_MS = 150_000;
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-/** Kakao Map is being written by something else in this page right now. */
-let working = false;
-
 /**
  * `overwrite` goes with the note only after he confirmed overwriting a note that was changed in
  * Kakao Map since the last sync; without it, a changed note throws `NoteChangedError`.
@@ -80,8 +80,8 @@ export async function setKakaoNote(input: {
   const seq = favoriteSeqOf(item.externalId);
   if (!folderId || !key || seq === undefined) throw new NoteError("not_found");
 
-  if (working) throw new NoteError("busy");
-  working = true;
+  // One write to Kakao Map at a time from this page, shared with a copy and a push of pending adds.
+  if (!claimKakaoWrites()) throw new NoteError("busy");
   try {
     // An extension too old to change the favourite itself isn't asked to change anything.
     if (await extensionTooOld()) throw new NoteError("extension_outdated");
@@ -142,6 +142,6 @@ export async function setKakaoNote(input: {
     // Kakao's own row, not synced from here (no outbox entry): the pull brings the server's copy.
     await db.list_items.update(item.id, { providerNote: note });
   } finally {
-    working = false;
+    releaseKakaoWrites();
   }
 }

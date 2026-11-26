@@ -14,6 +14,7 @@ vi.mock("../import/runImport", async (orig) => {
   return { ...actual, post: (a: string, p: string, b?: unknown) => post(a, p, b) };
 });
 const { openUserDb } = await import("../data/db");
+const { claimKakaoWrites, releaseKakaoWrites } = await import("../lists/duplicateToKakao");
 const { ColorError, setPlaceColor } = await import("./setPlaceColor");
 
 let n = 0;
@@ -277,5 +278,25 @@ describe("setPlaceColor on his own list", () => {
     expect(queued[0]).toMatchObject({ table: "list_items", id: "io", op: "upsert" });
     expect(ask).not.toHaveBeenCalled();
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe("setPlaceColor while another Kakao Map write runs", () => {
+  it("says busy and sends nothing, as a copy or a push of pending adds holds the writes", async () => {
+    await seedKakao();
+    expect(claimKakaoWrites()).toBe(true);
+    try {
+      await expect(setPlaceColor({ itemId: "ik", color: "05" })).rejects.toMatchObject({
+        code: "busy",
+      });
+      expect(ask).not.toHaveBeenCalled();
+    } finally {
+      releaseKakaoWrites();
+    }
+    // Its own run holds the writes too, and gives them back.
+    await setPlaceColor({ itemId: "ik", color: "05" });
+    expect(ask).toHaveBeenCalled();
+    expect(claimKakaoWrites()).toBe(true);
+    releaseKakaoWrites();
   });
 });

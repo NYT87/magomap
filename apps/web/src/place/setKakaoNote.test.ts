@@ -14,6 +14,7 @@ vi.mock("../import/runImport", async (orig) => {
   return { ...actual, post: (a: string, p: string, b?: unknown) => post(a, p, b) };
 });
 const { openUserDb } = await import("../data/db");
+const { claimKakaoWrites, releaseKakaoWrites } = await import("../lists/duplicateToKakao");
 const { NoteChangedError, NoteError, setKakaoNote } = await import("./setKakaoNote");
 
 let n = 0;
@@ -295,5 +296,25 @@ describe("setKakaoNote on a Kakao list he owns", () => {
       NoteError,
     );
     expect(ask).not.toHaveBeenCalled();
+  });
+});
+
+describe("setKakaoNote while another Kakao Map write runs", () => {
+  it("says busy and sends nothing, as a copy or a push of pending adds holds the writes", async () => {
+    await seedKakao();
+    expect(claimKakaoWrites()).toBe(true);
+    try {
+      await expect(setKakaoNote({ itemId: "ik", note: "새 메모" })).rejects.toMatchObject({
+        code: "busy",
+      });
+      expect(ask).not.toHaveBeenCalled();
+    } finally {
+      releaseKakaoWrites();
+    }
+    // Its own run holds the writes too, and gives them back.
+    await setKakaoNote({ itemId: "ik", note: "새 메모" });
+    expect(ask).toHaveBeenCalled();
+    expect(claimKakaoWrites()).toBe(true);
+    releaseKakaoWrites();
   });
 });

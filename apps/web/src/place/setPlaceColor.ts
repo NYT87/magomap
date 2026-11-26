@@ -7,7 +7,14 @@ import { currentDb, dbUserId } from "../data/db";
 import { setOwnItemColor } from "../data/writes";
 import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
-import { checkKakaoAccount, KakaoCopyError } from "../lists/duplicateToKakao";
+import {
+  checkKakaoAccount,
+  claimKakaoWrites,
+  isRecord,
+  KakaoCopyError,
+  releaseKakaoWrites,
+  WRITE_WAIT_MS,
+} from "../lists/duplicateToKakao";
 import { extensionTooOld, favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
 
 export type ColorErrorCode =
@@ -33,13 +40,6 @@ export class ColorError extends Error {
   }
 }
 
-const WRITE_WAIT_MS = 150_000;
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-/** Kakao Map is being written by something else in this page right now. */
-let working = false;
-
 export async function setPlaceColor(input: { itemId: string; color: string }): Promise<void> {
   if (!Object.hasOwn(KAKAO_PLACE_COLORS, input.color)) throw new ColorError("invalid");
   const db = currentDb();
@@ -63,8 +63,8 @@ export async function setPlaceColor(input: { itemId: string; color: string }): P
   const seq = favoriteSeqOf(item.externalId);
   if (!folderId || !key || seq === undefined) throw new ColorError("not_found");
 
-  if (working) throw new ColorError("busy");
-  working = true;
+  // One write to Kakao Map at a time from this page, shared with a copy and a push of pending adds.
+  if (!claimKakaoWrites()) throw new ColorError("busy");
   try {
     // An extension too old to change the favourite itself isn't asked to change anything.
     if (await extensionTooOld()) throw new ColorError("extension_outdated");
@@ -115,6 +115,6 @@ export async function setPlaceColor(input: { itemId: string; color: string }): P
     // Kakao's own row, not synced from here (no outbox entry): the pull brings the server's copy.
     await db.list_items.update(item.id, { providerColor: input.color });
   } finally {
-    working = false;
+    releaseKakaoWrites();
   }
 }

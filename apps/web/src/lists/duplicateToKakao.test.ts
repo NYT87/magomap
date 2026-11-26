@@ -4,10 +4,10 @@ import { ApiError } from "../api/client";
 
 type Msg = { type: string; [k: string]: unknown };
 const ask = vi.fn<(message: Msg, timeoutMs: number) => Promise<unknown>>();
-const sync = vi.fn(async (_progress: unknown) => ({}));
+const sync = vi.fn(async (_progress: unknown, _opts?: unknown) => ({}));
 vi.mock("../import/kakaoMap", () => ({
   askExtension: (m: Msg, t: number) => ask(m, t),
-  runKakaoMapSync: (p: unknown) => sync(p),
+  runKakaoMapSync: (p: unknown, o?: unknown) => sync(p, o),
 }));
 const post = vi.fn<(account: string, path: string, body?: unknown) => Promise<unknown>>();
 vi.mock("../import/runImport", async (orig) => {
@@ -186,6 +186,34 @@ describe("duplicateToKakao", () => {
     await expect(duplicateToKakao({ sourceListId: "L", name: "x" })).rejects.toMatchObject({
       code: "kakao_unavailable",
     });
+  });
+
+  it("names the copy's own account to the sync afterwards, not whichever is open then", async () => {
+    await seed();
+    behaves();
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    expect(sync.mock.calls[0]?.[1]).toEqual({ account: `d2k${n}` });
+  });
+
+  it("cuts a title or address longer than the extension takes, so the page still goes", async () => {
+    await seed();
+    await db.places.update("a", { title: "가".repeat(1500), roadAddress: "길".repeat(5000) });
+    behaves();
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    const sent = ask.mock.calls.find(([m]) => m.type === "magomap.addPlaces")?.[0];
+    const places = (sent?.places ?? []) as { title: string; address: string }[];
+    expect(places[0]?.title).toHaveLength(1000);
+    expect(places[0]?.address).toHaveLength(1000);
+  });
+
+  it("never cuts an emoji in half at the limit", async () => {
+    await seed();
+    await db.places.update("a", { roadAddress: `${"길".repeat(999)}😀 끝` });
+    behaves();
+    await duplicateToKakao({ sourceListId: "L", name: "x" });
+    const sent = ask.mock.calls.find(([m]) => m.type === "magomap.addPlaces")?.[0];
+    const places = (sent?.places ?? []) as { address: string }[];
+    expect(places[0]?.address).toBe("길".repeat(999));
   });
 
   it("sends the address when the road address is empty", async () => {
