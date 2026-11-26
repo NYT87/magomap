@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.1.9](https://github.com/NYT87/magomap/compare/magomap-v0.1.8...magomap-v0.1.9) (2026-11-26)
+
+
+### Features
+
+* **db:** kakao_adds, her pending adds of a place to one of her own Kakao lists ([#83](https://github.com/NYT87/magomap/issues/83), task 1) ([75794bb](https://github.com/NYT87/magomap/commit/75794bbc43fc78ed1369da6ae63c29fa21a16127))
+* save a place to one of her Kakao lists, pushed to Kakao Map by the extension ([#83](https://github.com/NYT87/magomap/issues/83)) ([3d7b439](https://github.com/NYT87/magomap/commit/3d7b439712cc797d995c6e06ad2949fbf79cdcaa))
+* **web:** her own Kakao lists in "Add to list" and the map's save, with the pending mark ([#83](https://github.com/NYT87/magomap/issues/83), task 4) ([58293c5](https://github.com/NYT87/magomap/commit/58293c5a1e2a29c21ca194cfd2c1e9cdcd6a6f91))
+* **web:** pending adds to her Kakao lists, kept and shown on this device ([#83](https://github.com/NYT87/magomap/issues/83), task 2) ([dc5a45e](https://github.com/NYT87/magomap/commit/dc5a45e3b4b7129693ec61e52a5028162ae9540c))
+* **web:** push her pending adds to Kakao Map where the extension is ([#83](https://github.com/NYT87/magomap/issues/83), task 3) ([38c1122](https://github.com/NYT87/magomap/commit/38c1122a23ba6f10e7142b30b6704b11d3032f71))
+
+
+### Bug Fixes
+
+* a failure mark applies only to the same pending add; the chip points at its × ([#83](https://github.com/NYT87/magomap/issues/83), review) ([7366c09](https://github.com/NYT87/magomap/commit/7366c0923967e42a2589ffbdad0ac1c34455238e))
+* a new place saved straight into a Kakao list is taken; a pending add to a gone list shows as failed ([#83](https://github.com/NYT87/magomap/issues/83), audit) ([fbb6ea3](https://github.com/NYT87/magomap/commit/fbb6ea3ac45f3e873da2ce83c26b928ebb57e62c))
+* **api:** a Kakao Map request checks the sign-in once, not twice ([91aa553](https://github.com/NYT87/magomap/commit/91aa5533fb0d4b6e5b9f6f994efbde1a15921fb0))
+* Copy to Kakao Map hardening ([#66](https://github.com/NYT87/magomap/issues/66)) ([d85b029](https://github.com/NYT87/magomap/commit/d85b029ca56f9c29d71e66fbdb8d1f1deadf6f35))
+* Copy to Kakao Map retries into a list a timed-out create made, adds only to her own lists, and reports what it knows ([296b620](https://github.com/NYT87/magomap/commit/296b62018cefaeb6ee18bdf87a01d8b79c1b17d3)), closes [#66](https://github.com/NYT87/magomap/issues/66)
+* data export fits the Free plan, old extensions can't edit the wrong favourite, one sign-in check per sync request ([8255d3d](https://github.com/NYT87/magomap/commit/8255d3d697c88bea853311aa839af35c1eed216b))
+* **db:** the data export reads 5,000 rows at a time, so a large library fits in one request ([dd9aa8b](https://github.com/NYT87/magomap/commit/dd9aa8b5da78093c221d71ae0c135eec3963fa8b))
+* her own public Kakao list that names only her map_user_id is hers, not followed ([d8a191d](https://github.com/NYT87/magomap/commit/d8a191dbe340fedcca5322880fb38e71b1a33ae4))
+* her own public Kakao lists aren't read as followed ([5e269aa](https://github.com/NYT87/magomap/commit/5e269aa76f5dd33256ea6c4097cb53a84b1f6b5c))
+* Kakao colour and note edits are checked first, aimed at the favourite, and not undone by a sync ([505ed0e](https://github.com/NYT87/magomap/commit/505ed0e5427f7f8b5d7a1f1deba2c8b1554622b8))
+* Kakao colour and note edits are checked first, aimed at the favourite, and not undone by a sync ([af040f1](https://github.com/NYT87/magomap/commit/af040f168951f74476b8df9e1b0167a03e5ae42c)), closes [#67](https://github.com/NYT87/magomap/issues/67)
+* Kakao lists show Kakao Map's exact favourite colours ([710775d](https://github.com/NYT87/magomap/commit/710775d4d5fccc18e738fc3478fdc2b06f9499f5))
+* Kakao lists show Kakao Map's exact favourite colours ([c81f54e](https://github.com/NYT87/magomap/commit/c81f54e351aa70c1dfb7835eacd9526052db1504))
+* the window title names the place; the not-found card is named by its message ([#65](https://github.com/NYT87/magomap/issues/65)) ([75fe7b1](https://github.com/NYT87/magomap/commit/75fe7b17eed503414d50e081e876f97a6d29549c))
+* **web:** a missing or deleted place's window title is the app's name, not the last place's ([#65](https://github.com/NYT87/magomap/issues/65), review) ([8cef562](https://github.com/NYT87/magomap/commit/8cef562c564f11c7d13d1d36404314c2848a5922))
+* **web:** a pending place offers no colour or note edit; more pending-add tests ([#83](https://github.com/NYT87/magomap/issues/83), task 2 review) ([4846afe](https://github.com/NYT87/magomap/commit/4846afeaaf3a88dc0d66827e75ea72192819addc))
+* **web:** colour and note edits refuse an extension too old to change the favourite itself ([e8f7882](https://github.com/NYT87/magomap/commit/e8f7882c44f49d89bbaf4bd136f1773fbd066e0f))
+* **web:** Kakao adds are announced, keep focus, say what to do, and look calm until they fail ([#83](https://github.com/NYT87/magomap/issues/83), task 4 review) ([6b14122](https://github.com/NYT87/magomap/commit/6b14122a7898dce0649b5a0f280454bdd3fcb10c))
+* **web:** the push keeps to its account, marks what it can't send, and shares Copy's lock ([#83](https://github.com/NYT87/magomap/issues/83), task 3 review) ([e2d1fb4](https://github.com/NYT87/magomap/commit/e2d1fb49d3e561373a8355973567348cee7f9df1))
+* **web:** the window title names the place; the not-found card is named by its message ([#65](https://github.com/NYT87/magomap/issues/65)) ([e20a1c8](https://github.com/NYT87/magomap/commit/e20a1c81befba9c86bb528ca39e6c6d7f456699d))
+
+
+### Performance Improvements
+
+* **web:** fix the Lighthouse findings: no map jump, cheaper pins, preconnect, robots.txt ([fa831e9](https://github.com/NYT87/magomap/commit/fa831e9aebfcb2f058e004e633ae13de741b212b))
+* **web:** Kakao pins are copied from a parsed pin, not each parsed from HTML ([8221802](https://github.com/NYT87/magomap/commit/822180273bebfa3c5fd1196b3dddd9b77ad8c1af))
+* **web:** preconnect to the Kakao map's hosts; robots.txt keeps the app unindexed ([2092d82](https://github.com/NYT87/magomap/commit/2092d82c2c81755bb6ca29fd6ec1d60f15c07bbd))
+* **web:** the map opens where it fitted the saved places last time ([5d1861c](https://github.com/NYT87/magomap/commit/5d1861cb15f03ea4c0987e92dd37fbfcc8f71252))
+
 ## [0.1.8](https://github.com/NYT87/magomap/compare/magomap-v0.1.7...magomap-v0.1.8) (2026-11-25)
 
 

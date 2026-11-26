@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/NYT87/magomap/compare/extension-v0.1.4...extension-v0.1.5) (2026-11-26)
+
+
+### Bug Fixes
+
+* Copy to Kakao Map hardening ([#66](https://github.com/NYT87/magomap/issues/66)) ([d85b029](https://github.com/NYT87/magomap/commit/d85b029ca56f9c29d71e66fbdb8d1f1deadf6f35))
+* Copy to Kakao Map retries into a list a timed-out create made, adds only to her own lists, and reports what it knows ([296b620](https://github.com/NYT87/magomap/commit/296b62018cefaeb6ee18bdf87a01d8b79c1b17d3)), closes [#66](https://github.com/NYT87/magomap/issues/66)
+* her own public Kakao list that names only her map_user_id is hers, not followed ([d8a191d](https://github.com/NYT87/magomap/commit/d8a191dbe340fedcca5322880fb38e71b1a33ae4))
+* her own public Kakao lists aren't read as followed ([5e269aa](https://github.com/NYT87/magomap/commit/5e269aa76f5dd33256ea6c4097cb53a84b1f6b5c))
+* Kakao colour and note edits are checked first, aimed at the favourite, and not undone by a sync ([505ed0e](https://github.com/NYT87/magomap/commit/505ed0e5427f7f8b5d7a1f1deba2c8b1554622b8))
+* Kakao colour and note edits are checked first, aimed at the favourite, and not undone by a sync ([af040f1](https://github.com/NYT87/magomap/commit/af040f168951f74476b8df9e1b0167a03e5ae42c)), closes [#67](https://github.com/NYT87/magomap/issues/67)
+
 ## [0.1.4](https://github.com/NYT87/magomap/compare/extension-v0.1.3...extension-v0.1.4) (2026-11-25)
 
 
