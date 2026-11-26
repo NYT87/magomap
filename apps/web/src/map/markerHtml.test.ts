@@ -24,6 +24,12 @@ describe("markerHtml", () => {
     expect(plain).not.toContain("mm-pin__ring");
   });
 
+  it("edges a saved pin in a darker shade, so a light colour still stands out on the map", () => {
+    for (const html of [markerHtml(saved), markerHtml({ ...saved, color: "#ffc43b" })]) {
+      expect(html).toContain('stroke="var(--color-pin-edge)"');
+    }
+  });
+
   it("escapes the label", () => {
     expect(markerHtml({ ...saved, label: `<b>"x"</b>` })).not.toContain("<b>");
     expect(markerHtml({ ...saved, selected: true, label: `<b>"x"</b>` })).not.toContain("<b>");
@@ -36,7 +42,7 @@ describe("markerElement", () => {
     t.innerHTML = html;
     return t.content.firstElementChild as HTMLElement;
   };
-  const base = { id: "a", position: { lat: 0, lng: 0 }, color: "#c8373e", kind: "saved" as const };
+  const base = { id: "a", position: { lat: 0, lng: 0 }, color: "#f96061", kind: "saved" as const };
 
   it("is the same pin markerHtml draws, for every kind", () => {
     for (const m of [

@@ -28,8 +28,8 @@ const list = (id: string, provider: string | null): ListRow => ({
 });
 const sections = {
   mine: [{ list: list("빵집", null), count: 2, color: "#1F6F5C" }],
-  provider: [{ list: list("카페", "kakao"), count: 3, color: "#c8373e" }],
-  subscribed: [{ list: list("아내의 맛집", "kakao"), count: 4, color: "#2464ad" }],
+  provider: [{ list: list("카페", "kakao"), count: 3, color: "#f96061" }],
+  subscribed: [{ list: list("아내의 맛집", "kakao"), count: 4, color: "#56c07c" }],
   savedNotInList: 1,
 } satisfies Record<string, PickerList[] | number>;
 
@@ -112,7 +112,7 @@ describe("ListPicker", () => {
     await i18n.changeLanguage("en");
     const arriving = {
       ...sections,
-      subscribed: [{ list: list("새 리스트", "kakao"), count: 0, color: "#2464ad" }],
+      subscribed: [{ list: list("새 리스트", "kakao"), count: 0, color: "#56c07c" }],
     };
     const view = (arrival: "downloading" | "waiting" | "unknown" | null) => {
       sync.arrival = arrival;
@@ -152,7 +152,7 @@ describe("ListPicker", () => {
         <ListPicker
           sections={{
             ...sections,
-            mine: [{ list: list("빈 리스트", null), count: 0, color: "#2464ad" }],
+            mine: [{ list: list("빈 리스트", null), count: 0, color: "#56c07c" }],
           }}
         />
       </MapPrefsProvider>,
