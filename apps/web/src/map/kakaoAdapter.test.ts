@@ -9,6 +9,7 @@ function stubKakao() {
   const overlays: { opts: Opts; setMap: ReturnType<typeof vi.fn> }[] = [];
   const listeners: { target: unknown; type: string; cb: (e?: unknown) => void }[] = [];
   const clustered: unknown[][] = [];
+  const unclustered: unknown[][] = [];
   const mapOptions: unknown[] = [];
   class CustomOverlay {
     setMap = vi.fn();
@@ -19,6 +20,9 @@ function stubKakao() {
   class MarkerClusterer {
     addMarkers(ms: unknown[]) {
       clustered.push(ms);
+    }
+    removeMarkers(ms: unknown[]) {
+      unclustered.push(ms);
     }
     clear() {}
   }
@@ -72,7 +76,7 @@ function stubKakao() {
       },
     },
   };
-  return { overlays, clustered, listeners, mapOptions };
+  return { overlays, clustered, unclustered, listeners, mapOptions };
 }
 
 afterEach(() => {
@@ -121,6 +125,36 @@ describe("Kakao adapter", () => {
     expect(clustered.at(-1)).toHaveLength(2);
     expect(clustered.at(-1)).not.toContain(selected);
     for (const o of overlays.filter((o) => o !== selected)) expect(o.opts.zIndex).toBeUndefined();
+  });
+
+  it("selecting another pin redraws only the two that changed, not every pin", () => {
+    const { overlays, clustered, unclustered } = stubKakao();
+    const map = createKakaoAdapter();
+    map.mount(document.createElement("div"), { center: { lat: 37.5, lng: 127 }, zoom: 10 });
+    const pin = (id: string, selected = false) => ({
+      id,
+      position: { lat: 37.5, lng: 127 },
+      color: "#123456",
+      label: id,
+      kind: "saved" as const,
+      ...(selected ? { selected } : {}),
+    });
+    map.setMarkers([pin("a"), pin("b"), pin("c", true)]);
+    const byLabel = (l: string) =>
+      overlays.filter((o) => o.opts.content.getAttribute("aria-label") === l);
+    const [oldA] = byLabel("a");
+    const [oldC] = byLabel("c");
+    map.setMarkers([pin("a", true), pin("b"), pin("c")]);
+    // Only a and c are made again; b is the same overlay, never taken out.
+    expect(overlays).toHaveLength(5);
+    expect(byLabel("b")).toHaveLength(1);
+    expect(unclustered.flat()).toEqual([oldA]);
+    expect(oldC?.setMap).toHaveBeenLastCalledWith(null);
+    expect(clustered.at(-1)).toEqual([byLabel("c")[1]]);
+    expect(byLabel("a")[1]?.setMap).toHaveBeenCalledOnce();
+    // The same pins again: nothing is drawn.
+    map.setMarkers([pin("a", true), pin("b"), pin("c")]);
+    expect(overlays).toHaveLength(5);
   });
 
   /** A host in a 400 × 400 box whose top left sits at (10, 20) on the page. */
