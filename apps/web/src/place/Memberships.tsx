@@ -1,9 +1,8 @@
-import { useLiveQuery } from "dexie-react-hooks";
 import { Palette, Pencil, Plus, X } from "lucide-react";
-import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { currentDb } from "../data/db";
-import { kakaoListsFor, loadLibrary, sectionOf, usePlaceMemberships } from "../data/queries";
+import { kakaoListsFor, sectionOf, useLibrary, usePlaceMemberships } from "../data/queries";
 import {
   addToKakaoList,
   addToList,
@@ -21,17 +20,16 @@ import { kakaoNoteOf } from "./kakaoNotes";
 export function Memberships({ placeId }: { placeId: string }) {
   const { t } = useTranslation();
   const memberships = usePlaceMemberships(placeId);
-  const ownLists = useLiveQuery(async () => {
-    const lib = await loadLibrary(currentDb());
-    return lib.lists
-      .filter((l) => sectionOf(l, lib.roles) === "mine")
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, []);
-  // Her own Kakao lists this place can be added to in Kakao Map.
-  const kakaoLists = useLiveQuery(
-    async () => kakaoListsFor(await loadLibrary(currentDb()), placeId),
-    [placeId],
+  const lib = useLibrary();
+  const ownLists = useMemo(
+    () =>
+      lib?.lists
+        .filter((l) => sectionOf(l, lib.roles) === "mine")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [lib],
   );
+  // Her own Kakao lists this place can be added to in Kakao Map.
+  const kakaoLists = useMemo(() => (lib ? kakaoListsFor(lib, placeId) : undefined), [lib, placeId]);
   const [open, setOpen] = useState(false);
   // The membership whose colour is being changed, and whether the extension (Kakao lists) answers.
   const [coloring, setColoring] = useState<string | null>(null);

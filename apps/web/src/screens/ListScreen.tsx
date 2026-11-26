@@ -1,10 +1,8 @@
-import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { currentDb } from "../data/db";
-import { kakaoTargets, loadLibrary, SAVED_GROUP, sectionOf, useListPlaces } from "../data/queries";
+import { kakaoTargets, SAVED_GROUP, sectionOf, useLibrary, useListPlaces } from "../data/queries";
 import { useListArrival } from "../data/useSyncStatus";
 import { deleteList, editList } from "../data/writes";
 import { DuplicateDialog } from "../lists/DuplicateDialog";
@@ -15,8 +13,9 @@ export function ListScreen({ id }: { id: string }) {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
   const rows = useListPlaces(id);
-  const meta = useLiveQuery(async () => {
-    const lib = await loadLibrary(currentDb());
+  const lib = useLibrary();
+  const meta = useMemo(() => {
+    if (!lib) return undefined;
     const list = lib.lists.find((l) => l.id === id);
     return list
       ? {
@@ -26,7 +25,7 @@ export function ListScreen({ id }: { id: string }) {
           addable: kakaoTargets(lib).some((l) => l.id === id),
         }
       : null;
-  }, [id]);
+  }, [lib, id]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);

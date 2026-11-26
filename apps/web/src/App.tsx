@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Redirect, Route, Switch } from "wouter";
 import { useMe } from "./auth/useMe";
 import { SyncIndicator } from "./components/SyncIndicator";
+import { LibraryProvider } from "./data/queries";
 import { SyncProvider } from "./data/SyncProvider";
 import { useUserDb } from "./data/useUserDb";
 import { AppLayout } from "./layout/AppLayout";
@@ -51,17 +52,19 @@ function Signedin({ me }: { me: Me }) {
   const layout = useLayout();
   return (
     <SyncProvider key={key}>
-      <MapPrefsProvider userId={me.userId}>
-        <MapStageProvider>
-          <AppLayout
-            map={<MapScreen />}
-            status={<SyncIndicator compact={layout === "phone"} />}
-            notice={<UpdateBanner />}
-          >
-            <PageRoutes me={me} />
-          </AppLayout>
-        </MapStageProvider>
-      </MapPrefsProvider>
+      <LibraryProvider>
+        <MapPrefsProvider userId={me.userId}>
+          <MapStageProvider>
+            <AppLayout
+              map={<MapScreen />}
+              status={<SyncIndicator compact={layout === "phone"} />}
+              notice={<UpdateBanner />}
+            >
+              <PageRoutes me={me} />
+            </AppLayout>
+          </MapStageProvider>
+        </MapPrefsProvider>
+      </LibraryProvider>
     </SyncProvider>
   );
 }
