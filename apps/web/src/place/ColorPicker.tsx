@@ -16,6 +16,7 @@ const errorKey = (code: string) =>
     server_failed: "place.color.errServer",
     sync_first: "place.color.errSyncFirst",
     check_failed: "place.color.errCheck",
+    extension_outdated: "place.color.errOutdated",
   })[code] ?? "place.color.errUnavailable";
 
 /**

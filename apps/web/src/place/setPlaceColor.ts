@@ -8,10 +8,11 @@ import { setOwnItemColor } from "../data/writes";
 import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
 import { checkKakaoAccount, KakaoCopyError } from "../lists/duplicateToKakao";
-import { favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
+import { extensionTooOld, favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
 
 export type ColorErrorCode =
   | "extension_missing"
+  | "extension_outdated"
   | "account_mismatch"
   | "account_unconfirmed"
   | "kakao_signed_out"
@@ -65,6 +66,8 @@ export async function setPlaceColor(input: { itemId: string; color: string }): P
   if (working) throw new ColorError("busy");
   working = true;
   try {
+    // An extension too old to change the favourite itself isn't asked to change anything.
+    if (await extensionTooOld()) throw new ColorError("extension_outdated");
     try {
       await checkKakaoAccount();
     } catch (error) {

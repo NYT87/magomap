@@ -199,6 +199,37 @@ forEachDialect("exportUserData", (makeDb) => {
     expect(out.mine.savedPlaces).toHaveLength(25);
   });
 
+  // The Workers Free plan allows 50 D1 queries per request (developers.cloudflare.com/d1/platform/
+  // limits): the export reads a few thousand rows a table in one query, not one per 500.
+  it("reads a library of 600 places in one query per table", async () => {
+    const db = await makeDb();
+    const u = await findOrCreateUserByIdentity(db, "kakao", "8", null, T0);
+    const places = Array.from({ length: 600 }, (_, i) => searchedPlace(`c${i}`));
+    for (let i = 0; i < places.length; i += 200) {
+      await push(
+        db,
+        u.userId,
+        places.slice(i, i + 200).map((p) => mut(`m${p.id}`, "places", p)),
+        T0 + 1,
+      );
+    }
+    let queries = 0;
+    const counted = {
+      ...db,
+      kysely: db.kysely.withPlugin({
+        transformQuery: (args) => {
+          queries += 1;
+          return args.node;
+        },
+        transformResult: async (args) => args.result,
+      }),
+    } as Db;
+    const out = await exportUserData(counted, u.userId, T0);
+    expect(out.shared.places).toHaveLength(600);
+    // users, identities, and one read for each of the exported tables.
+    expect(queries).toBeLessThanOrEqual(2 + 9);
+  });
+
   it("finds nothing for a deleted account, and everything still for the other one", async () => {
     const db = await makeDb();
     const { me, other } = await twoUsers(db);

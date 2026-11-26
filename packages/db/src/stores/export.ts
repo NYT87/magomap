@@ -10,7 +10,6 @@ import type {
   UserPlaceRow,
   VisitNoteRow,
 } from "@magomap/domain";
-import { LIMITS } from "@magomap/domain/limits";
 import type { Db } from "../core";
 import { toAnyRow } from "../mapping";
 import { pullPage } from "./sync";
@@ -48,6 +47,14 @@ export interface UserExport {
     listItems: Out<ListItemRow>[];
   };
 }
+
+/**
+ * Rows per read of the export. Every table is read in one request, and the Workers Free plan
+ * allows 50 D1 queries per request (developers.cloudflare.com/d1/platform/limits): at the sync's
+ * 500, a library of a few thousand places took more than 50 and the export failed. 5,000 keeps
+ * it to about one read a table, with each read still bounded.
+ */
+const EXPORT_PAGE_ROWS = 5_000;
 
 /** Every live row of `table` the user may see, read in keyset pages so no single read is large. */
 async function readAll<T extends SyncTable>(
@@ -87,7 +94,7 @@ export async function exportUserData(
   now: number,
   opts: { pageRows?: number } = {},
 ): Promise<UserExport> {
-  const pageRows = opts.pageRows ?? LIMITS.pullPageRows;
+  const pageRows = opts.pageRows ?? EXPORT_PAGE_ROWS;
   const user = await db.kysely
     .selectFrom("users")
     .select(["display_name", "created_at"])

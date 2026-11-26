@@ -17,6 +17,7 @@ const errorKey = (code: string) =>
     server_failed: "place.kakaoNoteEdit.errServer",
     sync_first: "place.kakaoNoteEdit.errSyncFirst",
     check_failed: "place.kakaoNoteEdit.errCheck",
+    extension_outdated: "place.kakaoNoteEdit.errOutdated",
   })[code] ?? "place.kakaoNoteEdit.errUnavailable";
 
 /**

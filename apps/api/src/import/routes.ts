@@ -16,7 +16,9 @@ import { requireUser } from "../auth/session";
 import type { AppEnv } from "../env";
 
 export const importRoutes = new Hono<AppEnv>();
-importRoutes.use("/import/*", requireUser);
+// The run routes only: /import/kakao-map/* has its own check (kakaoMapRoutes), and both apps
+// are mounted at "/", so "/import/*" here would read the session a second time on those.
+importRoutes.use("/import/runs/*", requireUser);
 
 export const PAGE = LIMITS.importChunkItems;
 

@@ -81,6 +81,30 @@ async function seedKakao(r: UserListRow["role"] = "owner") {
 }
 const types = () => ask.mock.calls.map(([m]) => m.type);
 
+describe("setKakaoNote with an extension too old to aim at the favourite", () => {
+  it("refuses with extension_outdated before anything is sent or recorded", async () => {
+    await seedKakao();
+    ask.mockImplementation(async (m) => {
+      if (m.type === "magomap.ping") return { ok: true, version: "0.1.4" };
+      return m.type === "magomap.account" ? { ok: true, folders: [] } : { ok: true };
+    });
+    const failure = await setKakaoNote({ itemId: "ik", note: "새 메모" }).catch((e) => e);
+    expect(failure).toMatchObject({ code: "extension_outdated" });
+    expect(ask.mock.calls.map(([m]) => m.type)).toEqual(["magomap.ping"]);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("goes ahead with 0.1.5, which changes the favourite by its own id", async () => {
+    await seedKakao();
+    ask.mockImplementation(async (m) => {
+      if (m.type === "magomap.ping") return { ok: true, version: "0.1.5" };
+      return m.type === "magomap.account" ? { ok: true, folders: [] } : { ok: true };
+    });
+    await setKakaoNote({ itemId: "ik", note: "새 메모" });
+    expect(ask.mock.calls.map(([m]) => m.type)).toContain("magomap.setNote");
+  });
+});
+
 describe("setKakaoNote on a Kakao list he owns", () => {
   it("changes it in Kakao Map first, then tells the server, then saves it here", async () => {
     await seedKakao();
@@ -95,6 +119,8 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     });
     await setKakaoNote({ itemId: "ik", note: "  새 메모\n둘째 줄  " });
     expect(order).toEqual([
+      // The extension's version, then the Kakao Map account.
+      "magomap.ping",
       "magomap.account",
       "/api/import/kakao-map/account",
       // Asked before Kakao Map is changed, recorded after.
@@ -209,7 +235,7 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     await expect(setKakaoNote({ itemId: "ik", note: "새" })).rejects.toMatchObject({
       code: "sync_first",
     });
-    expect(ask.mock.calls.map(([m]) => m.type)).toEqual(["magomap.account"]);
+    expect(ask.mock.calls.map(([m]) => m.type)).toEqual(["magomap.ping", "magomap.account"]);
     expect((await db.list_items.get("ik"))?.providerNote).toBe("옛 메모");
   });
 
@@ -233,7 +259,7 @@ describe("setKakaoNote on a Kakao list he owns", () => {
     await expect(setKakaoNote({ itemId: "ik", note: "새" })).rejects.toMatchObject({
       code: "account_mismatch",
     });
-    expect(types()).toEqual(["magomap.account"]);
+    expect(types()).toEqual(["magomap.ping", "magomap.account"]);
   });
 
   it("says so when the extension isn't there", async () => {

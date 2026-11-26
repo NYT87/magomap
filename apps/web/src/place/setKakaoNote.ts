@@ -8,10 +8,11 @@ import { currentDb, dbUserId } from "../data/db";
 import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
 import { checkKakaoAccount, KakaoCopyError } from "../lists/duplicateToKakao";
-import { favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
+import { extensionTooOld, favoriteSeqOf, refusalBeforeKakao } from "./kakaoEditCheck";
 
 export type NoteErrorCode =
   | "extension_missing"
+  | "extension_outdated"
   | "account_mismatch"
   | "account_unconfirmed"
   | "kakao_signed_out"
@@ -82,6 +83,8 @@ export async function setKakaoNote(input: {
   if (working) throw new NoteError("busy");
   working = true;
   try {
+    // An extension too old to change the favourite itself isn't asked to change anything.
+    if (await extensionTooOld()) throw new NoteError("extension_outdated");
     try {
       await checkKakaoAccount();
     } catch (error) {

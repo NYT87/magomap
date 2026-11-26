@@ -1,6 +1,33 @@
 // Before a colour or a note is changed in Kakao Map, the server is asked whether it would record
 // it: a refusal after Kakao Map had already changed would leave the two apart.
+import { askExtension } from "../import/kakaoMap";
 import { codeOf, post } from "../import/runImport";
+
+/**
+ * The first extension release that changes a favourite by its own id (`seq`). An older one
+ * ignores it and changes the first favourite of that place in the list, which may be another one
+ * (a place can be in one list twice), so it isn't asked to.
+ */
+const AIMS_AT_FAVORITE_SINCE = [0, 1, 5];
+
+/**
+ * Whether the extension in this browser says it is older than that. An extension that doesn't
+ * answer, or gives no version, isn't judged here: the account check that follows says so.
+ */
+export async function extensionTooOld(): Promise<boolean> {
+  const answer = await askExtension({ type: "magomap.ping" }, 1500);
+  const version =
+    typeof answer === "object" && answer !== null && "version" in answer
+      ? (answer as { version: unknown }).version
+      : undefined;
+  if (typeof version !== "string" || !/^\d+(\.\d+){0,3}$/.test(version)) return false;
+  const parts = version.split(".").map(Number);
+  for (const [i, since] of AIMS_AT_FAVORITE_SINCE.entries()) {
+    const part = parts[i] ?? 0;
+    if (part !== since) return part < since;
+  }
+  return false;
+}
 
 export type EditRefusal =
   | "account_unconfirmed"
