@@ -8,6 +8,7 @@ const SCREENS = [
   { name: "Lists", path: "/lists", ready: ".mm-page__title" },
   { name: "Account", path: "/account", ready: ".mm-page__title" },
   { name: "a place page", path: `/places/${BADA}/details`, ready: ".mm-section__title" },
+  { name: "a place card", path: `/places/${BADA}`, ready: ".mm-place-peek__name" },
 ] as const;
 
 // Map pins and clusters and the map providers' controls are out of scope.
@@ -103,6 +104,17 @@ for (const lang of ["en", "ko"] as const) {
       await showAtCap(page, "/", ".mm-map-top .mm-search__box");
       await openSyncSheet(page);
       expect(await smallTargets(page), "Sync sheet").toEqual([]);
+    });
+
+    test("a place card stays on screen, above the tabs, at the cap", async ({ page }, info) => {
+      if (info.project.name !== "phone") return;
+      await showAtCap(page, `/places/${BADA}`, ".mm-place-peek__name");
+      const card = await page.locator(".mm-place-peek").boundingBox();
+      const nav = await page.locator(".mm-nav").boundingBox();
+      if (!card || !nav) throw new Error("no card or tabs");
+      expect(card.y).toBeGreaterThanOrEqual(0);
+      expect(card.y + card.height).toBeLessThanOrEqual(nav.y + 1);
+      await expect(page.locator(".mm-place-peek__name")).toBeInViewport();
     });
 
     test("the Sync sheet scrolls at the cap", async ({ page }, info) => {

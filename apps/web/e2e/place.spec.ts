@@ -149,6 +149,19 @@ test.describe("the phone's place peek", () => {
     }
   });
 
+  test("the window title names the place, on its card and on its details page", async ({
+    page,
+  }) => {
+    const name = await openFirstPin(page);
+    await expect(page).toHaveTitle(`${name} – magomap`);
+    await page.getByRole("button", { name: "Open details" }).click();
+    await expect(page).toHaveURL(/\/details$/);
+    await expect(page).toHaveTitle(`${name} – magomap`);
+    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page).toHaveTitle("magomap");
+  });
+
   test("the arrow opens the details page, Back returns to the peek, Close to the map", async ({
     page,
   }) => {

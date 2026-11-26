@@ -99,6 +99,8 @@ export function AppLayout({ map, children, status, notice }: Props) {
   // The window title follows the screen; on phones, focus moves to the new page's heading.
   useEffect(() => {
     const section = location.split("/")[1] ?? "";
+    // A place's card and page name the place themselves (this runs after them).
+    if (section === "places") return;
     const key = { lists: "nav.lists", account: "nav.account" }[section];
     document.title = key ? `${t(key)} – ${t("app.name")}` : t("app.name");
   }, [location, t]);

@@ -168,7 +168,6 @@
     "peek": {
       "openDetails": "Open details",
       "close": "Close",
-      "region": "Place",
       "gone": "This place was deleted. It may have been removed from your lists.",
       "kakaoNote": "Kakao note"
     },
