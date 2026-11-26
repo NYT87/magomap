@@ -3,7 +3,7 @@ import Dexie from "dexie";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
-import { ACCOUNT_HEADER, apiFetch, NetworkError } from "../api/client";
+import { ACCOUNT_HEADER, apiFetch, NetworkError, withTimeLimit } from "../api/client";
 import { forgetMe, notifyMeChanged } from "../auth/useMe";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import {
@@ -153,6 +153,8 @@ export function Account({ me }: { me: Me }) {
       const res = await fetch("/api/me/export", {
         credentials: "same-origin",
         headers: { [ACCOUNT_HEADER]: me.userId },
+        // A stalled download ends with "didn't work" instead of spinning forever.
+        signal: withTimeLimit(undefined, 120_000),
       });
       if (!res.ok) throw new Error(`export ${res.status}`);
       const url = URL.createObjectURL(await res.blob());

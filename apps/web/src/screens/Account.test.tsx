@@ -95,6 +95,7 @@ describe("Account", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/me/export", {
       credentials: "same-origin",
       headers: { "x-magomap-user": "u1" },
+      signal: expect.any(AbortSignal),
     });
     await user.click(button);
     expect(await screen.findByRole("alert")).toHaveTextContent("The download didn’t work");

@@ -48,17 +48,17 @@ export function forgetMe() {
   }
 }
 
-/** Who is signed in. Offline, the last known account is used so the app still opens. */
+/** Who is signed in. The last known account is used until the server answers, and offline. */
 export function useMe(): {
   me: Me | null;
   loading: boolean;
   offline: boolean;
   refresh: () => void;
 } {
-  const [state, setState] = useState<{ me: Me | null; loading: boolean; offline: boolean }>({
-    me: null,
-    loading: true,
-    offline: false,
+  // The account this device last knew opens the app at once; the server's answer follows.
+  const [state, setState] = useState<{ me: Me | null; loading: boolean; offline: boolean }>(() => {
+    const known = storedMe();
+    return { me: known, loading: known === null, offline: false };
   });
   const live = useRef(true);
   // Only the latest question counts: an older, slower answer may name an account since replaced.
