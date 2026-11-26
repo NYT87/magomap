@@ -24,6 +24,9 @@ vi.mock("../data/saveFromMap", () => ({
   savePlaceToList: (input: unknown) => savePlaceToList(input),
 }));
 
+const push = vi.fn(async (_db: unknown) => "pushed");
+vi.mock("../lists/pushKakaoAdds", () => ({ pushKakaoAdds: (db: unknown) => push(db) }));
+
 const { MapContextMenu } = await import("./MapContextMenu");
 
 const result = (id: string, extra: Partial<SearchResult> = {}): SearchResult => ({
@@ -66,6 +69,7 @@ const record = (placeId: string, listName: string | null = null): SavedFromMap =
   outbox: [],
   createdListId: null,
   addedItemId: null,
+  kakaoAddId: null,
 });
 
 const PRESS: ContextPress = { point: { lat: 33.46, lng: 126.31 }, at: { x: 300, y: 200 } };
@@ -203,6 +207,85 @@ describe("MapContextMenu", () => {
     const cafesRow = await screen.findByRole("button", { name: /Cafés/ });
     expect(cafesRow).toHaveTextContent("Already in this list");
     expect(screen.getByRole("button", { name: /Bakeries/ })).not.toHaveTextContent("Already in");
+  });
+
+  /** Her own Kakao list 8, as a Kakao Map sync leaves it. */
+  async function herKakaoList() {
+    await db.lists.put({
+      id: "l_kakao_8",
+      provider: "kakao",
+      externalId: "8",
+      name: "제주 맛집",
+      description: null,
+      color: null,
+      ownerName: null,
+      removedAtProvider: null,
+      providerSnapshotAt: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+    await db.user_lists.put({
+      id: "ul_l_kakao_8",
+      listId: "l_kakao_8",
+      role: "owner",
+      removedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+  }
+
+  it("offers her own Kakao lists under Kakao Map, for a place Kakao Map can add", async () => {
+    await herKakaoList();
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    renderMenu();
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    const kakao = await screen.findByRole("list", { name: "Kakao Map" });
+    expect(within(kakao).getByRole("button", { name: /제주 맛집/ })).toBeVisible();
+  });
+
+  it("saving to her Kakao list pushes it to Kakao Map once the hold lets go", async () => {
+    await herKakaoList();
+    fetchNearby.mockResolvedValue([near("1", 5)]);
+    savePlaceToList.mockResolvedValue({
+      ...record("p_kakao_1", "제주 맛집"),
+      listId: "l_kakao_8",
+      kakaoAddId: "ka_l_kakao_8_p_kakao_1",
+    });
+    push.mockClear();
+    let letGo: () => void = () => {};
+    const { hook } = memoryLocation({ path: "/" });
+    render(
+      <Router hook={hook}>
+        <MapContextMenu
+          press={PRESS}
+          onClose={() => {}}
+          onSaved={(_saved, release) => {
+            letGo = release;
+          }}
+        />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /Place 1/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /제주 맛집/ }));
+    await waitFor(() =>
+      expect(savePlaceToList).toHaveBeenCalledWith({ result: result("1"), listId: "l_kakao_8" }),
+    );
+    // Not while its Undo is offered.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(push).not.toHaveBeenCalled();
+    letGo();
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  });
+
+  it("offers no Kakao list for a place Kakao Map can't add by id", async () => {
+    await herKakaoList();
+    fetchNearby.mockResolvedValue([near("x1", 5)]);
+    renderMenu();
+    await userEvent.click(await screen.findByRole("button", { name: /Place x1/ }));
+    await screen.findByRole("button", { name: "New list" });
+    expect(screen.queryByRole("list", { name: "Kakao Map" })).toBeNull();
   });
 
   it("offers only her own lists, then Save without a list and New list", async () => {

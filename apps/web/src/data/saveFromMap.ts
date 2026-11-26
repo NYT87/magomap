@@ -1,5 +1,6 @@
 import type { SearchResult } from "@magomap/domain";
 import {
+  kakaoAddRowId,
   ownItemRowId,
   placeRowId,
   placeSourceRowId,
@@ -9,17 +10,36 @@ import {
 import { currentDb } from "./db";
 import { notifyWrite } from "./events";
 import { placeStatesOf } from "./placeState";
-import { addToList, createList, deleteList, removeFromList, savePlaceFromSearch } from "./writes";
+import { isKakaoPlaceKey, kakaoTargets, loadLibrary } from "./queries";
+import {
+  addToKakaoList,
+  addToList,
+  createList,
+  deleteList,
+  removeFromList,
+  removeKakaoAdd,
+  savePlaceFromSearch,
+} from "./writes";
 
 export interface SaveToListInput {
   result: SearchResult;
-  /** One of her own lists, or null for no list. Ignored when `newListName` is given. */
+  /**
+   * One of her own lists, one of her own Kakao lists (the place then waits to be added in Kakao
+   * Map), or null for no list. Ignored when `newListName` is given.
+   */
   listId: string | null;
   /** A name for a new own list to put the place in. */
   newListName?: string;
 }
 
-type UndoTable = "places" | "user_places" | "place_sources" | "lists" | "user_lists" | "list_items";
+type UndoTable =
+  | "places"
+  | "user_places"
+  | "place_sources"
+  | "lists"
+  | "user_lists"
+  | "list_items"
+  | "kakao_adds";
 
 /** What one save from the map did, enough to say so and to take it back. */
 export interface SavedFromMap {
@@ -38,6 +58,8 @@ export interface SavedFromMap {
   /** A list it created, and a list item it added (or restored). */
   createdListId: string | null;
   addedItemId: string | null;
+  /** A pending add to one of her Kakao lists it wrote (or asked afresh). */
+  kakaoAddId: string | null;
 }
 
 /** The list items about a place or in a list, by id, with their updatedAt. */
@@ -64,11 +86,18 @@ export async function savePlaceToList(input: SaveToListInput): Promise<SavedFrom
   const saved = await db.transaction("rw", db.tables, async (): Promise<SavedFromMap> => {
     if (newListName !== undefined && !newListName.trim()) throw new Error("blank list name");
     let listName: string | null = null;
+    let kakaoList = false;
     if (newListName === undefined && listId !== null) {
       const list = await db.lists.get(listId);
-      // Only her own lists take a place from the map; Kakao lists stay read-only.
-      if (!list || list.deletedAt != null || list.provider !== null) {
-        throw new Error("not one of her lists");
+      if (!list || list.deletedAt != null) throw new Error("not one of her lists");
+      if (list.provider !== null) {
+        // One of her own Kakao lists, for a place Kakao Map can add by its id: it waits to be
+        // added there. Any other provider list stays read-only.
+        const target = kakaoTargets(await loadLibrary(db)).some((l) => l.id === listId);
+        if (!target || result.provider !== "kakao" || !isKakaoPlaceKey(result.externalId)) {
+          throw new Error("not one of her lists");
+        }
+        kakaoList = true;
       }
       listName = list.name;
     }
@@ -97,7 +126,17 @@ export async function savePlaceToList(input: SaveToListInput): Promise<SavedFrom
       );
     }
     let addedItemId: string | null = null;
-    if (target !== null && !was?.listIds.has(target)) {
+    let kakaoAddId: string | null = null;
+    if (kakaoList && target !== null && !was?.listIds.has(target)) {
+      kakaoAddId = kakaoAddRowId(target, placeId);
+      const asked = await db.kakao_adds.get(kakaoAddId);
+      if (!asked || asked.deletedAt != null || asked.failed != null) {
+        await before("kakao_adds", kakaoAddId);
+        await addToKakaoList(target, placeId);
+      } else {
+        kakaoAddId = null;
+      }
+    } else if (target !== null && !was?.listIds.has(target)) {
       addedItemId = ownItemRowId(target, placeId);
       await before("list_items", addedItemId);
       await addToList(target, placeId);
@@ -115,6 +154,7 @@ export async function savePlaceToList(input: SaveToListInput): Promise<SavedFrom
       outbox,
       createdListId,
       addedItemId,
+      kakaoAddId,
     };
   });
   return saved;
@@ -172,6 +212,10 @@ export async function undoSave(saved: SavedFromMap): Promise<{ unsaved: boolean 
     if (saved.addedItemId) {
       const item = await db.list_items.get(saved.addedItemId);
       if (item && item.deletedAt == null) await removeFromList(saved.addedItemId);
+    }
+    if (saved.kakaoAddId) {
+      const add = await db.kakao_adds.get(saved.kakaoAddId);
+      if (add && add.deletedAt == null) await removeKakaoAdd(saved.kakaoAddId);
     }
     if (saved.createdListId) {
       const list = await db.lists.get(saved.createdListId);

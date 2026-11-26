@@ -120,6 +120,82 @@ describe("savePlaceToList", () => {
     expect(await db.user_places.count()).toBe(1);
   });
 
+  /** Her own Kakao list 9 (owner), as a Kakao Map sync leaves it. */
+  async function herKakaoList(db: ReturnType<typeof openUserDb>, role: "owner" | "follower") {
+    await db.lists.put({
+      id: "l_kakao_9",
+      provider: "kakao",
+      externalId: "9",
+      name: "제주",
+      description: null,
+      color: null,
+      ownerName: null,
+      removedAtProvider: null,
+      providerSnapshotAt: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+    await db.user_lists.put({
+      id: "ul_l_kakao_9",
+      listId: "l_kakao_9",
+      role,
+      removedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+  }
+
+  it("saves to her own Kakao list as a pending add, never as a list item", async () => {
+    const db = openUserDb(user());
+    await herKakaoList(db, "owner");
+    const saved = await savePlaceToList({ result: result(), listId: "l_kakao_9" });
+    expect(saved).toMatchObject({
+      listId: "l_kakao_9",
+      listName: "제주",
+      kakaoAddId: `ka_l_kakao_9_${ID}`,
+    });
+    expect(await liveItems(db)).toEqual([]);
+    expect(await db.kakao_adds.get(`ka_l_kakao_9_${ID}`)).toMatchObject({
+      deletedAt: null,
+      failed: null,
+    });
+    expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
+  });
+
+  it("undoes a save to her Kakao list: no place, no pending add, nothing to send", async () => {
+    const db = openUserDb(user());
+    await herKakaoList(db, "owner");
+    const saved = await savePlaceToList({ result: result(), listId: "l_kakao_9" });
+    await undoSave(saved);
+    expect(await db.kakao_adds.count()).toBe(0);
+    expect(await db.places.count()).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it("once sent, undo cancels the pending add and keeps the place saved", async () => {
+    const db = openUserDb(user());
+    await herKakaoList(db, "owner");
+    const saved = await savePlaceToList({ result: result(), listId: "l_kakao_9" });
+    await db.outbox.clear();
+    await undoSave(saved);
+    expect((await db.kakao_adds.get(`ka_l_kakao_9_${ID}`))?.deletedAt).not.toBeNull();
+    expect((await db.user_places.get(userPlaceRowId(ID)))?.deletedAt).toBeNull();
+  });
+
+  it("refuses a Kakao list she follows, and a place Kakao Map can't add by id", async () => {
+    const db = openUserDb(user());
+    await herKakaoList(db, "follower");
+    await expect(savePlaceToList({ result: result(), listId: "l_kakao_9" })).rejects.toThrow();
+    await db.user_lists.update("ul_l_kakao_9", { role: "owner" });
+    await expect(
+      savePlaceToList({ result: result({ provider: "naver" }), listId: "l_kakao_9" }),
+    ).rejects.toThrow();
+    expect(await db.places.count()).toBe(0);
+    expect(await db.kakao_adds.count()).toBe(0);
+  });
+
   it("refuses a Kakao list or a missing one, leaving nothing half-way", async () => {
     const db = openUserDb(user());
     await db.lists.put({
@@ -148,7 +224,15 @@ describe("savePlaceToList", () => {
 
 /** Every row an undo could touch, and the outbox, as plain data. */
 async function snapshot(db: ReturnType<typeof openUserDb>) {
-  const tables = ["places", "user_places", "place_sources", "lists", "user_lists", "list_items"];
+  const tables = [
+    "places",
+    "user_places",
+    "place_sources",
+    "lists",
+    "user_lists",
+    "list_items",
+    "kakao_adds",
+  ];
   const out: Record<string, unknown[]> = {};
   for (const t of tables) out[t] = await db.table(t).toArray();
   out.outbox = await db.outbox.toArray();

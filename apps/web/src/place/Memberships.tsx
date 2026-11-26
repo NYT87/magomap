@@ -3,8 +3,14 @@ import { Palette, Pencil, Plus, X } from "lucide-react";
 import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { currentDb } from "../data/db";
-import { loadLibrary, sectionOf, usePlaceMemberships } from "../data/queries";
-import { addToList, createList, removeFromList } from "../data/writes";
+import { kakaoListsFor, loadLibrary, sectionOf, usePlaceMemberships } from "../data/queries";
+import {
+  addToKakaoList,
+  addToList,
+  createList,
+  removeFromList,
+  removeKakaoAdd,
+} from "../data/writes";
 import { detectExtension } from "../import/kakaoMap";
 import { membershipColor } from "../map/markers";
 import { ColorPicker } from "./ColorPicker";
@@ -21,6 +27,11 @@ export function Memberships({ placeId }: { placeId: string }) {
       .filter((l) => sectionOf(l, lib.roles) === "mine")
       .sort((a, b) => a.name.localeCompare(b.name));
   }, []);
+  // Her own Kakao lists this place can be added to in Kakao Map.
+  const kakaoLists = useLiveQuery(
+    async () => kakaoListsFor(await loadLibrary(currentDb()), placeId),
+    [placeId],
+  );
   const [open, setOpen] = useState(false);
   // The membership whose colour is being changed, and whether the extension (Kakao lists) answers.
   const [coloring, setColoring] = useState<string | null>(null);
@@ -45,9 +56,19 @@ export function Memberships({ placeId }: { placeId: string }) {
     setNewName("");
     addButton.current?.focus();
   };
-  if (!memberships || !ownLists) return null;
+  if (!memberships || !ownLists || !kakaoLists) return null;
   const inList = new Set(memberships.map((m) => m.list.id));
   const addable = ownLists.filter((l) => !inList.has(l.id));
+  const kakaoAddable = kakaoLists.filter((l) => !inList.has(l.id));
+  const addToKakao = (listId: string) =>
+    void addToKakaoList(listId, placeId).then(() => {
+      close();
+      // Where the extension is, it goes to Kakao Map now; elsewhere it waits (and says so).
+      if (extension === "ready") {
+        const db = currentDb();
+        void import("../lists/pushKakaoAdds").then(({ pushKakaoAdds }) => pushKakaoAdds(db));
+      }
+    });
 
   return (
     <section className="mm-section" aria-labelledby="lists-title">
@@ -96,8 +117,27 @@ export function Memberships({ placeId }: { placeId: string }) {
               ))}
             </ul>
           )}
-          {ownLists.length > 0 && addable.length === 0 && (
+          {ownLists.length > 0 && addable.length === 0 && kakaoAddable.length === 0 && (
             <p className="mm-muted">{t("place.inAllLists")}</p>
+          )}
+          {kakaoAddable.length > 0 && (
+            <fieldset className="mm-add-list__group">
+              <legend className="mm-add-list__heading">{t("place.kakaoListsGroup")}</legend>
+              <ul className="mm-add-list__items">
+                {kakaoAddable.map((l) => (
+                  <li key={l.id}>
+                    <button
+                      type="button"
+                      className="mm-add-list__option"
+                      onClick={() => addToKakao(l.id)}
+                    >
+                      {l.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {extension === "missing" && <p className="mm-muted">{t("place.kakaoAddLater")}</p>}
+            </fieldset>
           )}
           <form
             className="mm-inline-form"
@@ -161,7 +201,29 @@ export function Memberships({ placeId }: { placeId: string }) {
                   {item.removedAtProvider != null && (
                     <span className="mm-chip__meta">{t("place.removedFromKakao")}</span>
                   )}
+                  {pending && (
+                    <span
+                      className="mm-chip__meta"
+                      data-failed={pending.failed != null || undefined}
+                    >
+                      {pending.failed === "list_missing"
+                        ? t("place.pendingListMissing")
+                        : pending.failed === "cant_send"
+                          ? t("place.pendingCantSend")
+                          : t("place.pendingKakao")}
+                    </span>
+                  )}
                 </span>
+                {pending && (
+                  <button
+                    type="button"
+                    className="mm-icon-button mm-chip__remove"
+                    aria-label={t("place.pendingRemove", { name: list.name })}
+                    onClick={() => void removeKakaoAdd(pending.id)}
+                  >
+                    <X aria-hidden size={18} strokeWidth={1.75} />
+                  </button>
+                )}
                 {canColor && (
                   <button
                     type="button"

@@ -57,6 +57,45 @@ describe("ListScreen", () => {
     expect(await screen.findByText("No places in this list yet.")).toBeInTheDocument();
   });
 
+  it("shows a place waiting to be added in Kakao Map, saying so, and one that can't go", async () => {
+    await i18n.changeLanguage("en");
+    sync.arrival = null;
+    const db = openUserDb("list-screen-pending");
+    await db.lists.put(kakaoList);
+    await db.user_lists.put({ ...access, role: "owner" });
+    const place = (id: string, title: string) => ({
+      id,
+      title,
+      address: null,
+      roadAddress: null,
+      addressSource: null,
+      category: null,
+      phone: null,
+      lat: 33.4,
+      lng: 126.3,
+      providerSnapshotAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+    await db.places.bulkPut([place("p_kakao_5", "바다빵집"), place("p_kakao_6", "숲길")]);
+    const add = (placeId: string, failed: "list_missing" | null) => ({
+      id: `ka_l_kakao_1_${placeId}`,
+      listId: "l_kakao_1",
+      placeId,
+      failed,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+    await db.kakao_adds.bulkPut([add("p_kakao_5", null), add("p_kakao_6", "list_missing")]);
+    render(<ListScreen id="l_kakao_1" />);
+    const waiting = (await screen.findByText("바다빵집")).closest("a") as HTMLElement;
+    expect(waiting).toHaveTextContent("Not yet in Kakao Map");
+    const gone = screen.getByText("숲길").closest("a") as HTMLElement;
+    expect(gone).toHaveTextContent("This list is gone from Kakao Map");
+  });
+
   it("an own empty list still says empty while a download is owed", async () => {
     await i18n.changeLanguage("en");
     const db = openUserDb("list-screen-own");

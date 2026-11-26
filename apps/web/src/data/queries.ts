@@ -227,24 +227,31 @@ export function placeMemberships(lib: Library, placeId: string) {
 export const usePlaceMemberships = (id: string) =>
   useLiveQuery(async () => placeMemberships(await loadLibrary(currentDb()), id), [id]);
 
+/** A Kakao place id, as the extension adds a favourite by it. */
+export const isKakaoPlaceKey = (key: string) => /^[1-9]\d{0,14}$/.test(key);
+
 /**
- * Her own Kakao lists a place can be added to in Kakao Map: not followed ones, not her default
- * list (folder 0, which the extension can't write), and only for a place with a Kakao place id.
+ * Her own Kakao lists places can be added to in Kakao Map: owner only, as the server requires
+ * (not followed ones), not removed from her Kakao Map, and not her default list (folder 0, which
+ * the extension can't write).
  */
-export function kakaoListsFor(lib: Library, placeId: string): ListRow[] {
-  const keyed = lib.sources.some(
-    (s) => s.placeId === placeId && s.provider === "kakao" && /^[1-9]\d{0,14}$/.test(s.externalId),
-  );
-  if (!keyed) return [];
+export function kakaoTargets(lib: Library): ListRow[] {
   return lib.lists
     .filter((l) => {
-      // Owner only, as the server requires (a follower or collaborator can't add in Kakao Map).
       if (l.provider !== "kakao" || lib.roles.get(l.id) !== "owner") return false;
       if (l.removedAtProvider != null || l.externalId == null) return false;
       const folder = kakaoFolderIdOf(l.externalId);
       return folder !== undefined && folder > 0;
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Her own Kakao lists a place can be added to: only a place with a Kakao place id. */
+export function kakaoListsFor(lib: Library, placeId: string): ListRow[] {
+  const keyed = lib.sources.some(
+    (s) => s.placeId === placeId && s.provider === "kakao" && isKakaoPlaceKey(s.externalId),
+  );
+  return keyed ? kakaoTargets(lib) : [];
 }
 
 export const useLists = () =>
@@ -263,6 +270,7 @@ export const useLists = () =>
       provider: of("provider"),
       subscribed: of("subscribed"),
       savedNotInList: savedNotInList(lib).length,
+      kakaoTargets: kakaoTargets(lib),
     };
   }, []);
 

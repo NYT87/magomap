@@ -777,6 +777,10 @@ a {
   font-size: var(--text-md);
 }
 
+.mm-moved-hint[data-failed] {
+  color: var(--color-error);
+}
+
 .mm-place-row__title {
   font-weight: 600;
 }
@@ -1352,6 +1356,25 @@ a {
   background: var(--color-surface);
 }
 
+/* Her own Kakao lists, apart from the magomap ones: a place added here goes to Kakao Map. */
+.mm-add-list__group {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-sm) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.mm-add-list__heading {
+  padding: 0 var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 .mm-section {
   display: flex;
   flex-direction: column;
@@ -1592,6 +1615,11 @@ a {
 .mm-chip__meta {
   color: var(--color-text-secondary);
   font-size: var(--text-xs);
+}
+
+/* A pending add to a Kakao list that can't go: said in the error colour, not only greyed. */
+.mm-chip__meta[data-failed] {
+  color: var(--color-error);
 }
 
 /* A place's lists, each with its Kakao note quoted under it in the list's Kakao colour. */

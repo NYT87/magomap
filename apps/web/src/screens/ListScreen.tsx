@@ -80,7 +80,7 @@ export function ListScreen({ id }: { id: string }) {
         </p>
       ) : (
         <ul className="mm-places__list">
-          {rows.map(({ place, item }) => (
+          {rows.map(({ place, item, pending }) => (
             <li key={place.id}>
               <Link
                 href={`/places/${encodeURIComponent(place.id)}`}
@@ -91,6 +91,15 @@ export function ListScreen({ id }: { id: string }) {
                 <span className="mm-muted">{place.roadAddress ?? place.address ?? ""}</span>
                 {item?.removedAtProvider != null && (
                   <span className="mm-moved-hint">{t("lists.removed")}</span>
+                )}
+                {pending && (
+                  <span className="mm-moved-hint" data-failed={pending.failed != null || undefined}>
+                    {pending.failed === "list_missing"
+                      ? t("place.pendingListMissing")
+                      : pending.failed === "cant_send"
+                        ? t("place.pendingCantSend")
+                        : t("place.pendingKakao")}
+                  </span>
                 )}
               </Link>
             </li>
