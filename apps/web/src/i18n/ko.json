@@ -131,6 +131,7 @@
       "undo": "실행 취소",
       "undoFailed": "되돌리지 못했어요.",
       "back": "장소 목록으로",
+      "backToSearch": "검색으로 돌아가기",
       "close": "닫기"
     }
   },
@@ -152,13 +153,13 @@
   },
   "search": {
     "label": "장소 검색",
-    "placeholder": "카카오 장소나 내 메모 검색",
+    "placeholder": "카카오 장소·내 메모 검색",
     "clear": "검색어 지우기",
     "offline": "오프라인이라 저장한 장소에서 찾고 있어요.",
     "rateLimited": "검색을 많이 했어요. 잠시 후 다시 해 주세요.",
     "unavailable": "지금은 검색을 쓸 수 없어요. 저장한 장소는 그대로 볼 수 있어요.",
     "saved": "저장됨",
-    "save": "저장",
+    "save": "리스트에 저장",
     "saving": "저장하는 중…",
     "noResults": "“{{q}}” 검색 결과가 없어요.",
     "results_one": "결과 {{count}}개",

@@ -130,7 +130,7 @@ test("Save on a search result asks which list, as the map's own menu does", asyn
 
   await page.getByRole("searchbox").fill("bakery");
   const hit = page.locator(".mm-hit", { hasText: title });
-  await hit.getByRole("button", { name: "Save" }).click();
+  await hit.getByRole("button", { name: "Save to…" }).click();
 
   const menu = page.getByRole("dialog", { name: "Save place" });
   await expect(menu).toBeVisible();

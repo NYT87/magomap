@@ -392,7 +392,9 @@ export function MapContextMenu({
       <div className="mm-map-menu__chosen">
         <button type="button" className="mm-icon-button" aria-disabled={busy} onClick={back}>
           <ArrowLeft aria-hidden size={20} strokeWidth={1.75} />
-          <span className="mm-visually-hidden">{t("map.save.back")}</span>
+          <span className="mm-visually-hidden">
+            {t(found ? "map.save.backToSearch" : "map.save.back")}
+          </span>
         </button>
         <span className="mm-hit__title">{chosen.result.title}</span>
         {chosenState?.saved && <span className="mm-badge">{t("map.save.saved")}</span>}

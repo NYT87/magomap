@@ -318,7 +318,7 @@ describe("MapContextMenu", () => {
         <MapContextMenu press={PRESS} found={near("7", 0)} onClose={onClose} />
       </Router>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Back to the places" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Back to search" }));
     expect(onClose).toHaveBeenCalled();
   });
 

@@ -73,6 +73,7 @@ export function SearchBar() {
   };
 
   const save = async (hit: Extract<SearchHit, { kind: "kakao" }>, button: HTMLElement) => {
+    setSaveFailed(false);
     // With the map there, its "Save to…" asks which list (her own, a Kakao one, new, or none).
     const saveFound = stage.saveFound.current;
     if (saveFound) {

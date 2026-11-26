@@ -74,7 +74,7 @@ describe("SearchBar", () => {
   it("Save on a Kakao result opens the map's Save to… with that place, saving nothing yet", async () => {
     renderBar(true);
     await userEvent.type(screen.getByRole("searchbox"), "빵");
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save to…" }));
     expect(saveFound).toHaveBeenCalledWith(
       { result, distanceM: 0 },
       expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
@@ -85,7 +85,7 @@ describe("SearchBar", () => {
   it("without a map to open it on, Save still saves the place, as before", async () => {
     renderBar(false);
     await userEvent.type(screen.getByRole("searchbox"), "빵");
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save to…" }));
     expect(savePlaceFromSearch).toHaveBeenCalledOnce();
   });
 });
