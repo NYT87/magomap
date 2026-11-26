@@ -251,7 +251,8 @@
       "errServer": "Kakao Map has the new colour, but magomap couldn't save it here yet. Sync from Kakao Map to bring it in.",
       "errUnavailable": "Kakao Map didn't accept the change. Nothing was changed; try again.",
       "errSyncFirst": "magomap doesn't know this list's owner yet. Run Sync from Kakao Map in Account, then try again. Nothing was changed.",
-      "errCheck": "magomap couldn't check the change. Nothing was changed; try again."
+      "errCheck": "magomap couldn't check the change. Nothing was changed; try again.",
+      "errOutdated": "The magomap extension in this browser is too old to change this safely. Update it, then try again. Nothing was changed."
     },
     "kakaoNoteEdit": {
       "edit": "Edit Kakao note in {{name}}",
@@ -279,7 +280,8 @@
       "overwrite": "Overwrite the updated note",
       "keepEditing": "Keep editing",
       "errSyncFirst": "magomap doesn't know this list's owner yet. Run Sync from Kakao Map in Account, then try again. Nothing was changed.",
-      "errCheck": "magomap couldn't check the change. Nothing was changed; try again."
+      "errCheck": "magomap couldn't check the change. Nothing was changed; try again.",
+      "errOutdated": "The magomap extension in this browser is too old to change this safely. Update it, then try again. Nothing was changed."
     }
   },
   "kakaoMap": {
