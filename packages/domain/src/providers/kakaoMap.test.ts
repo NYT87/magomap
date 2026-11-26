@@ -378,6 +378,30 @@ describe("kakaoMapListsToImport / kakaoMapItemsToImport", () => {
     expect(kakaoMapListsToImport(startOf(followedPair, {}), LOGIN).accountAlias).toBeUndefined();
   });
 
+  it("her own public list that carries only her map_user_id is hers, through her alias", () => {
+    // Her unflagged folders pair u1 with map_user_id 1; her public one (flagged like a followed
+    // one) names only map_user_id 1.
+    const publicByMapId = [
+      { folderid: 0, kakao_map_user_id: "u1", map_user_id: 1, nickname: "사과" },
+      { folderid: 7, kakao_map_user_id: "u1", map_user_id: 1, title: "Mine" },
+      { folderid: 8, map_user_id: 1, nickname: "사과", title: "Public", subscribe: "Y" },
+      // Someone else's, followed, by map_user_id only: still followed.
+      { folderid: 9, map_user_id: 4, nickname: "Bap", title: "Theirs", subscribe: "Y" },
+      // Someone else's whose kakao_map_user_id is the same text as her map_user_id: the alias
+      // applies to map_user_ids only, so it is still followed.
+      { folderid: 10, kakao_map_user_id: "1", nickname: "Kim", title: "Kim's", subscribe: "Y" },
+    ];
+    const result = kakaoMapListsToImport(startOf(publicByMapId, {}), LOGIN);
+    const byId = new Map(result.lists.map((l) => [l.externalId, l]));
+    expect(byId.get("8")).toMatchObject({ followed: false });
+    expect(byId.get("8")?.ownerName).toBeUndefined();
+    expect(result.providerOwnerIds.get("8")).toBe("u1");
+    expect(result.mapOwnerIds.has("8")).toBe(false);
+    expect(byId.get("9")).toMatchObject({ followed: true, ownerName: "Bap" });
+    expect(result.mapOwnerIds.get("9")).toBe("4");
+    expect(byId.get("10")).toMatchObject({ followed: true, ownerName: "Kim" });
+  });
+
   it("a bare followed folder is followed, with kakao-list's fallback name", () => {
     const bare = kakaoMapListsToImport(start, LOGIN).lists.find((l) => l.externalId === "301");
     expect(bare).toEqual({ externalId: "301", name: "Folder 301", followed: true, itemCount: 0 });
