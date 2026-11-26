@@ -77,6 +77,7 @@ const PER_USER: ReadonlySet<SyncTable> = new Set([
   "user_places",
   "visit_notes",
   "links",
+  "kakao_adds",
 ]);
 
 /** Upserts of sync rows, each stamped with the write's seq and guarded by the write check. */

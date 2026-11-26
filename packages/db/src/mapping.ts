@@ -8,6 +8,7 @@ export const PER_USER_TABLES: ReadonlySet<SyncTable> = new Set([
   "user_places",
   "visit_notes",
   "links",
+  "kakao_adds",
 ]);
 
 const BOOLEAN_COLUMNS: Partial<Record<SyncTable, readonly string[]>> = {

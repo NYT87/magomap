@@ -132,6 +132,14 @@ export const mutationRowSchemas = {
     url: httpUrl,
     title: nullableText(LIMITS.linkTitle),
   }),
+  kakao_adds: z
+    .object({
+      ...base,
+      listId: id,
+      placeId: id,
+      failed: z.enum(["list_missing"]).nullable(),
+    })
+    .refine((r) => r.id === `ka_${r.listId}_${r.placeId}`, "Expected ka_<listId>_<placeId>"),
 } satisfies Record<ClientWritableTable, z.ZodType>;
 
 export interface Mutation {

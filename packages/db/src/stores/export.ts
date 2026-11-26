@@ -30,6 +30,8 @@ export interface UserExport {
     savedPlaces: Out<UserPlaceRow>[];
     notes: Out<VisitNoteRow>[];
     links: Out<LinkRow>[];
+    /** Places waiting to be added to one of the user's Kakao lists in Kakao Map. */
+    kakaoAdds: Out<RowOf<"kakao_adds">>[];
     /** The lists this user made, with their items. */
     lists: Out<ListRow>[];
     listItems: Out<ListItemRow>[];
@@ -105,6 +107,7 @@ export async function exportUserData(
   const savedPlaces = await read("user_places");
   const notes = await read("visit_notes");
   const links = await read("links");
+  const kakaoAdds = await read("kakao_adds");
   const listMemberships = await read("user_lists");
   // Own lists have no provider; they and their items are the user's, the rest are shared.
   const ownListIds = new Set(lists.filter((l) => l.provider === null).map((l) => l.id));
@@ -121,6 +124,7 @@ export async function exportUserData(
       savedPlaces,
       notes,
       links,
+      kakaoAdds,
       lists: lists.filter((l) => ownListIds.has(l.id)),
       listItems: listItems.filter((i) => ownListIds.has(i.listId)),
       listMemberships,

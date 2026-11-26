@@ -3,13 +3,14 @@
 import { createHash } from "node:crypto";
 import type {
   ImportList,
+  KakaoAddRow,
   ListItemRow,
   ListRow,
   Mutation,
   PlaceRow,
   VisitNoteRow,
 } from "@magomap/domain";
-import { ownItemRowId, placeRowId } from "@magomap/domain/ids";
+import { kakaoAddRowId, ownItemRowId, placeRowId } from "@magomap/domain/ids";
 import type { Db } from "../core";
 import { completeImportRun, finishImportList, importListChunk, startImportRun } from "./importRuns";
 import { applyPush } from "./sync";
@@ -103,6 +104,20 @@ export function ownItem(
   };
 }
 
+/** A pending add of a place to a Kakao list, as the app pushes it. */
+export function kakaoAdd(listId: string, placeId: string, extra: Partial<KakaoAddRow> = {}) {
+  return {
+    id: kakaoAddRowId(listId, placeId),
+    listId,
+    placeId,
+    failed: null,
+    createdAt: T0,
+    updatedAt: T0,
+    deletedAt: null,
+    ...extra,
+  };
+}
+
 export function note(id: string, placeId: string, extra: Partial<VisitNoteRow> = {}): VisitNoteRow {
   return {
     id: id.startsWith("kn_") ? id : uid(id),
@@ -136,7 +151,7 @@ export const del = (table: Mutation["table"], id: string, at = T0 + 1): Mutation
   mutationId: `m${++counter}`,
   table,
   op: "delete",
-  id: table === "places" || /^(kn|li|l|p)_/.test(id) ? id : uid(id),
+  id: table === "places" || /^(kn|li|ka|l|p)_/.test(id) ? id : uid(id),
   clientUpdatedAt: at,
 });
 

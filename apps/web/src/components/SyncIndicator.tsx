@@ -15,6 +15,7 @@ const KIND: Record<RejectedEntry["table"], string> = {
   lists: "sync.list",
   places: "sync.place",
   list_items: "sync.membership",
+  kakao_adds: "sync.kakaoAdd",
 };
 
 /** The text worth keeping from a refused change. */

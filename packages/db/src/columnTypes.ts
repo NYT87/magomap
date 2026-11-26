@@ -213,4 +213,16 @@ export const COLUMN_TYPES: {
     client_updated_at: "bigint",
     seq: "bigint",
   },
+  kakao_adds: {
+    user_id: "text",
+    id: "text",
+    list_id: "text",
+    place_id: "text",
+    failed: "text",
+    created_at: "bigint",
+    updated_at: "bigint",
+    deleted_at: "bigint",
+    client_updated_at: "bigint",
+    seq: "bigint",
+  },
 };

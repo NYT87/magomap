@@ -24,6 +24,7 @@ import {
   userPlaceRowId,
 } from "@magomap/domain/ids";
 import { LIMITS } from "@magomap/domain/limits";
+import { kakaoFolderIdOf } from "@magomap/domain/providers/kakao";
 import { sql } from "kysely";
 import { bulkUpsertQuery, type Db, type Statement } from "../core";
 import { inJson, PER_USER_TABLES, toAnyRow, toDbRow } from "../mapping";
@@ -59,6 +60,7 @@ const APPLY_ORDER: ClientWritableTable[] = [
   "list_items",
   "visit_notes",
   "links",
+  "kakao_adds",
 ];
 
 /** Applies new location fields to a place; returns the history row when it counts as a move. */
@@ -254,6 +256,7 @@ async function decidePush(
     ["list_items", existingItems],
     ["visit_notes", await readByIds(db, userId, "visit_notes", idsOf("visit_notes"))],
     ["links", await readByIds(db, userId, "links", idsOf("links"))],
+    ["kakao_adds", await readByIds(db, userId, "kakao_adds", idsOf("kakao_adds"))],
   ]);
   const myLists = await readByIds(db, userId, "user_lists", [...listIds].map(userListRowId));
   const myPlaces = await readByIds(db, userId, "user_places", [...placeIds].map(userPlaceRowId));
@@ -273,6 +276,26 @@ async function decidePush(
             )
             .execute()
         ).map((r) => r.place_id),
+  );
+  // Places with a live Kakao place source whose id is a Kakao place id: the ones a pending add
+  // to a Kakao list can name (the extension adds a favourite by that id).
+  const addPlaceIds = work
+    .filter((w) => w.m.table === "kakao_adds" && w.row)
+    .map((w) => String(w.row?.placeId));
+  const kakaoKeyed = new Set(
+    addPlaceIds.length === 0
+      ? []
+      : (
+          await db.kysely
+            .selectFrom("place_sources")
+            .select(["place_id", "external_id"])
+            .where(inJson(db, "place_id", addPlaceIds))
+            .where("provider", "=", "kakao")
+            .where("deleted_at", "is", null)
+            .execute()
+        )
+          .filter((s) => /^[1-9]\d{0,14}$/.test(s.external_id))
+          .map((s) => s.place_id),
   );
   const tombstones = await readTombstones(
     db,
@@ -548,6 +571,39 @@ async function decidePush(
       continue;
     }
 
+    if (table === "kakao_adds") {
+      // Only to her own live Kakao list (never folder 0, which the extension can't write), and
+      // only a place she can see that has a Kakao place id to add by.
+      const list = listOf(r.listId);
+      const access = myLists.get(userListRowId(String(r.listId)));
+      const folder =
+        list?.provider === "kakao" ? kakaoFolderIdOf(String(list.external_id)) : undefined;
+      const ownKakaoList =
+        list !== undefined &&
+        list.deleted_at == null &&
+        list.removed_at_provider == null &&
+        folder !== undefined &&
+        folder > 0 &&
+        access?.role === "owner" &&
+        access.removed_at == null &&
+        access.deleted_at == null;
+      if (!ownKakaoList) {
+        set(m, "rejected", { reason: "not_allowed" });
+        continue;
+      }
+      if (!canSeePlace(r.placeId)) {
+        set(m, "rejected", { reason: "missing_parent" });
+        continue;
+      }
+      if (!kakaoKeyed.has(String(r.placeId))) {
+        set(m, "rejected", { reason: "not_allowed" });
+        continue;
+      }
+      write(table, dbRow(table, { ...r, updatedAt: acceptedAt }, m));
+      set(m, "applied");
+      continue;
+    }
+
     // visit_notes and links
     if (!canSeePlace(r.placeId)) {
       set(m, "rejected", { reason: "missing_parent" });
@@ -581,6 +637,7 @@ async function decidePush(
     list_items: newer,
     visit_notes: newer,
     links: newer,
+    kakao_adds: newer,
   });
   statements.push(...grantStatements(db, ctx, { sharedPlaceIds }));
   statements.push(
