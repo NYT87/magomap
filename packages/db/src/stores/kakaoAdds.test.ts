@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import type { Db } from "../core";
 import { forEachDialect } from "../testing/dbs";
 import { exportUserData } from "./export";
+import { pull } from "./sync";
 import { addUser, del, kakaoAdd, ownList, push, searchedPlace, T0, uid, up } from "./testkit";
 import { deleteAccount } from "./users";
 
@@ -84,6 +85,13 @@ forEachDialect("kakao_adds", (makeDb) => {
       { id: "ka_l_kakao_9_p_kakao_1", list_id: "l_kakao_9", place_id: P1, failed: null },
     ]);
     expect(await rows(db, B)).toEqual([]);
+    // Pulled back by her, never by him.
+    const pulled = (userId: string) =>
+      pull(db, userId, null).then((r) => r.rows.filter((x) => x.table === "kakao_adds"));
+    expect(await pulled(A)).toMatchObject([
+      { row: { id: "ka_l_kakao_9_p_kakao_1", listId: "l_kakao_9", placeId: P1, failed: null } },
+    ]);
+    expect(await pulled(B)).toEqual([]);
   });
 
   it("refuses a followed, removed, deleted, magomap-made or default (folder 0) list", async () => {
@@ -140,6 +148,33 @@ forEachDialect("kakao_adds", (makeDb) => {
     expect(res.results.map((r) => r.reason ?? r.status)).toEqual(["missing_parent", "not_allowed"]);
   });
 
+  it("refuses a place whose Kakao source isn't a Kakao place id, or is deleted", async () => {
+    const db = await setup(makeDb);
+    await push(db, A, [up("places", searchedPlace("4")), up("places", searchedPlace("5"))], T0);
+    // The same places, now with a source that can't be added by: not a place id, and deleted.
+    await db.kysely
+      .updateTable("place_sources")
+      .set({ external_id: "x4" })
+      .where("place_id", "=", "p_kakao_4")
+      .execute();
+    await db.kysely
+      .updateTable("place_sources")
+      .set({ deleted_at: T0 })
+      .where("place_id", "=", "p_kakao_5")
+      .execute();
+    const res = await push(
+      db,
+      A,
+      [
+        up("kakao_adds", kakaoAdd("l_kakao_9", "p_kakao_4")),
+        up("kakao_adds", kakaoAdd("l_kakao_9", "p_kakao_5")),
+      ],
+      T0 + 5,
+    );
+    expect(res.results.map((r) => r.reason ?? r.status)).toEqual(["not_allowed", "not_allowed"]);
+  });
+
+  // The id is derived from the list and the place, so a row can never move to another list.
   it("refuses an id that isn't ka_<list>_<place>", async () => {
     const db = await setup(makeDb);
     const res = await push(
@@ -166,6 +201,27 @@ forEachDialect("kakao_adds", (makeDb) => {
     const gone = await push(db, A, [del("kakao_adds", "ka_l_kakao_9_p_kakao_1", T0 + 8)], T0);
     expect(gone.results[0]?.status).toBe("applied");
     expect((await rows(db, A))[0]?.deleted_at).toBe(T0 + 8);
+  });
+
+  it("still deletes her row after the list stopped being hers", async () => {
+    const db = await setup(makeDb);
+    await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 5)], T0);
+    await db.kysely
+      .updateTable("user_lists")
+      .set({ role: "follower" })
+      .where("user_id", "=", A)
+      .execute();
+    const gone = await push(db, A, [del("kakao_adds", "ka_l_kakao_9_p_kakao_1", T0 + 6)], T0);
+    expect(gone.results[0]?.status).toBe("applied");
+    expect((await rows(db, A))[0]?.deleted_at).toBe(T0 + 6);
+  });
+
+  it("a delete that arrives before its add keeps an older add from coming back", async () => {
+    const db = await setup(makeDb);
+    await push(db, A, [del("kakao_adds", "ka_l_kakao_9_p_kakao_1", T0 + 6)], T0);
+    const late = await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 5)], T0);
+    expect(late.results[0]?.status).toBe("ignored_stale");
+    expect(await rows(db, A)).toEqual([]);
   });
 
   it("goes with her account and comes with her export", async () => {

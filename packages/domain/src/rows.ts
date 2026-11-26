@@ -127,7 +127,7 @@ export interface LinkRow extends Base {
 export interface KakaoAddRow extends Base {
   listId: string;
   placeId: string;
-  /** Why it can't be added: the list is gone from her Kakao Map, or isn't hers. */
+  /** Why it can't be added: the list is gone from her Kakao Map (the extension can't find it). */
   failed: "list_missing" | null;
 }
 
