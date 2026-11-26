@@ -13,7 +13,7 @@ Run this before the owner's wife starts using magomap (plan 03, Task 4). Each li
 ## It works for real
 
 - [ ] **A real Kakao sign-in** works for both accounts, and someone not on the allowlist sees "not invited".
-- [ ] **Owner gates from plan 03 are done.** G1: Kakao's coordinates convert correctly (the fixtures in `packages/domain/src/providers/wcongnamul.fixtures.ts` and their test pass). G2: a real read through the magomap extension confirmed the favourite `type` values, and which folders carry `subscribe` (her own public lists must not read as followed); the answers are in `docs/kakao-map-access.md`.
+- [x] **Owner gates from plan 03 are done.** G1: Kakao's coordinates convert correctly (the fixtures in `packages/domain/src/providers/wcongnamul.fixtures.ts` and their test pass). G2: a real read through the magomap extension confirmed the favourite `type` values, and which folders carry `subscribe` (her own public lists must not read as followed); the answers are in `docs/kakao-map-access.md`. Checked 2026-11-26: the fixture test passes (11 cases) and `docs/kakao-map-access.md` records the `type` values and that `subscribe` marks followed folders only (her own public lists need the alias, #82).
 - [ ] **A real sync from Kakao Map** (Account → Sync from Kakao Map, with the magomap extension) brings in her lists. The places have coordinates and appear on the map, and syncing again changes nothing.
 - [ ] **On her actual phone:**
   - install the PWA;
@@ -25,16 +25,18 @@ Run this before the owner's wife starts using magomap (plan 03, Task 4). Each li
 ## Watching it
 
 - [ ] **Workers logs** (or Logpush) show requests and errors. The secret, cookies and note bodies never appear in logs.
+  - Code checked 2026-11-26: Workers Logs are on (`observability`, kept 7 days). The API writes two log lines: unexpected errors in `app.onError` (`apps/api/src/index.ts`), and the daily clean-up count. Known refusals are answered without a log line. Still to do by looking at the dashboard: one real error, and that no note text or cookie shows in it. Request URLs are logged, so a search query or a sign-in callback's one-time code can appear there.
 - [ ] **A failed sync shows up** for her ("Can't reach the server — retrying") and in the logs.
 - [ ] **Kakao Maps quota.** Check the quota page in Kakao Developers and note today's usage.
 
 ## Way back
 
 - [ ] **Rolling back the Worker** to the previous version (`wrangler rollback` or the dashboard) has been tried once.
-- [ ] **Every database migration in this release** can be undone, or has been checked to be safe to leave in place.
+- [x] **Every database migration in this release** can be undone, or has been checked to be safe to leave in place. Checked 2026-11-26 (0.1.11): 0004–0006 only add nullable columns to `list_items`, and 0007 adds the new `kakao_adds` table with its index. An older Worker ignores all of them, so a Worker rollback needs no database change. Every release takes a D1 Time Travel bookmark before migrating.
 
 ## Quality
 
 - [ ] The `auditor-performance` audit from plan 02 Task 7 has no open Critical or High findings.
+  - Run 2026-11-26 (0.1.11): no Critical. One High stays open, because the map screen hasn't been measured signed in. Signed out, `/signin` scored 76 with LCP 4.5 s (targets 90 and 2.5 s) and CLS 0.009. The first-load JS is 189.6 KB gzip, against a 200 KB budget. To close it: a Lighthouse mobile run on the signed-in map, in incognito with the map opened once first, after the 0.1.8 fixes. The last signed-in run, on 0.1.8, scored 26 (`docs/perf-audit.md`).
 - [ ] A manual screen-reader pass on her phone works: VoiceOver on iOS Safari, or TalkBack on Android Chrome. Open a place, add a note, and find it in the list.
-- [ ] The homepage is live, and "Open magomap" points to the production URL.
+- [x] The homepage is live, and "Open magomap" points to the production URL. Checked 2026-11-26: `https://nyt87.github.io/magomap/` and `/ko/` answer 200 and link to `https://magomap.jmn8718.workers.dev`.
