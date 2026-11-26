@@ -51,8 +51,18 @@ export const WRITE_WAIT_MS = 150_000;
 const ACCOUNT_WAIT_MS = 60_000;
 
 const KEY = /^[1-9]\d{0,14}$/;
+/** The longest title or address the extension takes (`MAX_TEXT` in apps/extension). */
+const MAX_SEND_TEXT = 1000;
+/** `text` cut to what the extension takes, never between the two halves of an emoji. */
+const clip = (text: string) =>
+  text.length <= MAX_SEND_TEXT
+    ? text
+    : text.slice(
+        0,
+        /[\uD800-\uDBFF]/.test(text[MAX_SEND_TEXT - 1] ?? "") ? MAX_SEND_TEXT - 1 : MAX_SEND_TEXT,
+      );
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
+export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 export interface SendPlace {
@@ -124,8 +134,9 @@ export async function sendPlacesOf(
     places.push({
       placeId,
       key,
-      title,
-      address: place.roadAddress?.trim() || place.address?.trim() || "",
+      // The extension refuses a text over 1,000 characters (and with it the whole page of places).
+      title: clip(title),
+      address: clip(place.roadAddress?.trim() || place.address?.trim() || ""),
       ...point,
       ...(color && /^\d{2}$/.test(color) ? { color } : {}),
     });
@@ -267,7 +278,8 @@ export async function duplicateToKakao(input: {
     }
     let synced = true;
     try {
-      await runKakaoMapSync(() => undefined);
+      // The copy's own account: another tab may have opened a different one meanwhile.
+      await runKakaoMapSync(() => undefined, { account });
     } catch {
       synced = false;
     }
