@@ -1,4 +1,4 @@
-import type { PlaceLocationRow, PlaceRow } from "@magomap/domain";
+import type { NearbyResult, PlaceLocationRow, PlaceRow } from "@magomap/domain";
 import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
@@ -75,7 +75,7 @@ export function MapView({ data }: { data: Data | null }) {
   const kakaoReady = useRef(false);
   const hintId = useId();
   // A right-click or long-press opens the menu that saves a place from the map.
-  const [press, setPress] = useState<ContextPress | null>(null);
+  const [press, setPress] = useState<(ContextPress & { found?: NearbyResult }) | null>(null);
   const keyboardPressAt = useRef(0);
   // The latest save from the menu, confirmed with Undo; a newer one replaces it.
   const [saved, setSaved] = useState<{
@@ -192,6 +192,16 @@ export function MapView({ data }: { data: Data | null }) {
     };
   }, [stage.saveHere, stage.map]);
 
+  // Search's Save opens it for the place found, beside the button pressed.
+  useEffect(() => {
+    const saveFound = stage.saveFound;
+    saveFound.current = (found, at) =>
+      setPress({ point: { lat: found.result.lat, lng: found.result.lng }, at, found });
+    return () => {
+      saveFound.current = null;
+    };
+  }, [stage.saveFound]);
+
   const dataRef = useRef(data);
   dataRef.current = data;
   useEffect(() => {
@@ -278,6 +288,7 @@ export function MapView({ data }: { data: Data | null }) {
       {press && (
         <MapContextMenu
           press={press}
+          {...(press.found ? { found: press.found } : {})}
           onClose={() => setPress(null)}
           onSaved={(s, release) => {
             savedCount.current += 1;

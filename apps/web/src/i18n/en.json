@@ -104,6 +104,7 @@
     "canvasLabel": "Map",
     "canvasHint": "Arrow keys move the map, and + and - zoom. Right-click, long-press, or press Shift+F10 to save a place here.",
     "save": {
+      "titleFound": "Save place",
       "title": "Save a place here",
       "looking": "Looking for places nearby…",
       "none": "No Kakao place found here. Try pressing closer to the place.",
@@ -151,7 +152,7 @@
   },
   "search": {
     "label": "Search places",
-    "placeholder": "Search places or your notes",
+    "placeholder": "Search Kakao places or your notes",
     "clear": "Clear search",
     "offline": "You're offline, so this searches your saved places.",
     "rateLimited": "That's a lot of searches. Wait a moment, then try again.",

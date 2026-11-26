@@ -1,3 +1,4 @@
+import type { NearbyResult } from "@magomap/domain";
 import {
   createContext,
   type MutableRefObject,
@@ -25,6 +26,8 @@ interface Stage {
   setOnSearchSelect: (fn: ((id: string) => void) | null) => void;
   /** Opens the save menu at the map's centre (set by the map), for the phone's Save button. */
   saveHere: MutableRefObject<(() => void) | null>;
+  /** Opens the save menu for a place found in search, at a spot on the page (set by the map). */
+  saveFound: MutableRefObject<((found: NearbyResult, at: { x: number; y: number }) => void) | null>;
 }
 
 const Ctx = createContext<Stage | null>(null);
@@ -39,6 +42,7 @@ export function MapStageProvider({ children }: { children: ReactNode }) {
   );
   const map = useRef<MapAdapter | null>(null);
   const saveHere = useRef<(() => void) | null>(null);
+  const saveFound = useRef<Stage["saveFound"]["current"]>(null);
   const [onSearchSelect, setSelect] = useState<((id: string) => void) | null>(null);
   const setOnSearchSelect = useCallback(
     (fn: ((id: string) => void) | null) => setSelect(() => fn),
@@ -54,6 +58,7 @@ export function MapStageProvider({ children }: { children: ReactNode }) {
       onSearchSelect,
       setOnSearchSelect,
       saveHere,
+      saveFound,
     }),
     [searchMarkers, focus, setFocus, onSearchSelect, setOnSearchSelect],
   );

@@ -288,6 +288,40 @@ describe("MapContextMenu", () => {
     expect(screen.queryByRole("list", { name: "Kakao Map" })).toBeNull();
   });
 
+  it("opened with a place found in search, goes straight to its lists, without a lookup", async () => {
+    await createList({ name: "Cafés", color: null });
+    savePlaceToList.mockResolvedValue(record("p_kakao_7"));
+    const onClose = vi.fn();
+    const { hook } = memoryLocation({ path: "/" });
+    render(
+      <Router hook={hook}>
+        <MapContextMenu press={PRESS} found={near("7", 0)} onClose={onClose} />
+      </Router>,
+    );
+    expect(await screen.findByRole("button", { name: /Cafés/ })).toBeVisible();
+    expect(screen.getByText("Place 7")).toBeVisible();
+    expect(fetchNearby).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: /Cafés/ }));
+    await waitFor(() =>
+      expect(savePlaceToList).toHaveBeenCalledWith({
+        result: result("7"),
+        listId: expect.any(String),
+      }),
+    );
+  });
+
+  it("opened with a found place, Back closes it: there are no other places to go back to", async () => {
+    const onClose = vi.fn();
+    const { hook } = memoryLocation({ path: "/" });
+    render(
+      <Router hook={hook}>
+        <MapContextMenu press={PRESS} found={near("7", 0)} onClose={onClose} />
+      </Router>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Back to the places" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("offers only her own lists, then Save without a list and New list", async () => {
     await createList({ name: "Cafés", color: null });
     await db.lists.put({
