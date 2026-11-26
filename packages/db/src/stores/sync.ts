@@ -578,8 +578,13 @@ async function decidePush(
     if (table === "kakao_adds") {
       // Marking a pending add she has as failed is always taken: it says the list is gone, which
       // is exactly when the checks below would refuse it.
+      // The same row only: an id can be read more than one way, so its list and place must match.
       const marksFailed =
-        existing?.deleted_at == null && existing !== undefined && r.failed != null;
+        existing !== undefined &&
+        existing.deleted_at == null &&
+        r.failed != null &&
+        String(r.listId) === String(existing.list_id) &&
+        String(r.placeId) === String(existing.place_id);
       if (marksFailed) {
         write(table, dbRow(table, { ...r, updatedAt: acceptedAt }, m));
         set(m, "applied");

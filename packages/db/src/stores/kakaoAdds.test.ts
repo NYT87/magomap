@@ -234,6 +234,23 @@ forEachDialect("kakao_adds", (makeDb) => {
     expect((await rows(db, A))[0]).toMatchObject({ failed: "list_missing" });
   });
 
+  it("a failure mark can't move her pending add to another list or place", async () => {
+    const db = await setup(makeDb);
+    await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 5)], T0);
+    // The same id read another way: list "l_kakao_9_p", place "kakao_1".
+    const forged = {
+      ...kakaoAdd("l_kakao_9_p", "kakao_1", { failed: "list_missing" as const }),
+      id: "ka_l_kakao_9_p_kakao_1",
+    };
+    const res = await push(db, A, [up("kakao_adds", forged, T0 + 6)], T0);
+    expect(res.results[0]?.status).toBe("rejected");
+    expect((await rows(db, A))[0]).toMatchObject({
+      list_id: "l_kakao_9",
+      place_id: P1,
+      failed: null,
+    });
+  });
+
   it("still deletes her row after the list stopped being hers", async () => {
     const db = await setup(makeDb);
     await push(db, A, [up("kakao_adds", kakaoAdd("l_kakao_9", P1), T0 + 5)], T0);

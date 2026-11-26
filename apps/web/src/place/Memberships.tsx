@@ -173,7 +173,8 @@ export function Memberships({ placeId }: { placeId: string }) {
                   </li>
                 ))}
               </ul>
-              {extension === "missing" && (
+              {/* Said once: beside the lists instead, while adds are already waiting. */}
+              {extension === "missing" && !waiting && (
                 <p className="mm-muted mm-add-list__note">{t("place.kakaoAddLater")}</p>
               )}
             </fieldset>
@@ -251,9 +252,9 @@ export function Memberships({ placeId }: { placeId: string }) {
                       data-failed={pending.failed != null || undefined}
                     >
                       {pending.failed === "list_missing"
-                        ? t("place.pendingListMissing")
+                        ? `${t("place.pendingListMissing")} ${t("place.pendingTapX")}`
                         : pending.failed === "cant_send"
-                          ? t("place.pendingCantSend")
+                          ? `${t("place.pendingCantSend")} ${t("place.pendingTapX")}`
                           : t("place.pendingKakao")}
                     </span>
                   )}
