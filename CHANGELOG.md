@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.12](https://github.com/NYT87/magomap/compare/magomap-v0.1.11...magomap-v0.1.12) (2026-11-26)
+
+
+### Bug Fixes
+
+* Kakao Map writes share one lock; a copy syncs its own account; long texts are cut ([27991a0](https://github.com/NYT87/magomap/commit/27991a0e68dbfd59864bb5fe29d77a4d8c6cbe10))
+* requests give up after 2 minutes as offline; the app opens on the account it knows ([ec6cb18](https://github.com/NYT87/magomap/commit/ec6cb1849a4cedaed29c6c7953f576fb63db68d8))
+* **web:** Kakao Map writes share one lock; a copy syncs its own account; long texts are cut ([8aa51e9](https://github.com/NYT87/magomap/commit/8aa51e9ccd247e15f9f68a51a10f06ef1b09bc47))
+* **web:** requests give up after 2 minutes as offline; the app opens on the account it knows ([6418904](https://github.com/NYT87/magomap/commit/6418904cf70df1c365bff5bae24f360bb07b29e7))
+
+
+### Performance Improvements
+
+* selecting a pin redraws only the pins that changed ([9759cf8](https://github.com/NYT87/magomap/commit/9759cf82ed18e7a6fd2cca11189c954bf98a98e2))
+* the library is read once for the whole app, not once per screen ([e620e41](https://github.com/NYT87/magomap/commit/e620e41be321e72c494e5f75abf586b05c54893f))
+* **web:** selecting a pin redraws only the pins that changed ([d450cf9](https://github.com/NYT87/magomap/commit/d450cf941a884e94369e00bdd0733ea09b8e3492))
+* **web:** the library is read once for the whole app, not once per screen ([83b3a32](https://github.com/NYT87/magomap/commit/83b3a32380edfd46b9915c3a7c37fa6335aa7ceb))
+
 ## [0.1.11](https://github.com/NYT87/magomap/compare/magomap-v0.1.10...magomap-v0.1.11) (2026-11-26)
 
 
