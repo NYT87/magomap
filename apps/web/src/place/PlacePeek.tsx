@@ -67,6 +67,10 @@ export function PlacePeek({ id }: { id: string }) {
     if (place?.lat != null && place.lng != null) setFocus({ lat: place.lat, lng: place.lng });
   }, [place?.lat, place?.lng, setFocus]);
 
+  useEffect(() => {
+    if (place) document.title = `${place.title} – ${t("app.name")}`;
+  }, [place, t]);
+
   if (place === undefined) return null;
   const close = (
     <button type="button" className="mm-icon-button" onClick={() => goBackOr(navigate, "/")}>
@@ -76,9 +80,9 @@ export function PlacePeek({ id }: { id: string }) {
   );
   if (place === null) {
     return (
-      <section ref={card} className="mm-place-peek" aria-label={t("place.peek.region")}>
+      <section ref={card} className="mm-place-peek" aria-labelledby={headingId}>
         <div className="mm-place-peek__row">
-          <p className="mm-muted mm-place-peek__text">
+          <p id={headingId} className="mm-muted mm-place-peek__text">
             {gone ? t("place.peek.gone") : t("place.notFound")}
           </p>
           <div className="mm-place-peek__actions">{close}</div>

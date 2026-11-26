@@ -168,7 +168,6 @@
     "peek": {
       "openDetails": "상세 보기",
       "close": "닫기",
-      "region": "장소",
       "gone": "삭제된 장소예요. 리스트에서 빠졌을 수 있어요.",
       "kakaoNote": "카카오 메모"
     },

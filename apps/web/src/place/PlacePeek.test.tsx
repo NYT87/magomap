@@ -192,6 +192,8 @@ describe("PlacePeek", () => {
     expect(screen.getByRole("button", { name: en.place.peek.close })).toBeVisible();
     expect(screen.queryByRole("button", { name: en.place.peek.openDetails })).toBeNull();
     expect(screen.getByTestId("focus")).toHaveTextContent("");
+    // Named by what it says, not just "Place".
+    expect(screen.getByRole("region", { name: en.place.notFound })).toBeVisible();
   });
 
   it("says a deleted place may have been deleted, not to wait for a sync", async () => {

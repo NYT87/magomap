@@ -26,8 +26,8 @@ export function PlaceScreen({ id }: { id: string }) {
   }, [layout, place?.lat, place?.lng, setFocus]);
 
   useEffect(() => {
-    if (place) document.title = `${place.title} – magomap`;
-  }, [place]);
+    if (place) document.title = `${place.title} – ${t("app.name")}`;
+  }, [place, t]);
 
   if (place === undefined) return null;
   if (place === null) return <p className="mm-muted">{t("place.notFound")}</p>;
