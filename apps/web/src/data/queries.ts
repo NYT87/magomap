@@ -12,6 +12,7 @@ import type {
 } from "@magomap/domain";
 import { kakaoFolderIdOf } from "@magomap/domain/providers/kakao";
 import { useLiveQuery } from "dexie-react-hooks";
+import { createContext, createElement, type ReactNode, useContext, useMemo } from "react";
 import { currentDb, type MagomapDexie, type RejectedEntry } from "./db";
 
 const live = <T extends { deletedAt: number | null }>(rows: T[]) =>
@@ -114,7 +115,25 @@ export async function loadLibrary(db: MagomapDexie): Promise<Library> {
   return lib;
 }
 
-export const useLibrary = () => useLiveQuery(() => loadLibrary(currentDb()), []);
+/** The app's one live copy of the library; `null` where no LibraryProvider is above. */
+const LibraryContext = createContext<Library | undefined | null>(null);
+
+/**
+ * Reads the library once for every screen below it, and again after each write: the map, the
+ * lists and an open place then share one read instead of each doing their own.
+ */
+export function LibraryProvider({ children }: { children: ReactNode }) {
+  const lib = useLiveQuery(() => loadLibrary(currentDb()), []);
+  return createElement(LibraryContext.Provider, { value: lib }, children);
+}
+
+/** The library (undefined while loading). Without a LibraryProvider above, it reads its own. */
+export function useLibrary(): Library | undefined {
+  const shared = useContext(LibraryContext);
+  const alone = shared === null;
+  const own = useLiveQuery(() => (alone ? loadLibrary(currentDb()) : undefined), [alone]);
+  return alone ? own : shared;
+}
 
 export type ListSection = "mine" | "provider" | "subscribed";
 
@@ -233,8 +252,10 @@ export function placeMemberships(lib: Library, placeId: string) {
 }
 
 /** The place's memberships in visible lists, with their lists. */
-export const usePlaceMemberships = (id: string) =>
-  useLiveQuery(async () => placeMemberships(await loadLibrary(currentDb()), id), [id]);
+export function usePlaceMemberships(id: string) {
+  const lib = useLibrary();
+  return useMemo(() => (lib ? placeMemberships(lib, id) : undefined), [lib, id]);
+}
 
 /** A Kakao place id, as the extension adds a favourite by it. */
 export const isKakaoPlaceKey = (key: string) => /^[1-9]\d{0,14}$/.test(key);
@@ -263,25 +284,32 @@ export function kakaoListsFor(lib: Library, placeId: string): ListRow[] {
   return keyed ? kakaoTargets(lib) : [];
 }
 
-export const useLists = () =>
-  useLiveQuery(async () => {
-    const lib = await loadLibrary(currentDb());
-    const count = (listId: string) =>
-      shownItems(lib).filter((i) => i.listId === listId && i.removedAtProvider == null).length;
-    const byName = (a: ListRow, b: ListRow) => a.name.localeCompare(b.name);
-    const of = (s: ListSection) =>
-      lib.lists
-        .filter((l) => sectionOf(l, lib.roles) === s)
-        .sort(byName)
-        .map((list) => ({ list, count: count(list.id) }));
-    return {
-      mine: of("mine"),
-      provider: of("provider"),
-      subscribed: of("subscribed"),
-      savedNotInList: savedNotInList(lib).length,
-      kakaoTargets: kakaoTargets(lib),
-    };
-  }, []);
+export function useLists() {
+  const lib = useLibrary();
+  return useMemo(() => (lib ? listsOf(lib) : undefined), [lib]);
+}
+
+function listsOf(lib: Library) {
+  // One pass over the items, not one per list.
+  const counts = new Map<string, number>();
+  for (const i of shownItems(lib)) {
+    if (i.removedAtProvider == null) counts.set(i.listId, (counts.get(i.listId) ?? 0) + 1);
+  }
+  const count = (listId: string) => counts.get(listId) ?? 0;
+  const byName = (a: ListRow, b: ListRow) => a.name.localeCompare(b.name);
+  const of = (s: ListSection) =>
+    lib.lists
+      .filter((l) => sectionOf(l, lib.roles) === s)
+      .sort(byName)
+      .map((list) => ({ list, count: count(list.id) }));
+  return {
+    mine: of("mine"),
+    provider: of("provider"),
+    subscribed: of("subscribed"),
+    savedNotInList: savedNotInList(lib).length,
+    kakaoTargets: kakaoTargets(lib),
+  };
+}
 
 /**
  * A list's places in position order; then places waiting to be added to it in Kakao Map
@@ -311,8 +339,10 @@ export function listPlaces(lib: Library, listId: string) {
   });
 }
 
-export const useListPlaces = (listId: string) =>
-  useLiveQuery(async () => listPlaces(await loadLibrary(currentDb()), listId), [listId]);
+export function useListPlaces(listId: string) {
+  const lib = useLibrary();
+  return useMemo(() => (lib ? listPlaces(lib, listId) : undefined), [lib, listId]);
+}
 
 /** The previous location a moment falls in, or null when it's in the current location. */
 export function locationAt(rows: PlaceLocationRow[], at: number): PlaceLocationRow | null {
