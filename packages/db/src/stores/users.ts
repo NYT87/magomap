@@ -131,6 +131,7 @@ const USER_TABLES = [
   "user_places",
   "visit_notes",
   "links",
+  "kakao_adds",
   "tombstones",
   "import_runs",
   "import_run_pages",

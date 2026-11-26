@@ -238,6 +238,19 @@ export interface LinksTable {
   seq: number;
 }
 
+export interface KakaoAddsTable {
+  user_id: string;
+  id: string;
+  list_id: string;
+  place_id: string;
+  failed: string | null;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+  client_updated_at: number;
+  seq: number;
+}
+
 export interface Database {
   users: UsersTable;
   identities: IdentitiesTable;
@@ -258,4 +271,5 @@ export interface Database {
   user_places: UserPlacesTable;
   visit_notes: VisitNotesTable;
   links: LinksTable;
+  kakao_adds: KakaoAddsTable;
 }

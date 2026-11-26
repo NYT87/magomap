@@ -9,7 +9,7 @@ import { Sheet } from "../components/Sheet";
 import { currentDb } from "../data/db";
 import { holdPushes } from "../data/events";
 import { type PlaceState, placeStatesOf } from "../data/placeState";
-import { useLists } from "../data/queries";
+import { isKakaoPlaceKey, useLists } from "../data/queries";
 import { type SavedFromMap, savePlaceToList } from "../data/saveFromMap";
 import { switchesPlace } from "../layout/placeRoute";
 import { useLayout } from "../layout/useLayout";
@@ -157,6 +157,7 @@ export function MapContextMenu({
   const lists = useLists();
   const chooseId = useId();
   const nameId = useId();
+  const kakaoId = useId();
   const [lookup, setLookup] = useState<Lookup>({ kind: "loading" });
   // Bumped by Try again: the same point, asked again.
   const [attempt, setAttempt] = useState(0);
@@ -261,12 +262,21 @@ export function MapContextMenu({
           ? { result: chosen.result, listId: null, newListName: target.newListName }
           : { result: chosen.result, listId: target.listId },
       );
-      if (token !== pressToken.current) return release();
+      // A place waiting for one of her Kakao lists goes to Kakao Map once its Undo is over (where
+      // the extension is; elsewhere it waits). An undone save leaves nothing to push.
+      const db = currentDb();
+      const done = saved.kakaoAddId
+        ? () => {
+            release();
+            void import("../lists/pushKakaoAdds").then(({ pushKakaoAdds }) => pushKakaoAdds(db));
+          }
+        : release;
+      if (token !== pressToken.current) return done();
       navigate(`/places/${encodeURIComponent(saved.placeId)}`, {
         replace: switchesPlace(location),
       });
-      if (onSaved) onSaved(saved, release);
-      else release();
+      if (onSaved) onSaved(saved, done);
+      else done();
       onClose();
     } catch {
       release();
@@ -364,6 +374,11 @@ export function MapContextMenu({
 
   // While saving, the controls stay focusable (aria-disabled; the guards above ignore them).
   const busy = saving || undefined;
+  // Her own Kakao lists, for a place Kakao Map can add by its id.
+  const kakaoLists =
+    chosen && chosen.result.provider === "kakao" && isKakaoPlaceKey(chosen.result.externalId)
+      ? (lists?.kakaoTargets ?? [])
+      : [];
   const listStep = chosen && (
     <div className="mm-map-menu__step">
       <div className="mm-map-menu__chosen">
@@ -440,6 +455,33 @@ export function MapContextMenu({
             {saving ? t("map.save.saving") : t("map.save.confirm")}
           </button>
         </form>
+      )}
+      {kakaoLists.length > 0 && (
+        <div className="mm-map-menu__kakao">
+          <p id={kakaoId} className="mm-field__label">
+            {t("map.save.kakaoLists")}
+          </p>
+          <ul className="mm-map-menu__list mm-map-menu__list--kakao" aria-labelledby={kakaoId}>
+            {kakaoLists.map((list) => {
+              const inIt = chosenState?.listIds.has(list.id) ?? false;
+              return (
+                <li key={list.id}>
+                  <button
+                    type="button"
+                    className="mm-map-menu__row"
+                    aria-disabled={busy}
+                    onClick={() => void save({ listId: list.id })}
+                  >
+                    <span className="mm-map-menu__text">
+                      <span className="mm-map-menu__name">{list.name}</span>
+                    </span>
+                    {inIt && <span className="mm-badge">{t("map.save.alreadyIn")}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
       {/* Apart from her lists: saving with no list at all. */}
       <ul className="mm-map-menu__list mm-map-menu__list--apart">

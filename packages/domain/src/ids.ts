@@ -44,6 +44,11 @@ export function ownItemRowId(listId: string, placeId: string): string {
   return `li_${listId}_${placeId}`;
 }
 
+/** A pending add of a place to a Kakao list: deterministic, so two devices collapse into one row. */
+export function kakaoAddRowId(listId: string, placeId: string): string {
+  return `ka_${listId}_${placeId}`;
+}
+
 /** A user's access to a list. */
 export function userListRowId(listId: string): string {
   return `ul_${listId}`;

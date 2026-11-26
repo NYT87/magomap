@@ -12,6 +12,7 @@ import { LIMITS } from "@magomap/domain/limits";
 import { ACCOUNT_HEADER, ApiError, apiFetch, NetworkError, UnauthorizedError } from "../api/client";
 import { dbUserId, type MagomapDexie, type OutboxEntry, openDbOrNull, ROW_TABLES } from "./db";
 import { onWrite, pushesHeld } from "./events";
+import { clearDoneKakaoAdds } from "./writes";
 
 export type SyncStateName =
   | "idle"
@@ -375,6 +376,8 @@ async function run(
       }
     });
     const pulled = await pullAll(db, { removal });
+    // A Kakao Map sync may have brought in places she was waiting to add: those pending adds go.
+    await clearDoneKakaoAdds(db);
     const now = Date.now();
     // Held changes still waiting: pulled, but not synced.
     const waiting = held && (await db.outbox.count()) > 0;

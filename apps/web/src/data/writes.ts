@@ -1,6 +1,7 @@
 // Every local change: the row and its outbox entry in one Dexie transaction.
 import {
   type ClientWritableTable,
+  type KakaoAddRow,
   type LinkRow,
   type ListItemRow,
   type ListRow,
@@ -10,6 +11,7 @@ import {
   type VisitNoteRow,
 } from "@magomap/domain";
 import {
+  kakaoAddRowId,
   newId,
   ownItemRowId,
   placeRowId,
@@ -31,6 +33,7 @@ const TABLES = [
   "list_items",
   "visit_notes",
   "links",
+  "kakao_adds",
   "user_lists",
   "user_places",
   "place_sources",
@@ -64,8 +67,10 @@ async function softDelete(db: MagomapDexie, table: ClientWritableTable, id: stri
   await db.outbox.add({ mutationId: newId(), table, id, op: "delete", clientUpdatedAt: at });
 }
 
-async function tx<T>(fn: (db: MagomapDexie) => Promise<T>): Promise<T> {
-  const db = currentDb();
+async function tx<T>(
+  fn: (db: MagomapDexie) => Promise<T>,
+  db: MagomapDexie = currentDb(),
+): Promise<T> {
   const out = await db.transaction(
     "rw",
     TABLES.map((t) => db.table(t)),
@@ -394,6 +399,81 @@ export function addToList(listId: string, placeId: string): Promise<string> {
 
 export const removeFromList = (listItemId: string) =>
   tx((db) => softDelete(db, "list_items", listItemId));
+
+// ---------- Pending adds to her Kakao lists ----------
+
+/**
+ * Asks for a place to be added to one of her own Kakao lists: kept here (and synced) until the
+ * extension adds it in Kakao Map and a Kakao Map sync brings it in. Asking again changes nothing;
+ * after removal, or after it failed, it is asked for afresh.
+ */
+export function addToKakaoList(listId: string, placeId: string): Promise<string> {
+  return tx(async (db) => {
+    const id = kakaoAddRowId(listId, placeId);
+    const existing = await db.kakao_adds.get(id);
+    if (existing && existing.deletedAt == null && existing.failed == null) return id;
+    const at = stamp(existing?.updatedAt);
+    const row: KakaoAddRow = {
+      id,
+      listId,
+      placeId,
+      failed: null,
+      createdAt: existing?.createdAt ?? at,
+      updatedAt: at,
+      deletedAt: null,
+    };
+    await upsert(db, "kakao_adds", row);
+    return id;
+  });
+}
+
+/** Drops a pending add (she changed her mind, or it can't be added). */
+export const removeKakaoAdd = (id: string) => tx((db) => softDelete(db, "kakao_adds", id));
+
+/** Marks pending adds that can't be added, with why; they stay until she removes them. */
+export function markKakaoAddsFailed(
+  ids: string[],
+  failed: NonNullable<KakaoAddRow["failed"]>,
+  db: MagomapDexie = currentDb(),
+): Promise<void> {
+  return tx(async (db) => {
+    for (const id of ids) {
+      const existing = await db.kakao_adds.get(id);
+      if (!existing || existing.deletedAt != null || existing.failed === failed) continue;
+      const row: KakaoAddRow = { ...existing, failed, updatedAt: stamp(existing.updatedAt) };
+      await upsert(db, "kakao_adds", row);
+    }
+  }, db);
+}
+
+/**
+ * Drops the pending adds a Kakao Map sync has brought in: the list now holds the place in a live
+ * item that Kakao Map still has. Run after every pull; `db` is the account the pull was for.
+ */
+export async function clearDoneKakaoAdds(db: MagomapDexie): Promise<void> {
+  const pending = (await db.kakao_adds.toArray()).filter((a) => a.deletedAt == null);
+  if (pending.length === 0) return;
+  const done: string[] = [];
+  for (const add of pending) {
+    const held = await db.list_items
+      .where("listId")
+      .equals(add.listId)
+      .filter(
+        (i) => i.placeId === add.placeId && i.deletedAt == null && i.removedAtProvider == null,
+      )
+      .count();
+    if (held > 0) done.push(add.id);
+  }
+  if (done.length === 0) return;
+  await db.transaction(
+    "rw",
+    TABLES.map((t) => db.table(t)),
+    async () => {
+      for (const id of done) await softDelete(db, "kakao_adds", id);
+    },
+  );
+  notifyWrite();
+}
 
 // ---------- Drafts ----------
 

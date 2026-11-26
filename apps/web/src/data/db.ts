@@ -1,5 +1,6 @@
 import type {
   ClientWritableTable,
+  KakaoAddRow,
   LinkRow,
   ListItemRow,
   ListRow,
@@ -63,6 +64,7 @@ export type MagomapDexie = Dexie & {
   user_places: EntityTable<UserPlaceRow, "id">;
   visit_notes: EntityTable<VisitNoteRow, "id">;
   links: EntityTable<LinkRow, "id">;
+  kakao_adds: EntityTable<KakaoAddRow, "id">;
   outbox: EntityTable<OutboxEntry, "seq">;
   rejected: EntityTable<RejectedEntry, "mutationId">;
   drafts: EntityTable<Draft, "key">;
@@ -79,6 +81,7 @@ export const ROW_TABLES: readonly SyncTable[] = [
   "user_places",
   "visit_notes",
   "links",
+  "kakao_adds",
 ];
 
 export const dbName = (userId: string) => `magomap-${userId}`;
@@ -114,6 +117,8 @@ export function defineUserDb(userId: string): MagomapDexie {
     drafts: "key",
     meta: "key",
   });
+  // Pending adds to her Kakao lists (#83).
+  db.version(2).stores({ kakao_adds: "id, listId, placeId" });
   return db;
 }
 

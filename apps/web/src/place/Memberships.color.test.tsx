@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { openUserDb } from "../data/db";
 import i18n from "../i18n";
-import { PLACE, seed } from "./testData";
+import { access, list, PLACE, seed } from "./testData";
 
 const detect = vi.fn<() => Promise<"ready" | "missing">>();
 vi.mock("../import/kakaoMap", () => ({ detectExtension: () => detect() }));
@@ -45,6 +45,24 @@ describe("Memberships: changing a colour", () => {
     expect(await screen.findByRole("button", { name: "Change colour in 제주 카페" })).toBeEnabled();
     expect(button("가을 산책")).toBeEnabled();
     expect(button("아내의 맛집")).toBeNull();
+  });
+
+  it("isn't offered on a place only waiting to be added to a Kakao list, nor its note", async () => {
+    const db = await open();
+    await db.lists.put(list("l_kakao_4", "새 리스트", "kakao"));
+    await db.user_lists.put(access("l_kakao_4", "owner"));
+    await db.kakao_adds.put({
+      id: `ka_l_kakao_4_${PLACE.id}`,
+      listId: "l_kakao_4",
+      placeId: PLACE.id,
+      failed: null,
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    });
+    await screen.findByText("새 리스트", { selector: ".mm-chip__name" });
+    expect(button("새 리스트")).toBeNull();
+    expect(screen.queryByRole("button", { name: /note.*새 리스트|새 리스트.*note/i })).toBeNull();
   });
 
   it("is off for Kakao lists, with a line saying why, when the extension doesn't answer", async () => {

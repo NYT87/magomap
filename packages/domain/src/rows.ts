@@ -9,8 +9,15 @@ export type SyncTable =
   | "user_lists"
   | "user_places"
   | "visit_notes"
-  | "links";
-export type ClientWritableTable = "places" | "lists" | "list_items" | "visit_notes" | "links";
+  | "links"
+  | "kakao_adds";
+export type ClientWritableTable =
+  | "places"
+  | "lists"
+  | "list_items"
+  | "visit_notes"
+  | "links"
+  | "kakao_adds";
 
 export const SYNC_TABLES: readonly SyncTable[] = [
   "places",
@@ -22,6 +29,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
   "user_places",
   "visit_notes",
   "links",
+  "kakao_adds",
 ];
 export const CLIENT_WRITABLE_TABLES: readonly ClientWritableTable[] = [
   "places",
@@ -29,6 +37,7 @@ export const CLIENT_WRITABLE_TABLES: readonly ClientWritableTable[] = [
   "list_items",
   "visit_notes",
   "links",
+  "kakao_adds",
 ];
 
 export interface Base {
@@ -111,6 +120,20 @@ export interface LinkRow extends Base {
   title: string | null;
 }
 
+/**
+ * A place she asked to add to one of her own Kakao lists, not yet in Kakao Map: the extension
+ * adds it there, and the next Kakao Map sync brings it in as a list item, which clears this row.
+ */
+export interface KakaoAddRow extends Base {
+  listId: string;
+  placeId: string;
+  /**
+   * Why it can't be added: the list is gone from her Kakao Map (the extension can't find it), or
+   * the place can't be sent (no location or no name to add it by).
+   */
+  failed: "list_missing" | "cant_send" | null;
+}
+
 export interface PlaceLocationRow extends Base {
   placeId: string;
   address: string | null;
@@ -131,7 +154,8 @@ export type AnyRow =
   | UserListRow
   | UserPlaceRow
   | VisitNoteRow
-  | LinkRow;
+  | LinkRow
+  | KakaoAddRow;
 
 export type RowOf<T extends SyncTable> = {
   places: PlaceRow;
@@ -143,4 +167,5 @@ export type RowOf<T extends SyncTable> = {
   user_places: UserPlaceRow;
   visit_notes: VisitNoteRow;
   links: LinkRow;
+  kakao_adds: KakaoAddRow;
 }[T];
