@@ -173,6 +173,66 @@ forEachDialect("exportUserData", (makeDb) => {
     expect(out.shared.listItems).toEqual([]);
   });
 
+  it("exports the user's import history, not another user's or the run's working state", async () => {
+    const db = await makeDb();
+    const { me, other } = await twoUsers(db);
+    const summary = {
+      listsAdded: 2,
+      listsUpdated: 0,
+      listsRemoved: 0,
+      placesAdded: 5,
+      placesMoved: 0,
+      membershipsRemoved: 0,
+      membershipsRestored: 0,
+      notesImported: 1,
+    };
+    const run = (userId: string, id: string, startedAt: number, summaryJson: string | null) => ({
+      user_id: userId,
+      id,
+      provider: "kakao",
+      source: "kakao_map",
+      started_at: startedAt,
+      finished_at: summaryJson ? startedAt + 10 : null,
+      status: summaryJson ? "completed" : "superseded",
+      complete: summaryJson ? 1 : 0,
+      subscription_known: 1,
+      snapshot_at: startedAt,
+      summary_json: summaryJson,
+      error: null,
+    });
+    await db.kysely
+      .insertInto("import_runs")
+      .values([
+        run(me.userId, "run-old", T0, null),
+        run(me.userId, "run-new", T0 + 100, JSON.stringify({ summary, internal: "x" })),
+        run(other.userId, "run-other", T0, JSON.stringify({ summary })),
+      ])
+      .execute();
+    const out = await exportUserData(db, me.userId, T0);
+    expect(out.mine.importRuns).toEqual([
+      {
+        id: "run-new",
+        provider: "kakao",
+        source: "kakao_map",
+        startedAt: T0 + 100,
+        finishedAt: T0 + 110,
+        status: "completed",
+        complete: true,
+        summary,
+      },
+      {
+        id: "run-old",
+        provider: "kakao",
+        source: "kakao_map",
+        startedAt: T0,
+        finishedAt: null,
+        status: "superseded",
+        complete: false,
+        summary: null,
+      },
+    ]);
+  });
+
   it("exports an empty account", async () => {
     const db = await makeDb();
     const u = await findOrCreateUserByIdentity(db, "kakao", "9", null, T0);
@@ -227,8 +287,8 @@ forEachDialect("exportUserData", (makeDb) => {
     } as Db;
     const out = await exportUserData(counted, u.userId, T0);
     expect(out.shared.places).toHaveLength(600);
-    // users, identities, and one read for each synced table (the export reads them all).
-    expect(queries).toBeLessThanOrEqual(2 + SYNC_TABLES.length);
+    // users, identities, import runs, and one read for each synced table (the export reads them all).
+    expect(queries).toBeLessThanOrEqual(3 + SYNC_TABLES.length);
   });
 
   it("finds nothing for a deleted account, and everything still for the other one", async () => {
