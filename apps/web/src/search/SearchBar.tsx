@@ -72,7 +72,15 @@ export function SearchBar() {
     }
   };
 
-  const save = async (hit: Extract<SearchHit, { kind: "kakao" }>) => {
+  const save = async (hit: Extract<SearchHit, { kind: "kakao" }>, button: HTMLElement) => {
+    setSaveFailed(false);
+    // With the map there, its "Save to…" asks which list (her own, a Kakao one, new, or none).
+    const saveFound = stage.saveFound.current;
+    if (saveFound) {
+      const box = button.getBoundingClientRect();
+      saveFound({ result: hit.result, distanceM: 0 }, { x: box.left, y: box.bottom });
+      return;
+    }
     setSaveFailed(false);
     setSaving(hit.result.externalId);
     try {
@@ -185,7 +193,7 @@ export function SearchBar() {
                       className="mm-button mm-button--secondary mm-button--small"
                       disabled={saving === r.externalId}
                       aria-describedby={`hit-${key}`}
-                      onClick={() => void save(hit)}
+                      onClick={(e) => void save(hit, e.currentTarget)}
                       data-place={id}
                     >
                       {saving === r.externalId ? t("search.saving") : t("search.save")}

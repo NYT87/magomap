@@ -144,10 +144,13 @@ function Popover({
  */
 export function MapContextMenu({
   press,
+  found,
   onClose,
   onSaved,
 }: {
   press: ContextPress;
+  /** A place already found (a search result): no lookup, straight to its lists. */
+  found?: NearbyResult;
   onClose: () => void;
   onSaved?: (saved: SavedFromMap, release: () => void) => void;
 }) {
@@ -206,12 +209,12 @@ export function MapContextMenu({
     void press;
     pressToken.current += 1;
     savingNow.current = false;
-    setChosen(null);
+    setChosen(found ?? null);
     setNaming(false);
     setName("");
     setSaving(false);
     setFailed(false);
-  }, [press]);
+  }, [press, found]);
 
   // The lookup, again on Try again; an older one's answer, arriving late, is dropped.
   useEffect(() => {
@@ -220,7 +223,7 @@ export function MapContextMenu({
     setLookup({ kind: "loading" });
     void (async () => {
       try {
-        const rows = await fetchNearby(press.point);
+        const rows = found ? [found] : await fetchNearby(press.point);
         const states = await placeStatesOf(rows.map(idOf));
         if (current) setLookup({ kind: "done", rows, states });
       } catch (error) {
@@ -230,7 +233,7 @@ export function MapContextMenu({
     return () => {
       current = false;
     };
-  }, [press, attempt]);
+  }, [press, attempt, found]);
 
   // After Try again brings places, the first one takes the focus the button had.
   useEffect(() => {
@@ -289,6 +292,11 @@ export function MapContextMenu({
 
   const back = () => {
     if (savingNow.current) return;
+    // A found place has no other places to go back to.
+    if (found) {
+      close();
+      return;
+    }
     setChosen(null);
     setNaming(false);
     setFailed(false);
@@ -384,7 +392,9 @@ export function MapContextMenu({
       <div className="mm-map-menu__chosen">
         <button type="button" className="mm-icon-button" aria-disabled={busy} onClick={back}>
           <ArrowLeft aria-hidden size={20} strokeWidth={1.75} />
-          <span className="mm-visually-hidden">{t("map.save.back")}</span>
+          <span className="mm-visually-hidden">
+            {t(found ? "map.save.backToSearch" : "map.save.back")}
+          </span>
         </button>
         <span className="mm-hit__title">{chosen.result.title}</span>
         {chosenState?.saved && <span className="mm-badge">{t("map.save.saved")}</span>}
@@ -522,7 +532,7 @@ export function MapContextMenu({
     pressToken.current += 1;
     onClose();
   };
-  const title = t("map.save.title");
+  const title = t(found ? "map.save.titleFound" : "map.save.title");
   // Escape on the lists is a step back to the places; on the places it closes.
   const onEscape = chosen ? back : undefined;
   return layout === "phone" ? (

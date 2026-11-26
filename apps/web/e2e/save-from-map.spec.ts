@@ -115,6 +115,36 @@ test("a press on the map saves a nearby place to a new list and opens it", async
   await expect(page.locator(".mm-membership").filter({ hasText: listName })).toHaveCount(1);
 });
 
+test("Save on a search result asks which list, as the map's own menu does", async ({
+  page,
+  context,
+}) => {
+  const id = freshId();
+  const title = `Harbour Bakery ${id}`;
+  const listName = `Search finds ${id}`;
+  const found = nearbyAnswer(id, title).results[0]?.result;
+  await openMap(page, context, { results: [] });
+  await page.route("**/api/search/places*", (route) =>
+    route.fulfill({ json: { results: [found] } }),
+  );
+
+  await page.getByRole("searchbox").fill("bakery");
+  const hit = page.locator(".mm-hit", { hasText: title });
+  await hit.getByRole("button", { name: "Save to…" }).click();
+
+  const menu = page.getByRole("dialog", { name: "Save place" });
+  await expect(menu).toBeVisible();
+  // Straight to the lists: the place is already chosen.
+  await expect(menu.getByText(title)).toBeVisible();
+  await menu.getByRole("button", { name: "New list" }).click();
+  await menu.getByRole("textbox", { name: "List name" }).fill(listName);
+  await menu.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/places/p_kakao_${id}$`));
+  await page.goto(`/places/p_kakao_${id}/details`);
+  await expect(page.locator(".mm-membership").filter({ hasText: listName })).toBeVisible();
+});
+
 test("a normal tap or click on the map opens nothing", async ({ page, context }, info) => {
   await openMap(page, context, nearbyAnswer(freshId(), "Unused"));
   let asked = 0;
