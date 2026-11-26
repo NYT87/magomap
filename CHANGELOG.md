@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.10](https://github.com/NYT87/magomap/compare/magomap-v0.1.9...magomap-v0.1.10) (2026-11-26)
+
+
+### Features
+
+* Save on a Kakao search result asks which list; the search bar says it searches Kakao ([61c09eb](https://github.com/NYT87/magomap/commit/61c09eb45ac0bc8cd476ecf5038dda9b706c9c3a))
+* **web:** Save on a Kakao search result asks which list; the search bar says it searches Kakao ([cc48578](https://github.com/NYT87/magomap/commit/cc485785a78cafa9403c359a6bd6bcf4a4ec40ac))
+
+
+### Bug Fixes
+
+* **web:** search's Save reads "Save to…", its menu's Back says back to search, shorter Korean placeholder (review) ([934d655](https://github.com/NYT87/magomap/commit/934d655f3924bf021155648ba4a298ca0708f2c1))
+
 ## [0.1.9](https://github.com/NYT87/magomap/compare/magomap-v0.1.8...magomap-v0.1.9) (2026-11-26)
 
 
